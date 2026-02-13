@@ -90,7 +90,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		// if the variable exists in this scope, cannot redeclare
 		if ok && !fromOuter && sym.Scope != FunctionScope {
-			return fmt.Errorf("variable %s already declared on line %d", node.Name.Value, node.Token.Line)
+			return fmt.Errorf("variable %s already declared", node.Name.Value)
 		}
 
 		if node.Constant {
@@ -128,11 +128,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		symbol, _, ok := c.symbolTable.Resolve(node.Identifier.Value)
 		if !ok {
-			return fmt.Errorf("undefined variable %s on line %d", node.Identifier.Value, node.Token.Line)
+			return fmt.Errorf("undefined variable %s", node.Identifier.Value)
 		}
 
 		if symbol.IsConstant {
-			return fmt.Errorf("cannot assign to constant %s on line %d", node.Identifier.Value, node.Token.Line)
+			return fmt.Errorf("cannot assign to constant %s", node.Identifier.Value)
 		}
 
 		if symbol.Scope == GlobalScope {
@@ -218,7 +218,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		case "||":
 			c.emit(code.OpOr)
 		default:
-			return fmt.Errorf("unknown operator %s on line %d", node.Operator, node.Token.Line)
+			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
 	case *ast.PrefixExpr:
 		err := c.Compile(node.Right)
@@ -232,7 +232,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		case "-":
 			c.emit(code.OpMinus)
 		default:
-			return fmt.Errorf("unknown operator %s on line %d", node.Operator, node.Token.Line)
+			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
 	case *ast.IfExpr:
 		// we don't need to update t here because we're not bubbling the value back up like in expressions
@@ -291,7 +291,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.Identifier:
 		symbol, _, ok := c.symbolTable.Resolve(node.Value)
 		if !ok {
-			return fmt.Errorf("undefined variable %s on line %d", node.Value, node.Token.Line)
+			return fmt.Errorf("undefined variable %s", node.Value)
 		}
 
 		c.loadSymbol(symbol)

@@ -136,37 +136,30 @@ func TestErrorHandling(t *testing.T) {
 	tests := []struct {
 		input           string
 		expectedMessage string
-		expectedLine    int
 	}{
 		{
 			"5 + true;",
-			"type mismatch: Integer + Boolean on line 1",
-			1,
+			"type mismatch: Integer + Boolean",
 		},
 		{
 			"5 + true; 5;",
-			"type mismatch: Integer + Boolean on line 1",
-			1,
+			"type mismatch: Integer + Boolean",
 		},
 		{
 			"-true",
-			"unknown operation - for type Boolean on line 1",
-			1,
+			"unknown operation - for type Boolean",
 		},
 		{
 			"true + false;",
-			"unknown operator: Boolean + Boolean on line 1",
-			1,
+			"unknown operator: Boolean + Boolean",
 		},
 		{
 			"5; true + false; 5",
-			"unknown operator: Boolean + Boolean on line 1",
-			1,
+			"unknown operator: Boolean + Boolean",
 		},
 		{
 			"if (10 > 1) { true + false; }",
-			"unknown operator: Boolean + Boolean on line 1",
-			1,
+			"unknown operator: Boolean + Boolean",
 		},
 		{
 			` if (10 > 1) {
@@ -175,15 +168,13 @@ func TestErrorHandling(t *testing.T) {
 				}
 				return 1;
 			}`,
-			"unknown operator: Boolean + Boolean on line 3",
-			3,
+			"unknown operator: Boolean + Boolean",
 		},
-		{"foobar", "identifier not found: foobar on line 1", 1},
-		{`"Hello" - "World"`, "unknown operator: String - String on line 1", 1},
+		{"foobar", "identifier not found: foobar"},
+		{`"Hello" - "World"`, "unknown operator: String - String"},
 		{
 			`{"name": "QuonkScript"}[func(x) { x }];`,
-			"unusable as hash key: Function on line 1",
-			1,
+			"unusable as hash key: Function",
 		},
 	}
 
@@ -421,7 +412,7 @@ func TestArrayIndexExpressions(t *testing.T) {
 		{
 			"[1, 2, 3][3]",
 			nil,
-			"array index out of bounds on line 1",
+			"array index out of bounds",
 		},
 		{
 			"[1, 2, 3][-1]",
@@ -441,7 +432,7 @@ func TestArrayIndexExpressions(t *testing.T) {
 		{
 			"[1, 2, 3][-4]",
 			nil,
-			"array index out of bounds on line 1",
+			"array index out of bounds",
 		},
 	}
 

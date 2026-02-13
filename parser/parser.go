@@ -146,8 +146,8 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("Honk! expected next token to be %s, got %s instead on line %d",
-		t, p.peekToken.Type, p.peekToken.Line)
+	msg := fmt.Sprintf("Honk! expected next token to be %s, got %s instead",
+		t, p.peekToken.Type)
 	p.errors = append(p.errors, msg)
 }
 
@@ -218,13 +218,13 @@ func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
 
 	if p.peekTokenIs(token.Semicolon) {
 		if isConst {
-			p.errors = append(p.errors, fmt.Sprintf("Honk! const variable must be initialized on line %d", p.currToken.Line))
+			p.errors = append(p.errors, "Honk! const variable must be initialized")
 			return nil
 		} else {
 			p.nextToken() // advance past semi
 			// I am unsure about creating this token here, but it's not being added to the list of tokens, so it should
 			// be fine
-			stmt.Value = &ast.NullLiteral{Token: token.Token{Literal: "null", Type: token.Null, Line: p.currToken.Line}}
+			stmt.Value = &ast.NullLiteral{Token: token.Token{Literal: "null", Type: token.Null}}
 			return stmt
 		}
 	}

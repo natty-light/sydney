@@ -38,16 +38,16 @@ func (s *Scope) Set(name string, val Object, isConstant bool) Object {
 	return val
 }
 
-func (s *Scope) DeclareVar(name string, val Object, isConst bool, line int) Object {
+func (s *Scope) DeclareVar(name string, val Object, isConst bool) Object {
 	if isConst && val.Type() == NullObj {
-		return newError("const variable %s must be initialize on line %d", name, line)
+		return newError("const variable %s must be initialize", name)
 	}
 
 	_, fromOuter, ok := s.Get(name)
 
 	// If the variable already exists in this scope we cannot redeclare it
 	if ok && !fromOuter {
-		return newError("cannot redeclare block scoped variable %s on line %d", name, line)
+		return newError("cannot redeclare block scoped variable %s", name)
 	} else {
 		// if the variable doesn't exist or its from the parent scope
 		s.store[name] = Variable{Value: val, Constant: isConst}
@@ -55,17 +55,17 @@ func (s *Scope) DeclareVar(name string, val Object, isConst bool, line int) Obje
 	}
 }
 
-func (s *Scope) AssignVar(name string, val Object, line int) Object {
+func (s *Scope) AssignVar(name string, val Object) Object {
 	scope, ok := s.Resolve(name)
 
 	if !ok {
-		return newError("cannot resolve variable %s on line %d", name, line)
+		return newError("cannot resolve variable %s", name)
 	}
 	// if we get here, we know the variable exists so we can ignore the boolean return values
 	existing, _, _ := scope.Get(name)
 
 	if existing.Constant {
-		return newError("cannot assign value to constant %s on line %d", name, line)
+		return newError("cannot assign value to constant %s", name)
 	}
 
 	return scope.Set(name, val, false)
