@@ -1,7 +1,7 @@
 package lexer
 
 import (
-	"quonk/token"
+	"sydney/token"
 	"testing"
 )
 

@@ -2,8 +2,8 @@ package evaluator
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/object"
+	"sydney/ast"
+	"sydney/object"
 )
 
 var (

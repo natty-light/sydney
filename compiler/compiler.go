@@ -2,10 +2,10 @@ package compiler
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/code"
-	"quonk/object"
 	"sort"
+	"sydney/ast"
+	"sydney/code"
+	"sydney/object"
 )
 
 type Compiler struct {

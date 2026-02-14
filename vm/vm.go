@@ -2,9 +2,9 @@ package vm
 
 import (
 	"fmt"
-	"quonk/code"
-	"quonk/compiler"
-	"quonk/object"
+	"sydney/code"
+	"sydney/compiler"
+	"sydney/object"
 )
 
 const StackSize = 2048

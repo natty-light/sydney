@@ -2,9 +2,9 @@ package evaluator
 
 import (
 	"fmt"
-	"quonk/lexer"
-	"quonk/object"
-	"quonk/parser"
+	"sydney/lexer"
+	"sydney/object"
+	"sydney/parser"
 	"testing"
 )
 

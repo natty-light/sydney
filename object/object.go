@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"hash/fnv"
-	"quonk/ast"
-	"quonk/code"
 	"strconv"
+	"sydney/ast"
+	"sydney/code"
 
 	"strings"
 )

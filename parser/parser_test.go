@@ -2,9 +2,9 @@ package parser
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/lexer"
 	"strconv"
+	"sydney/ast"
+	"sydney/lexer"
 	"testing"
 )
 

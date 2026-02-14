@@ -2,11 +2,11 @@ package vm
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/compiler"
-	"quonk/lexer"
-	"quonk/object"
-	"quonk/parser"
+	"sydney/ast"
+	"sydney/compiler"
+	"sydney/lexer"
+	"sydney/object"
+	"sydney/parser"
 	"testing"
 )
 

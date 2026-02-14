@@ -3,8 +3,8 @@ package ast
 import (
 	"bytes"
 	"fmt"
-	"quonk/token"
 	"strings"
+	"sydney/token"
 )
 
 // Interfaces

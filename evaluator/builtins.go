@@ -1,7 +1,7 @@
 package evaluator
 
 import (
-	"quonk/object"
+	"sydney/object"
 )
 
 var builtIns = map[string]*object.BuiltIn{

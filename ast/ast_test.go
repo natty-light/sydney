@@ -1,7 +1,7 @@
 package ast
 
 import (
-	"quonk/token"
+	"sydney/token"
 	"testing"
 )
 

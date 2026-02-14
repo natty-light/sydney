@@ -2,10 +2,10 @@ package parser
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/lexer"
-	"quonk/token"
 	"strconv"
+	"sydney/ast"
+	"sydney/lexer"
+	"sydney/token"
 )
 
 type (

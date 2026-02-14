@@ -1,8 +1,8 @@
 package lexer
 
 import (
-	"quonk/token"
-	"quonk/utils"
+	"sydney/token"
+	"sydney/utils"
 )
 
 const (

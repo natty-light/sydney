@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"quonk/compiler"
-	"quonk/lexer"
-	"quonk/object"
-	"quonk/parser"
-	"quonk/repl"
-	"quonk/vm"
+	"sydney/compiler"
+	"sydney/lexer"
+	"sydney/object"
+	"sydney/parser"
+	"sydney/repl"
+	"sydney/vm"
 )
 
 // TODO : unfuck this

@@ -1,10 +1,10 @@
 package evaluator
 
 import (
-	"quonk/ast"
-	"quonk/lexer"
-	"quonk/object"
-	"quonk/parser"
+	"sydney/ast"
+	"sydney/lexer"
+	"sydney/object"
+	"sydney/parser"
 	"testing"
 )
 

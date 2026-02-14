@@ -2,11 +2,11 @@ package compiler
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/code"
-	"quonk/lexer"
-	"quonk/object"
-	"quonk/parser"
+	"sydney/ast"
+	"sydney/code"
+	"sydney/lexer"
+	"sydney/object"
+	"sydney/parser"
 	"testing"
 )
 
