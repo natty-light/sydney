@@ -21,6 +21,10 @@ func TestString(t *testing.T) {
 			FunctionType{Return: Bool, Params: []Type{Bool, Int}},
 			"func<(bool, int) -> bool>",
 		},
+		{
+			MapType{KeyType: String, ValueType: String},
+			"map<string, string>",
+		},
 	}
 
 	for _, test := range tests {

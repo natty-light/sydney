@@ -20,6 +20,11 @@ type FunctionType struct {
 	Return Type
 }
 
+type MapType struct {
+	KeyType   Type
+	ValueType Type
+}
+
 const (
 	Int    BasicType = "int"
 	Float  BasicType = "float"
@@ -49,5 +54,15 @@ func (f FunctionType) Signature() string {
 	out.WriteString(f.Return.Signature())
 	out.WriteString(">")
 
+	return out.String()
+}
+
+func (m MapType) Signature() string {
+	var out bytes.Buffer
+	out.WriteString("map<")
+	out.WriteString(m.KeyType.Signature())
+	out.WriteString(", ")
+	out.WriteString(m.ValueType.Signature())
+	out.WriteString(">")
 	return out.String()
 }
