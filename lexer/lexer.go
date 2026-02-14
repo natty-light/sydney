@@ -152,7 +152,7 @@ func (l *Lexer) NextToken() token.Token {
 			char := l.char
 			l.readChar()
 			literal := string(char) + string(l.char)
-			tok = token.Token{Type: token.GreaterThan, Literal: literal}
+			tok = token.Token{Type: token.Arrow, Literal: literal}
 		} else {
 			tok = token.MakeToken(token.Minus, l.char)
 		}
@@ -250,11 +250,29 @@ var keywords = map[string]token.TokenType{
 	"return": token.Return,
 	"for":    token.For,
 	"macro":  token.Macro,
+	"array":  token.ArrayType,
+	"map":    token.MapType,
+}
+
+var types = map[string]token.TokenType{
+	"string": token.StringType,
+	"int":    token.IntType,
+	"bool":   token.BoolType,
+	"float":  token.FloatType,
+	"null":   token.NullType,
+	"array":  token.ArrayType,
+	"map":    token.MapType,
+	"fn":     token.FunctionType,
 }
 
 func LookupIdent(ident string) token.TokenType {
 	if tok, ok := keywords[ident]; ok {
 		return tok
 	}
+
+	if tok, ok := types[ident]; ok {
+		return tok
+	}
+
 	return token.Identifier
 }

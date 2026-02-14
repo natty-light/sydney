@@ -274,8 +274,8 @@ func TestVariableAssignment(t *testing.T) {
 		{
 			`
 			mut x = 5;
-			const fn = func () { x = 7; }
-			fn();
+			const f = func () { x = 7; };
+			f();
 			x;
 			`,
 			7,
@@ -584,6 +584,11 @@ func testEval(source string) object.Object {
 
 	program := p.ParseProgram()
 	scope := object.NewScope()
+	if len(p.Errors()) != 0 {
+		for _, msg := range p.Errors() {
+			fmt.Println(msg)
+		}
+	}
 	return Eval(program, scope)
 }
 

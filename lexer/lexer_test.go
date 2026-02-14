@@ -32,8 +32,6 @@ func TestNextToken(t *testing.T) {
 	{"foo": "bar" }
 	5.2;
 	macro(x, y) { x + y; };
-
-	func() -> Int { return 5; };
 	`
 
 	tests := []struct {
@@ -197,6 +195,85 @@ func TestNextToken(t *testing.T) {
 		{token.EOF, ""},
 	}
 
+	lexer := New(source)
+
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}
+
+func TestTypeLexing(t *testing.T) {
+	source := `
+	mut int x = 5;
+	mut bool x;
+	mut string x = "foo";
+	mut map<int, string> m;
+	const array<int> a;
+	const fn<(int) -> int> f;
+	`
+
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.Mut, "mut"},
+		{token.IntType, "int"},
+		{token.Identifier, "x"},
+		{token.Assign, "="},
+		{token.Integer, "5"},
+		{token.Semicolon, ";"},
+
+		{token.Mut, "mut"},
+		{token.BoolType, "bool"},
+		{token.Identifier, "x"},
+		{token.Semicolon, ";"},
+
+		{token.Mut, "mut"},
+		{token.StringType, "string"},
+		{token.Identifier, "x"},
+		{token.Assign, "="},
+		{token.String, "foo"},
+		{token.Semicolon, ";"},
+
+		{token.Mut, "mut"},
+		{token.MapType, "map"},
+		{token.LessThan, "<"},
+		{token.IntType, "int"},
+		{token.Comma, ","},
+		{token.StringType, "string"},
+		{token.GreaterThan, ">"},
+		{token.Identifier, "m"},
+		{token.Semicolon, ";"},
+
+		{token.Const, "const"},
+		{token.ArrayType, "array"},
+		{token.LessThan, "<"},
+		{token.IntType, "int"},
+		{token.GreaterThan, ">"},
+		{token.Identifier, "a"},
+		{token.Semicolon, ";"},
+
+		{token.Const, "const"},
+		{token.FunctionType, "fn"},
+		{token.LessThan, "<"},
+		{token.LeftParen, "("},
+		{token.IntType, "int"},
+		{token.RightParen, ")"},
+		{token.Arrow, "->"},
+		{token.IntType, "int"},
+		{token.GreaterThan, ">"},
+		{token.Identifier, "f"},
+		{token.Semicolon, ";"},
+
+		{token.EOF, ""},
+	}
 	lexer := New(source)
 
 	for i, tt := range tests {

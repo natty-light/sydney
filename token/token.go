@@ -23,6 +23,16 @@ const (
 	For    TokenType = "For"
 	Macro  TokenType = "Macro"
 
+	// Types
+	IntType      TokenType = "IntegerType"
+	StringType   TokenType = "StringType"
+	FloatType    TokenType = "FloatType"
+	BoolType     TokenType = "BoolType"
+	NullType     TokenType = "NullType"
+	ArrayType    TokenType = "ArrayType"
+	MapType      TokenType = "MapType"
+	FunctionType TokenType = "FunctionType"
+
 	// Grouping
 	LeftParen          TokenType = "LeftParen"
 	RightParen         TokenType = "RightParen"
