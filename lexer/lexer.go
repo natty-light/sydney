@@ -148,7 +148,14 @@ func (l *Lexer) NextToken() token.Token {
 	case plus:
 		tok = token.MakeToken(token.Plus, l.char)
 	case minus:
-		tok = token.MakeToken(token.Minus, l.char)
+		if l.peekChar() == greaterThan {
+			char := l.char
+			l.readChar()
+			literal := string(char) + string(l.char)
+			tok = token.Token{Type: token.GreaterThan, Literal: literal}
+		} else {
+			tok = token.MakeToken(token.Minus, l.char)
+		}
 	case star:
 		tok = token.MakeToken(token.Star, l.char)
 	case slash:

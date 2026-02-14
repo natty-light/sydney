@@ -53,6 +53,7 @@ const (
 	NotEqualTo         TokenType = "NotEqual"
 	And                TokenType = "And"
 	Or                 TokenType = "Or"
+	Arrow              TokenType = "Arrow"
 
 	EOF     TokenType = "EOF" // End of File
 	Illegal TokenType = "Illegal"

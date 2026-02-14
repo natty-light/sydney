@@ -32,6 +32,8 @@ func TestNextToken(t *testing.T) {
 	{"foo": "bar" }
 	5.2;
 	macro(x, y) { x + y; };
+
+	func() -> Int { return 5; };
 	`
 
 	tests := []struct {
