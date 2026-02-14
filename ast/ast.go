@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sydney/token"
+	"sydney/types"
 )
 
 // Interfaces
@@ -40,6 +41,7 @@ type (
 		Name     *Identifier
 		Value    Expr
 		Constant bool
+		Type     types.Type
 	}
 
 	ReturnStmt struct {
@@ -88,6 +90,7 @@ type (
 		Parameters []*Identifier
 		Body       *BlockStmt
 		Name       string
+		Type       types.FunctionType
 	}
 
 	StringLiteral struct {

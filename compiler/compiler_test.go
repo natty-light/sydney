@@ -355,7 +355,7 @@ func TestGlobalVarDeclarationStatements(t *testing.T) {
 		},
 		{
 			source: `
-			mut x;
+			mut int x;
 			x;
 			`,
 			expectedConstants: []interface{}{},

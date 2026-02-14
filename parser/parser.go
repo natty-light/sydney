@@ -6,6 +6,7 @@ import (
 	"sydney/ast"
 	"sydney/lexer"
 	"sydney/token"
+	"sydney/types"
 )
 
 type (
@@ -115,7 +116,7 @@ func (p *Parser) registerInfix(tokenType token.TokenType, fn infixParseFn) {
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
-	msg := fmt.Sprintf("Honk! no prefix parse function for %s found", t)
+	msg := fmt.Sprintf("no prefix parse function for %s found", t)
 	p.errors = append(p.errors, msg)
 }
 
@@ -146,7 +147,7 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("Honk! expected next token to be %s, got %s instead",
+	msg := fmt.Sprintf("expected next token to be %s, got %s instead",
 		t, p.peekToken.Type)
 	p.errors = append(p.errors, msg)
 }
@@ -209,6 +210,11 @@ func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
 
 	stmt := &ast.VarDeclarationStmt{Token: p.currToken, Constant: isConst}
 
+	// parse type. constant variables do not need a type annotation, mutable variables that are uninitialized do
+	if p.isPeekTokenType() {
+		stmt.Type = p.parseType()
+	}
+
 	// expectPeek eats?
 	if !p.expectPeek(token.Identifier) {
 		return nil
@@ -218,13 +224,13 @@ func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
 
 	if p.peekTokenIs(token.Semicolon) {
 		if isConst {
-			p.errors = append(p.errors, "Honk! const variable must be initialized")
+			p.errors = append(p.errors, "const variable must be initialized")
+			return nil
+		} else if stmt.Type == nil {
+			p.errors = append(p.errors, "uninitialized mut variable must have a type")
 			return nil
 		} else {
-			p.nextToken() // advance past semi
-			// I am unsure about creating this token here, but it's not being added to the list of tokens, so it should
-			// be fine
-			stmt.Value = &ast.NullLiteral{Token: token.Token{Literal: "null", Type: token.Null}}
+			p.nextToken() // advance past ;
 			return stmt
 		}
 	}
@@ -640,4 +646,140 @@ func (p *Parser) parseMacroLiteral() ast.Expr {
 	macro.Body = p.parseBlockStmt()
 
 	return macro
+}
+
+var typeMap = map[token.TokenType]types.Type{
+	token.IntType:    types.Int,
+	token.FloatType:  types.Float,
+	token.StringType: types.String,
+	token.NullType:   types.Null,
+	token.BoolType:   types.Bool,
+}
+
+func (p *Parser) isPeekTokenType() bool {
+	switch p.peekToken.Type {
+	case token.IntType:
+		fallthrough
+	case token.FloatType:
+		fallthrough
+	case token.StringType:
+		fallthrough
+	case token.BoolType:
+		fallthrough
+	case token.NullType:
+		fallthrough
+	case token.FunctionType:
+		fallthrough
+	case token.MapType:
+		fallthrough
+	case token.ArrayType:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Parser) parseType() types.Type {
+	p.nextToken() // advance curr token to type token
+	switch p.currToken.Type {
+	case token.IntType:
+		fallthrough
+	case token.FloatType:
+		fallthrough
+	case token.StringType:
+		fallthrough
+	case token.BoolType:
+		fallthrough
+	case token.NullType:
+		return typeMap[p.currToken.Type]
+	case token.MapType:
+		return p.parseMapType()
+	case token.ArrayType:
+		return p.parseArrayType()
+	case token.FunctionType:
+		return p.parseFunctionType()
+	}
+
+	p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.peekToken.Type))
+	return nil
+}
+
+func (p *Parser) parseFunctionType() types.Type {
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("function", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+	if !p.expectPeek(token.LeftParen) {
+		p.errors = append(p.errors, getTypeParseError("function", token.LeftParen, p.peekToken.Type))
+		return nil
+	}
+
+	params := make([]types.Type, 0)
+
+	for !p.peekTokenIs(token.RightParen) {
+		t := p.parseType()
+		if !p.expectPeek(token.Comma) {
+			p.errors = append(p.errors, getTypeParseError("function", token.Comma, p.peekToken.Type))
+			return nil
+		}
+		params = append(params, t)
+	}
+
+	if !p.expectPeek(token.RightParen) {
+		p.errors = append(p.errors, getTypeParseError("function", token.RightParen, p.peekToken.Type))
+		return nil
+	}
+
+	if !p.expectPeek(token.Arrow) {
+		p.errors = append(p.errors, getTypeParseError("function", token.Arrow, p.peekToken.Type))
+		return nil
+	}
+
+	r := p.parseType()
+
+	return types.FunctionType{Params: params, Return: r}
+
+}
+
+func (p *Parser) parseArrayType() types.Type {
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("array", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+
+	t := p.parseType() // recursively get type for array
+
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("array", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.ArrayType{ElemType: t}
+}
+
+func (p *Parser) parseMapType() types.Type {
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("map", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+
+	k := p.parseType() // recursively get type for key type
+
+	if !p.expectPeek(token.Comma) {
+		p.errors = append(p.errors, getTypeParseError("map", token.Comma, p.peekToken.Type))
+		return nil
+	}
+
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("map", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+
+	v := p.parseType()
+
+	return types.MapType{KeyType: k, ValueType: v}
+}
+
+func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {
+	return fmt.Sprintf("expected %q for %s type annotation, got %q", expected, name, got)
 }

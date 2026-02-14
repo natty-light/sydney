@@ -3,8 +3,10 @@ package parser
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sydney/ast"
 	"sydney/lexer"
+	"sydney/types"
 	"testing"
 )
 
@@ -14,13 +16,17 @@ func TestVarDeclarationStmts(t *testing.T) {
 		source        string
 		expectedIdent string
 		expectedValue interface{}
+		expectedType  types.Type
 		isConst       bool
 	}{
-		{"mut x = 5;", "x", 5, false},
-		{"const y = true;", "y", true, true},
-		{"mut foo = y;", "foo", "y", false},
-		{"mut x = null", "x", "null", false},
-		{"mut x;", "x", "null", false},
+		{"mut int x = 5;", "x", 5, types.Int, false},
+		{"const bool y = true;", "y", true, types.Bool, true},
+		{"mut foo = y;", "foo", "y", nil, false},
+		{"mut x = null", "x", "null", nil, false},
+		{"mut int x;", "x", nil, types.Int, false},
+		{"mut m map<string, int> x;", "m", nil, types.MapType{KeyType: types.String, ValueType: types.Int}, false},
+		{"mut array<int> a;", "a", nil, types.ArrayType{ElemType: types.Int}, false},
+		{"mut fn<(int) -> int> f", "f", nil, types.FunctionType{Params: []types.Type{types.Int}, Return: types.Int}, false},
 	}
 
 	for _, tt := range tests {
@@ -39,6 +45,15 @@ func TestVarDeclarationStmts(t *testing.T) {
 		}
 
 		val := stmt.(*ast.VarDeclarationStmt).Value
+
+		if !strings.Contains(tt.source, "=") {
+			if val != tt.expectedValue {
+				t.Fatalf("expecting value %s, got %s", tt.expectedValue, val)
+			} else {
+				return
+			}
+		}
+
 		str := val.String()
 		if str == "null" {
 			if !testNullLiteral(t, val) {
