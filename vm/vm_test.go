@@ -337,20 +337,20 @@ func TestCallingFunctionsWithBindings(t *testing.T) {
 func TestCallingFunctionsWithArgumentsAndBindings(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			source:   `const identity = func(a) { a; }; identity(4);`,
+			source:   `const identity = func(int a) -> int { a; }; identity(4);`,
 			expected: 4,
 		},
 		{
-			source:   `const sum = func(a, b) { a + b; }; sum(1, 2);`,
+			source:   `const sum = func(int a, int b) -> int { a + b; }; sum(1, 2);`,
 			expected: 3,
 		},
 		{
-			source:   `const sum = func(a, b) { const c = a + b; c; }; sum(1, 2);`,
+			source:   `const sum = func(int a, int b) -> int { const c = a + b; c; }; sum(1, 2);`,
 			expected: 3,
 		},
 		{
 			source: `
-			const sum = func(a, b) {
+			const sum = func(int a, int b) -> int {
 				const c = a + b;
 				c;
 			};
@@ -364,11 +364,11 @@ func TestCallingFunctionsWithArgumentsAndBindings(t *testing.T) {
 		{
 			source: `
 			const globalNum = 10;
-			const sum = func(a, b) {
+			const sum = func(int a, int b) -> int {
 				const c = a + b;
 				c + globalNum;	
 			}
-			const outer = func() {
+			const outer = func() -> int {
 				sum(1, 2) + sum(3, 4) + globalNum;
 			};
 			outer() + globalNum;
@@ -383,15 +383,15 @@ func TestCallingFunctionsWithArgumentsAndBindings(t *testing.T) {
 func TestCallingFunctionsWithWrongArguments(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			source:   `func() { 1; }(1);`,
+			source:   `func() -> int { 1; }(1);`,
 			expected: "wrong number of arguments. want=0, got=1",
 		},
 		{
-			source:   `func(a) { a; }();`,
+			source:   `func(int a) -> int { a; }();`,
 			expected: "wrong number of arguments. want=1, got=0",
 		},
 		{
-			source:   `func(a, b) { a + b; }(1);`,
+			source:   `func(int a, int b) { a + b; }(1);`,
 			expected: "wrong number of arguments. want=2, got=1",
 		},
 	}
@@ -496,8 +496,8 @@ func TestClosures(t *testing.T) {
 	tests := []vmTestCase{
 		{
 			source: `
-			const newClosure = func(a) {
-				func() { a; };
+			const newClosure = func(int a) {
+				func() -> int { a; };
 			}
 			const closure = newClosure(99);
 			closure();
@@ -513,7 +513,7 @@ func TestRecursiveFunctions(t *testing.T) {
 	tests := []vmTestCase{
 		{
 			source: `
-			const countDown = func(x) {
+			const countDown = func(int x) -> int {
 				if (x == 0) {
 					return 0;
 				} else {
@@ -525,14 +525,14 @@ func TestRecursiveFunctions(t *testing.T) {
 			expected: 0,
 		},
 		{
-			source: `const countDown = func(x) {
+			source: `const countDown = func(int x) -> int {
 				if (x == 0) {
 					return 0;
 				}
 
 				return countDown(x - 1);
 			};
-			const wrapper = func() {
+			const wrapper = func() -> int {
 				countDown(1);
 			};
 			wrapper();
@@ -541,8 +541,8 @@ func TestRecursiveFunctions(t *testing.T) {
 		},
 		{
 			`
-			const wrapper = func() {
-				const countDown = func(x) {
+			const wrapper = func() -> int {
+				const countDown = func(int x) -> int {
 					if (x == 0) {
 						return 0;
 					} else {
@@ -565,7 +565,7 @@ func TestRecursiveFibonacci(t *testing.T) {
 	tests := []vmTestCase{
 		{
 			source: `
-			const fib = func(x) {
+			const fib = func(int x) -> int {
 				if (x == 0) {
 					return 0;
 				} else {

@@ -173,7 +173,7 @@ func TestErrorHandling(t *testing.T) {
 		{"foobar", "identifier not found: foobar"},
 		{`"Hello" - "World"`, "unknown operator: String - String"},
 		{
-			`{"name": "QuonkScript"}[func(x) { x }];`,
+			`{"name": "QuonkScript"}[func(int x) { x }];`,
 			"unusable as hash key: Function",
 		},
 	}
@@ -222,7 +222,7 @@ func TestVarDeclarationStmts(t *testing.T) {
 }
 
 func TestFunctionObject(t *testing.T) {
-	input := "func(x) { x + 2; };"
+	input := "func(int x) { x + 2; };"
 	evaluated := testEval(t, input)
 	fn, ok := evaluated.(*object.Function)
 	if !ok {
@@ -247,12 +247,12 @@ func TestFunctionApplication(t *testing.T) {
 		input    string
 		expected int64
 	}{
-		{"const identity = func(x) { x; }; identity(5);", 5},
-		{"const identity = func(x) { return x; }; identity(5);", 5},
-		{"const double = func(x) { x * 2; }; double(5);", 10},
-		{"const add = func(x, y) { x + y; }; add(5, 5);", 10},
-		{"const add = func(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20},
-		{"func(x) { x; }(5)", 5},
+		{"const identity = func(int x) { x; }; identity(5);", 5},
+		{"const identity = func(int x) { return x; }; identity(5);", 5},
+		{"const double = func(int x) { x * 2; }; double(5);", 10},
+		{"const add = func(int x, int y) { x + y; }; add(5, 5);", 10},
+		{"const add = func(int x, int y) { x + y; }; add(5 + 5, add(5, 5));", 20},
+		{"func(int x) { x; }(5)", 5},
 	}
 	for _, tt := range tests {
 		testIntegerObject(t, testEval(t, tt.input), tt.expected)
@@ -261,8 +261,8 @@ func TestFunctionApplication(t *testing.T) {
 
 func TestClosures(t *testing.T) {
 	input := `
-   const newAdder = func(x) {
-     func(y) { x + y };
+   const newAdder = func(int x) {
+     func(int y) { x + y };
 };
    const addTwo = newAdder(2);
    addTwo(2);`
@@ -759,7 +759,7 @@ func TestQuoteUnquote(t *testing.T) {
 
 func TestDefineMacros(t *testing.T) {
 	source := `mut number = 1;
-	           mut f = func(x, y) { x + y; };
+	           mut f = func(int x, int y) { x + y; };
                mut m = macro(x, y) { x + y; };
 			   mut int anotherM;
 			   anotherM = macro(x, y) { x - y; };

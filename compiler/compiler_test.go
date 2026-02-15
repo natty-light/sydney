@@ -786,7 +786,7 @@ func TestFunctionsWithoutReturnValue(t *testing.T) {
 func TestFunctionCalls(t *testing.T) {
 	tests := []compilerTestCase{
 		{
-			source: `func() { 24 }()`,
+			source: `func() -> int { 24 }()`,
 			expectedConstants: []interface{}{24,
 				[]code.Instructions{
 					// 0000
@@ -802,7 +802,7 @@ func TestFunctionCalls(t *testing.T) {
 			},
 		},
 		{
-			source: `const noArg = func() { 24 }; noArg();`,
+			source: `const noArg = func() -> int { 24 }; noArg();`,
 			expectedConstants: []interface{}{24,
 				[]code.Instructions{
 					// 0000
@@ -820,7 +820,7 @@ func TestFunctionCalls(t *testing.T) {
 			},
 		},
 		{
-			source: `const oneArg = func(a) { a }; oneArg(24);`,
+			source: `const oneArg = func(int a) -> int { a }; oneArg(24);`,
 			expectedConstants: []interface{}{
 				[]code.Instructions{
 					code.Make(code.OpGetLocal, 0),
@@ -838,7 +838,7 @@ func TestFunctionCalls(t *testing.T) {
 			},
 		},
 		{
-			source: `const manyArg = func(a, b, c) { a; b; c; };
+			source: `const manyArg = func(int a, int b, int c) -> int { a; b; c; };
 			manyArg(1, 2, 3);`,
 			expectedConstants: []interface{}{
 				[]code.Instructions{
@@ -1112,8 +1112,8 @@ func TestClosures(t *testing.T) {
 	tests := []compilerTestCase{
 		{
 			source: `
-		func(a) {
-			func(b) {
+		func(int a) {
+			func(int b) {
 				a + b
 			}
 		}
@@ -1138,9 +1138,9 @@ func TestClosures(t *testing.T) {
 		},
 		{
 			source: `
-			func(a) {
-				func(b) {
-					func(c) {
+			func(int a) {
+				func(int b) {
+					func(int c) {
 						a + b + c
 					}
 				}
@@ -1239,7 +1239,7 @@ func TestRecursiveFunctions(t *testing.T) {
 	tests := []compilerTestCase{
 		{
 			source: `
-			const countDown = func(x) { countDown(x - 1); };
+			const countDown = func(int x) { countDown(x - 1); };
 			countDown(1);
 			`,
 			expectedConstants: []interface{}{
@@ -1266,7 +1266,7 @@ func TestRecursiveFunctions(t *testing.T) {
 		{
 			source: `
 			const wrapper = func() {
-				const countDown = func(x) { countDown(x - 1); };
+				const countDown = func(int x) { countDown(x - 1); };
 				countDown(1);
 			};
 			wrapper();`,
