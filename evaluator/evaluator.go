@@ -28,7 +28,15 @@ func Eval(node ast.Node, s *object.Scope) object.Object {
 	case *ast.BlockStmt:
 		return evalBlockStmt(node, s)
 	case *ast.VarDeclarationStmt:
-		val := Eval(node.Value, s)
+		var val object.Object
+		if node.Value == nil {
+			val = object.GetZeroValue(node.Type)
+			if val == nil {
+				val = NULL
+			}
+		} else {
+			val = Eval(node.Value, s)
+		}
 		if isError(val) {
 			return val
 		}

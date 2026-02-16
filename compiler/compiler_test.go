@@ -358,10 +358,10 @@ func TestGlobalVarDeclarationStatements(t *testing.T) {
 			mut int x;
 			x;
 			`,
-			expectedConstants: []interface{}{},
+			expectedConstants: []interface{}{0},
 			expectedInstructions: []code.Instructions{
 				// 0000
-				code.Make(code.OpNull),
+				code.Make(code.OpConstant, 0),
 				// 0003
 				code.Make(code.OpSetMutableGlobal, 0),
 				// 0006

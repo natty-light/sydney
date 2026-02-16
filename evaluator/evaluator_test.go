@@ -203,8 +203,12 @@ func TestVarDeclarationStmts(t *testing.T) {
 		{"const a = 5 * 5; a;", 25},
 		{"mut a = 5; mut b = a; b;", 5},
 		{"const a = 5; mut b = 5; const c = a + b + 5; c;", 15},
-		{"mut x = null; x;", nil},
-		{"mut int x; x;", nil},
+		{"mut x = null; x;", NULL},
+		{"mut int x; x;", 0},
+		{"mut bool x; x;", false},
+		{"mut array<int> x; x", nil},
+		{"mut map<int, string> x; x;", nil},
+		{"mut string x; x;", ""},
 	}
 
 	for _, tt := range tests {
@@ -215,6 +219,10 @@ func TestVarDeclarationStmts(t *testing.T) {
 			if evaluated == nil {
 				return
 			}
+		} else if boolean, ok := tt.expected.(bool); ok {
+			testBooleanObject(t, evaluated, boolean)
+		} else if str, ok := tt.expected.(string); ok {
+			testStringObject(t, evaluated, str)
 		} else {
 			testNullObject(t, evaluated)
 		}
@@ -627,6 +635,21 @@ func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
 	return true
 }
 
+func testStringObject(t *testing.T, obj object.Object, expected string) bool {
+	result, ok := obj.(*object.String)
+	if !ok {
+		t.Errorf("object is not *object.String. got=%T (%+v)", obj, obj)
+		return false
+	}
+
+	if result.Value != expected {
+		t.Errorf("object has wrong value. got=%q, want=%q", result.Value, expected)
+		return false
+	}
+
+	return true
+}
+
 func testFloatObject(t *testing.T, obj object.Object, expected float64) bool {
 	result, ok := obj.(*object.Float)
 	if !ok {
@@ -763,7 +786,7 @@ func TestDefineMacros(t *testing.T) {
                mut m = macro(x, y) { x + y; };
 			   mut int anotherM;
 			   anotherM = macro(x, y) { x - y; };
-		       ` // todo: anotherM should be a function type but this makes the test pass for now
+		       `
 
 	scope := object.NewScope()
 	l := lexer.New(source)

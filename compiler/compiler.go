@@ -6,6 +6,7 @@ import (
 	"sydney/ast"
 	"sydney/code"
 	"sydney/object"
+	"sydney/types"
 )
 
 type Compiler struct {
@@ -83,9 +84,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 	case *ast.VarDeclarationStmt:
-		if node.Value == nil {
-			node.Value = &ast.NullLiteral{}
-		}
 		sym, fromOuter, ok := c.symbolTable.Resolve(node.Name.Value)
 
 		// if the variable exists in this scope, cannot redeclare
@@ -93,32 +91,39 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("variable %s already declared", node.Name.Value)
 		}
 
-		if node.Constant {
-			symbol := c.symbolTable.DefineImmutable(node.Name.Value)
-
-			err := c.Compile(node.Value)
-			if err != nil {
-				return err
-			}
-
-			if symbol.Scope == GlobalScope {
-				c.emit(code.OpSetImmutableGlobal, symbol.Index)
+		if node.Value == nil {
+			if node.Type != nil {
+				err := c.emitZeroValue(node.Type)
+				if err != nil {
+					return err
+				}
 			} else {
-				c.emit(code.OpSetImmutableLocal, symbol.Index)
+				c.emit(code.OpNull)
 			}
 		} else {
-			symbol := c.symbolTable.DefineMutable(node.Name.Value)
-
 			err := c.Compile(node.Value)
 			if err != nil {
 				return err
 			}
+		}
+
+		if node.Constant {
+			symbol := c.symbolTable.DefineImmutable(node.Name.Value)
+			cde := code.OpSetImmutableLocal
 
 			if symbol.Scope == GlobalScope {
-				c.emit(code.OpSetMutableGlobal, symbol.Index)
-			} else {
-				c.emit(code.OpSetMutableLocal, symbol.Index)
+				cde = code.OpSetImmutableGlobal
 			}
+
+			c.emit(cde, symbol.Index)
+		} else {
+			symbol := c.symbolTable.DefineMutable(node.Name.Value)
+			cde := code.OpSetMutableLocal
+			if symbol.Scope == GlobalScope {
+				cde = code.OpSetMutableGlobal
+			}
+			c.emit(cde, symbol.Index)
+
 		}
 	case *ast.VarAssignmentStmt:
 		err := c.Compile(node.Value)
@@ -528,4 +533,25 @@ func (c *Compiler) loadSymbol(s Symbol) {
 	case FunctionScope:
 		c.emit(code.OpCurrentClosure)
 	}
+}
+
+func (c *Compiler) emitZeroValue(t types.Type) error {
+	switch t {
+	case types.Bool:
+		c.emit(code.OpFalse)
+	case types.Int:
+		i := &object.Integer{Value: 0}
+		c.emit(code.OpConstant, c.addConstant(i))
+	case types.Float:
+		f := &object.Float{Value: 0}
+		c.emit(code.OpConstant, c.addConstant(f))
+	case types.String:
+		s := &object.String{Value: ""}
+		c.emit(code.OpConstant, c.addConstant(s))
+	default:
+		c.emit(code.OpNull)
+
+	}
+
+	return nil
 }
