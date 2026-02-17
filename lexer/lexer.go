@@ -259,7 +259,6 @@ var types = map[string]token.TokenType{
 	"int":    token.IntType,
 	"bool":   token.BoolType,
 	"float":  token.FloatType,
-	"null":   token.NullType,
 	"array":  token.ArrayType,
 	"map":    token.MapType,
 	"fn":     token.FunctionType,

@@ -700,7 +700,7 @@ var typeMap = map[token.TokenType]types.Type{
 	token.IntType:    types.Int,
 	token.FloatType:  types.Float,
 	token.StringType: types.String,
-	token.NullType:   types.Null,
+	token.Null:       types.Null,
 	token.BoolType:   types.Bool,
 }
 
@@ -714,7 +714,7 @@ func (p *Parser) isPeekTokenType() bool {
 		fallthrough
 	case token.BoolType:
 		fallthrough
-	case token.NullType:
+	case token.Null:
 		fallthrough
 	case token.FunctionType:
 		fallthrough
@@ -730,14 +730,14 @@ func (p *Parser) isPeekTokenType() bool {
 func (p *Parser) parseType() types.Type {
 	switch p.currToken.Type {
 	case token.IntType:
-		fallthrough
+		return typeMap[p.currToken.Type]
 	case token.FloatType:
-		fallthrough
+		return typeMap[p.currToken.Type]
 	case token.StringType:
-		fallthrough
+		return typeMap[p.currToken.Type]
 	case token.BoolType:
-		fallthrough
-	case token.NullType:
+		return typeMap[p.currToken.Type]
+	case token.Null:
 		return typeMap[p.currToken.Type]
 	case token.MapType:
 		return p.parseMapType()
