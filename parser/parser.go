@@ -190,16 +190,10 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseVarDeclarationStmt()
 	case token.Return:
 		return p.parseReturnStmt()
-	case token.Identifier:
-		if p.peekTokenIs(token.Assign) {
-			return p.parseAssignmentStmt()
-		} else {
-			return p.parseExpressionStmt()
-		}
 	case token.For:
 		return p.parseForStmt()
 	default:
-		return p.parseExpressionStmt()
+		return p.parseExpressionOrAssignmentStmt()
 	}
 }
 
@@ -268,15 +262,44 @@ func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
 	return stmt
 }
 
-func (p *Parser) parseExpressionStmt() *ast.ExpressionStmt {
-	stmt := &ast.ExpressionStmt{Token: p.currToken}
+func (p *Parser) parseExpressionOrAssignmentStmt() ast.Stmt {
+	exprTok := p.currToken
+	expr := p.parseExpression(LOWEST)
 
-	stmt.Expr = p.parseExpression(LOWEST)
+	if p.peekTokenIs(token.Assign) {
+		p.nextToken()
+
+		assignmentTok := p.currToken
+		p.nextToken()
+
+		value := p.parseExpression(LOWEST)
+
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+
+		if idxExpr, ok := expr.(*ast.IndexExpr); ok {
+			return &ast.IndexAssignmentStmt{
+				Token: assignmentTok,
+				Left:  idxExpr,
+				Value: value,
+			}
+		}
+
+		if ident, ok := expr.(*ast.Identifier); ok {
+			return &ast.VarAssignmentStmt{
+				Identifier: ident,
+				Token:      assignmentTok,
+				Value:      value,
+			}
+		}
+	}
 
 	if p.peekTokenIs(token.Semicolon) {
 		p.nextToken()
 	}
-	return stmt
+
+	return &ast.ExpressionStmt{Token: exprTok, Expr: expr}
 }
 
 func (p *Parser) parseBlockStmt() *ast.BlockStmt {
@@ -293,26 +316,6 @@ func (p *Parser) parseBlockStmt() *ast.BlockStmt {
 		p.nextToken() // what is this advance for
 	}
 	return block
-}
-
-func (p *Parser) parseAssignmentStmt() ast.Stmt {
-
-	ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
-
-	if !p.expectPeek(token.Assign) {
-		return nil
-	}
-	p.nextToken() // advance past =
-
-	stmt := &ast.VarAssignmentStmt{Identifier: ident, Token: ident.Token}
-	val := p.parseExpression(LOWEST) // Maybe this should be LOWEST, but since the only thing lower than ASSIGNMENT is LOWEST i think we are ok
-	stmt.Value = val
-
-	if !p.expectPeek(token.Semicolon) {
-		return nil
-	}
-
-	return stmt
 }
 
 // Expressions

@@ -160,6 +160,12 @@ type (
 		Left  Expr
 		Index Expr
 	}
+
+	IndexAssignmentStmt struct {
+		Token token.Token
+		Left  *IndexExpr
+		Value Expr
+	}
 )
 
 // Node interfaces
@@ -255,6 +261,10 @@ func (m *MacroLiteral) TokenLiteral() string {
 	return m.Token.Literal
 }
 
+func (i *IndexAssignmentStmt) TokenLiteral() string {
+	return i.Token.Literal
+}
+
 // Statements
 func (p *Program) String() string {
 	var out bytes.Buffer
@@ -321,6 +331,15 @@ func (f *ForStmt) String() string {
 	out.WriteString(") {")
 	out.WriteString(f.Body.String())
 	out.WriteString("}")
+
+	return out.String()
+}
+
+func (i *IndexAssignmentStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString(i.Left.String())
+	out.WriteString(" = ")
+	out.WriteString(i.Value.String())
 
 	return out.String()
 }
@@ -496,12 +515,13 @@ func (m *MacroLiteral) String() string {
 }
 
 // Statements
-func (v *VarDeclarationStmt) statementNode() {}
-func (r *ReturnStmt) statementNode()         {}
-func (e *ExpressionStmt) statementNode()     {}
-func (b *BlockStmt) statementNode()          {}
-func (v *VarAssignmentStmt) statementNode()  {}
-func (f *ForStmt) statementNode()            {}
+func (v *VarDeclarationStmt) statementNode()  {}
+func (r *ReturnStmt) statementNode()          {}
+func (e *ExpressionStmt) statementNode()      {}
+func (b *BlockStmt) statementNode()           {}
+func (v *VarAssignmentStmt) statementNode()   {}
+func (f *ForStmt) statementNode()             {}
+func (i *IndexAssignmentStmt) statementNode() {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

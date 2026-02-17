@@ -766,6 +766,26 @@ func TestParsingIndexExpr(t *testing.T) {
 	}
 }
 
+func TestParsingIndexAssignments(t *testing.T) {
+	source := "a[0] = 1;"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.IndexAssignmentStmt)
+	if !ok {
+		t.Fatalf("stmt is not *ast.IndexAssignmentStmt")
+	}
+
+	testIntegerLiteral(t, stmt.Value, 1)
+	if !testIdentifier(t, stmt.Left.Left, "a") {
+		t.Fatalf("stmt.Left.Left is not *ast.IndexExpr.")
+	}
+
+}
+
 func TestNullLiteral(t *testing.T) {
 	source := "null;"
 
