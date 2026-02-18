@@ -585,6 +585,25 @@ func TestRecursiveFibonacci(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestIndexAssingment(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `const array<int> a = [0]; a[0] = 2; a[0];`,
+			expected: 2,
+		},
+		{
+			source:   `const map<int, int> m = { 0: 1 }; m[0] = 2; m[0];`,
+			expected: 2,
+		},
+		{
+			source:   `const map<int, int> m = {}; m[0] = 2; m[0];`,
+			expected: 2,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 

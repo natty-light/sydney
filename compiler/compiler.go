@@ -145,6 +145,22 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else {
 			c.emit(code.OpSetMutableLocal, symbol.Index)
 		}
+	case *ast.IndexAssignmentStmt:
+		err := c.Compile(node.Left.Left) // compile collection ident
+		if err != nil {
+			return err
+		}
+		err = c.Compile(node.Left.Index) // compile index
+		if err != nil {
+			return err
+		}
+
+		err = c.Compile(node.Value)
+		if err != nil {
+			return err
+		}
+
+		c.emit(code.OpIndexSet)
 	case *ast.ReturnStmt:
 		err := c.Compile(node.ReturnValue)
 		if err != nil {

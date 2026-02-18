@@ -1303,6 +1303,79 @@ func TestRecursiveFunctions(t *testing.T) {
 	runCompilerTests(t, tests)
 }
 
+func TestIndexAssignment(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			source: `const array<int> a = [1]; a[0] = 2; a[0];`,
+			expectedConstants: []interface{}{
+				1,
+				0,
+				2,
+				0,
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),           // push [1]
+				code.Make(code.OpArray, 1),              // allocate array
+				code.Make(code.OpSetImmutableGlobal, 0), // store in a
+				code.Make(code.OpGetGlobal, 0),          // push a for assignment
+				code.Make(code.OpConstant, 1),           // push index 0
+				code.Make(code.OpConstant, 2),           // push value 2
+				code.Make(code.OpIndexSet),              // perform assignment
+				code.Make(code.OpGetGlobal, 0),          // push a for access
+				code.Make(code.OpConstant, 3),           // push index 0
+				code.Make(code.OpIndex),                 // perform index
+				code.Make(code.OpPop),
+			},
+		},
+		{
+			source: `const map<int, int> m = {1: 1}; m[1] = 2; m[1];`,
+			expectedConstants: []interface{}{
+				1,
+				1,
+				1,
+				2,
+				1,
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),           // push key 1
+				code.Make(code.OpConstant, 1),           // push value 1
+				code.Make(code.OpHash, 2),               // allocate map
+				code.Make(code.OpSetImmutableGlobal, 0), // store in a
+				code.Make(code.OpGetGlobal, 0),          // push a for assignment
+				code.Make(code.OpConstant, 2),           // push index 0
+				code.Make(code.OpConstant, 3),           // push value 2
+				code.Make(code.OpIndexSet),              // perform assignment
+				code.Make(code.OpGetGlobal, 0),          // push a for access
+				code.Make(code.OpConstant, 4),           // push index 0
+				code.Make(code.OpIndex),                 // perform index
+				code.Make(code.OpPop),
+			},
+		},
+		{
+			source: `const map<int, int> m = {}; m[1] = 2; m[1];`,
+			expectedConstants: []interface{}{
+				1,
+				2,
+				1,
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpHash, 0),               // allocate map
+				code.Make(code.OpSetImmutableGlobal, 0), // store in a
+				code.Make(code.OpGetGlobal, 0),          // push a for assignment
+				code.Make(code.OpConstant, 0),           // push index 0
+				code.Make(code.OpConstant, 1),           // push value 2
+				code.Make(code.OpIndexSet),              // perform assignment
+				code.Make(code.OpGetGlobal, 0),          // push a for access
+				code.Make(code.OpConstant, 2),           // push index 0
+				code.Make(code.OpIndex),                 // perform index
+				code.Make(code.OpPop),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
 func runCompilerTests(t *testing.T, tests []compilerTestCase) {
 	t.Helper()
 
