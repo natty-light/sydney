@@ -160,10 +160,10 @@ func TestArrayTypeErrorChecking(t *testing.T) {
 
 func TestMapTypeErrorChecking(t *testing.T) {
 	tests := []TypeErrorTest{
-		//{
-		//	"mut map<int, int> a = { 1: 1 }; a = { 1: false };",
-		//	"type mismatch: cannot assign map<int, bool> to variable a of type map<int, int>",
-		//},
+		{
+			"mut map<int, int> a = { 1: 1 }; a = { 1: false };",
+			"type mismatch: cannot assign map<int, bool> to variable a of type map<int, int>",
+		},
 		{
 			"mut map <int, int> a = {}; a = { 1: false };",
 			"type mismatch: cannot assign map<int, bool> to variable a of type map<int, int>",
