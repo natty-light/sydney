@@ -442,8 +442,10 @@ func typesMatch(actual, expected types.Type) bool {
 	if actual == nil || expected == nil {
 		return actual == expected
 	}
-	if actual == expected || actual.Signature() == expected.Signature() {
-		return true
+	if _, ok := actual.(types.BasicType); ok {
+		if _, ok := expected.(types.BasicType); ok {
+			return actual == expected
+		}
 	}
 
 	// Handle empty collections (e.g., [] matching array<int>)
@@ -466,6 +468,8 @@ func typesMatch(actual, expected types.Type) bool {
 			return typesMatch(expMap.KeyType, actMap.KeyType) && typesMatch(expMap.ValueType, actMap.ValueType)
 		}
 	}
+
+	return actual.Signature() == expected.Signature()
 
 	return false
 }
