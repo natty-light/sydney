@@ -50,6 +50,56 @@ func Eval(node ast.Node, s *object.Scope) object.Object {
 		if isError(errorMaybe) {
 			return errorMaybe
 		}
+	case *ast.IndexAssignmentStmt:
+		val := Eval(node.Value, s)
+		if isError(val) {
+			return val
+		}
+		indexExpr := node.Left
+		asIdent, ok := indexExpr.Left.(*ast.Identifier)
+		if !ok {
+			return &object.Error{Message: fmt.Sprintf("cannot indexOrKey into non-identifier %s", indexExpr.Left.String())}
+		}
+
+		variable, _, ok := s.Get(asIdent.Value)
+		if !ok {
+			return &object.Error{Message: fmt.Sprintf("undefined variable %s", asIdent.Value)}
+		}
+
+		indexOrKey := Eval(indexExpr.Index, s)
+		if isError(indexOrKey) {
+			return indexOrKey
+		}
+
+		if asArray, ok := variable.Value.(*object.Array); ok {
+			if asInt, ok := indexOrKey.(*object.Integer); ok {
+				for i, _ := range asArray.Elements {
+					if int64(i) == asInt.Value {
+						asArray.Elements[i] = val
+					}
+				}
+
+				s.Set(asIdent.Value, asArray, variable.Constant)
+
+				return nil
+
+			}
+			return &object.Error{Message: "index must be an integer"}
+		}
+
+		if asMap, ok := variable.Value.(*object.Hash); ok {
+			if hashable, ok := indexOrKey.(object.Hashable); ok {
+				key := hashable.HashKey()
+
+				asMap.Pairs[key] = object.HashPair{Key: indexOrKey, Value: val}
+				s.Set(asIdent.Value, asMap, variable.Constant)
+
+				return nil
+			}
+
+			return &object.Error{Message: "index must be hashable"}
+		}
+
 	case *ast.ForStmt:
 		errorMaybe := evalForStmt(node, s)
 		if isError(errorMaybe) {

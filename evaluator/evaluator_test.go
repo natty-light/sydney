@@ -580,6 +580,30 @@ func TestFloatExpressions(t *testing.T) {
 	}
 }
 
+func TestIndexAssignmentExpressions(t *testing.T) {
+	tests := []struct {
+		source   string
+		expected interface{}
+	}{
+		{
+			"const array<int> a = [1]; a[0] = 2; a[0];",
+			2,
+		},
+		{
+			"const map<int, int> m = { 1 : 1}; m[1] = 2; m[1]",
+			2,
+		},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(t, tt.source)
+		integer, ok := tt.expected.(int)
+		if ok {
+			testIntegerObject(t, evaluated, int64(integer))
+		}
+	}
+}
+
 // Utils
 
 func testNullObject(t *testing.T, obj object.Object) bool {
