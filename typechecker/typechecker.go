@@ -12,10 +12,13 @@ type Checker struct {
 	currentReturnType types.Type
 }
 
-func New() *Checker {
-	env := &TypeEnv{
-		store: make(map[string]types.Type),
-		outer: nil,
+func New(globalEnv *TypeEnv) *Checker {
+	env := globalEnv
+	if env == nil {
+		env = &TypeEnv{
+			store: make(map[string]types.Type),
+			outer: nil,
+		}
 	}
 	errors := make([]string, 0)
 
@@ -35,18 +38,18 @@ func (c *Checker) Check(node ast.Node) []string {
 	return c.errors
 }
 
-func (c *Checker) check(node ast.Node) {
+func (c *Checker) check(node ast.Node) types.Type {
 	switch node := node.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
 			c.check(stmt)
 		}
+		return types.Unit
 	case *ast.ExpressionStmt:
-		c.typeOf(node.Expr)
+		return c.typeOf(node.Expr)
 	case *ast.ReturnStmt:
 		if c.currentReturnType == nil {
 			c.errors = append(c.errors, "return statement outside of function body")
-			return
 		}
 
 		valType := c.typeOf(node.ReturnValue)
@@ -54,12 +57,14 @@ func (c *Checker) check(node ast.Node) {
 		if !typesMatch(c.currentReturnType, valType) {
 			c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
 		}
+
+		return valType
 	case *ast.ForStmt:
 		conditionType := c.typeOf(node.Condition)
 		if conditionType != types.Bool {
 			c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()))
 		}
-		c.check(node.Body)
+		return c.check(node.Body)
 	case *ast.VarDeclarationStmt:
 		valType := c.typeOf(node.Value)
 		if node.Type != nil {
@@ -70,6 +75,7 @@ func (c *Checker) check(node ast.Node) {
 		} else {
 			c.env.Set(node.Name.Value, valType)
 		}
+		return types.Unit
 	case *ast.VarAssignmentStmt:
 		valType := c.typeOf(node.Value)
 		varType, ok := c.env.Get(node.Identifier.Value)
@@ -80,6 +86,8 @@ func (c *Checker) check(node ast.Node) {
 		if !typesMatch(varType, valType) {
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Identifier.Value, varType.Signature()))
 		}
+
+		return types.Unit
 	case *ast.IndexAssignmentStmt:
 		valType := c.typeOf(node.Value)
 
@@ -99,33 +107,36 @@ func (c *Checker) check(node ast.Node) {
 		case types.ArrayType:
 			if indexOrKeyType != types.Int {
 				c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", indexOrKeyType.Signature()))
-				return
 			}
 
 			if !typesMatch(valType, colType.ElemType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to element of array %s of type %s", valType.Signature(), ident.Value, colType.Signature()))
-				return
 			}
 		case types.MapType:
 			if !typesMatch(indexOrKeyType, colType.KeyType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: key for map %s of type %s must be %s, got %s", ident.Value, colType.Signature(), colType.KeyType.Signature(), indexOrKeyType.Signature()))
-				return
 			}
 
 			if !typesMatch(valType, colType.ValueType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map %s of type %s", valType.Signature(), ident.Value, valType.Signature()))
-				return
 			}
 		}
+
+		return types.Unit
 	case *ast.BlockStmt:
 		oldEnv := c.env
 		c.env = NewTypeEnv(oldEnv)
+		var lastType types.Type = types.Unit
 		for _, stmt := range node.Stmts {
-			c.check(stmt)
+			lastType = c.check(stmt)
 		}
 
 		c.env = oldEnv
+
+		return lastType
 	}
+
+	return types.Unit
 }
 
 func (c *Checker) typeOf(expr ast.Expr) types.Type {
@@ -227,9 +238,14 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 			c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for if condition", t))
 			return nil
 		}
-		c.check(expr.Consequence)
+		cType := c.check(expr.Consequence)
+		var aType types.Type
 		if expr.Alternative != nil {
-			c.check(expr.Alternative)
+			aType = c.check(expr.Alternative)
+		}
+		if !typesMatch(cType, aType) {
+			c.errors = append(c.errors, fmt.Sprintf("consequence and alternative for if expression must result in same type"))
+			return types.Unit
 		}
 	case *ast.CallExpr:
 		fn, ok := c.env.Get(expr.Function.String())
@@ -423,6 +439,9 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type) types.Type {
 }
 
 func typesMatch(actual, expected types.Type) bool {
+	if actual == nil || expected == nil {
+		return actual == expected
+	}
 	if actual == expected || actual.Signature() == expected.Signature() {
 		return true
 	}

@@ -17,7 +17,7 @@ func TestValidTypeChecking(t *testing.T) {
 	l := lexer.New(source)
 	p := parser.New(l)
 	program := p.ParseProgram()
-	c := New()
+	c := New(nil)
 	c.Check(program)
 
 	errors := c.Errors()
@@ -173,13 +173,24 @@ func TestMapTypeErrorChecking(t *testing.T) {
 	testTypeErrors(t, tests)
 }
 
+func TestIfExpressionErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			"mut int x = if (true) { 4 } else { false };",
+			"consequence and alternative for if expression must result in same type",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 	for _, tt := range tests {
 
 		l := lexer.New(tt.input)
 		p := parser.New(l)
 		program := p.ParseProgram()
-		c := New()
+		c := New(nil)
 		errors := c.Check(program)
 		if len(c.Errors()) == 0 {
 			t.Fatalf("input %q expected error but got none", tt.input)

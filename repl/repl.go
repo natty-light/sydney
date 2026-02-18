@@ -9,6 +9,7 @@ import (
 	"sydney/lexer"
 	"sydney/object"
 	"sydney/parser"
+	"sydney/typechecker"
 	"sydney/vm"
 )
 
@@ -17,8 +18,8 @@ const PROMPT = ">>"
 func StartEval(in io.Reader, out io.Writer) {
 	scanner := bufio.NewScanner(in)
 	scope := object.NewScope()
+	env := typechecker.NewTypeEnv(nil)
 	macroScope := object.NewScope()
-	fmt.Fprint(out, "QuonkScript REPL v0.1\n")
 	for {
 		fmt.Fprint(out, PROMPT)
 		scanned := scanner.Scan()
@@ -32,11 +33,19 @@ func StartEval(in io.Reader, out io.Writer) {
 		p := parser.New(l)
 
 		program := p.ParseProgram()
+		c := typechecker.New(env)
+		c.Check(program)
+
+		if len(c.Errors()) != 0 {
+			printErrors(out, c.Errors())
+			continue
+		}
+
 		evaluator.DefineMacros(program, macroScope)
 		expanded := evaluator.ExpandMacros(program, macroScope)
 
 		if len(p.Errors()) != 0 {
-			printParserErrors(out, p.Errors())
+			printErrors(out, p.Errors())
 			continue
 		}
 
@@ -69,7 +78,7 @@ func StartVM(in io.Reader, out io.Writer) {
 		p := parser.New(l)
 		program := p.ParseProgram()
 		if len(p.Errors()) != 0 {
-			printParserErrors(out, p.Errors())
+			printErrors(out, p.Errors())
 			continue
 		}
 
@@ -93,7 +102,7 @@ func StartVM(in io.Reader, out io.Writer) {
 	}
 }
 
-func printParserErrors(out io.Writer, errors []string) {
+func printErrors(out io.Writer, errors []string) {
 	for _, msg := range errors {
 		io.WriteString(out, "\t"+msg+"\n")
 	}

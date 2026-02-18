@@ -37,6 +37,7 @@ const (
 	String BasicType = "string"
 	Bool   BasicType = "bool"
 	Null   BasicType = "null"
+	Unit   BasicType = "unit"
 )
 
 func (b BasicType) Signature() string {
