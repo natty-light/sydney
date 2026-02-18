@@ -11,8 +11,13 @@ type Type interface {
 
 type BasicType string
 
+type CollectionType struct {
+	IsEmpty bool
+}
+
 type ArrayType struct {
 	ElemType Type
+	CollectionType
 }
 
 type FunctionType struct {
@@ -23,6 +28,7 @@ type FunctionType struct {
 type MapType struct {
 	KeyType   Type
 	ValueType Type
+	CollectionType
 }
 
 const (

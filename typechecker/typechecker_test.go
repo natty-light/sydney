@@ -134,6 +134,10 @@ func TestIndexExpressionsErrorChecking(t *testing.T) {
 			"mut array<int> a = [5]; a[false];",
 			"index type for array must be int, got bool",
 		},
+		{
+			"const array<int> a = [1]; a[1] = false;",
+			"type mismatch: cannot assign bool to element of array a of type array<int>",
+		},
 	}
 
 	testTypeErrors(t, tests)
@@ -145,10 +149,25 @@ func TestArrayTypeErrorChecking(t *testing.T) {
 			"mut array<int> a = [false];",
 			"type mismatch: cannot assign array<bool> to variable a of type array<int>",
 		},
+		{
+			"mut array<null> a = []; a = [0];",
+			"type mismatch: cannot assign array<int> to variable a of type array<null>",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestMapTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
 		//{
-		//	"mut array<null> a = []; a = [0];",
-		//	"",
+		//	"mut map<int, int> a = { 1: 1 }; a = { 1: false };",
+		//	"type mismatch: cannot assign map<int, bool> to variable a of type map<int, int>",
 		//},
+		{
+			"mut map <int, int> a = {}; a = { 1: false };",
+			"type mismatch: cannot assign map<int, bool> to variable a of type map<int, int>",
+		},
 	}
 
 	testTypeErrors(t, tests)

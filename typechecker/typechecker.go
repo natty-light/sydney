@@ -77,8 +77,45 @@ func (c *Checker) check(node ast.Node) {
 			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", node.Identifier.Value))
 		}
 
-		if !typesMatch(valType, varType) {
+		if !typesMatch(varType, valType) {
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Identifier.Value, varType.Signature()))
+		}
+	case *ast.IndexAssignmentStmt:
+		valType := c.typeOf(node.Value)
+
+		ident, ok := node.Left.Left.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to %s", node.Left.Left.String()))
+		}
+
+		indexOrKeyType := c.typeOf(node.Left.Index)
+
+		t, ok := c.env.Get(ident.Value)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", ident.Value))
+		}
+
+		switch colType := t.(type) {
+		case types.ArrayType:
+			if indexOrKeyType != types.Int {
+				c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", indexOrKeyType.Signature()))
+				return
+			}
+
+			if !typesMatch(valType, colType.ElemType) {
+				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to element of array %s of type %s", valType.Signature(), ident.Value, colType.Signature()))
+				return
+			}
+		case types.MapType:
+			if !typesMatch(indexOrKeyType, colType.KeyType) {
+				c.errors = append(c.errors, fmt.Sprintf("type mismatch: key for map %s of type %s must be %s, got %s", ident.Value, colType.Signature(), colType.KeyType.Signature(), indexOrKeyType.Signature()))
+				return
+			}
+
+			if !typesMatch(valType, colType.ValueType) {
+				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map %s of type %s", valType.Signature(), ident.Value, valType.Signature()))
+				return
+			}
 		}
 	case *ast.BlockStmt:
 		oldEnv := c.env
@@ -135,12 +172,13 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: array element got %s, expected %s", eType.Signature(), elemType.Signature()))
 			}
 		}
+		isEmpty := len(expr.Elements) == 0
 
 		if elemType == nil {
-			return types.ArrayType{ElemType: types.Null}
+			return types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 		}
 
-		return types.ArrayType{ElemType: elemType}
+		return types.ArrayType{ElemType: elemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 	case *ast.HashLiteral:
 		var keyType, valType types.Type
 
@@ -162,11 +200,12 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 			}
 		}
 
+		isEmpty := len(expr.Pairs) == 0
 		if keyType == nil {
-			return types.MapType{ValueType: types.Null, KeyType: types.Null}
+			return types.MapType{ValueType: types.Null, KeyType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 		}
 
-		return types.MapType{KeyType: keyType, ValueType: valType}
+		return types.MapType{KeyType: keyType, ValueType: valType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 	case *ast.Identifier:
 		t, ok := c.env.Get(expr.Value)
 		if !ok {
@@ -383,23 +422,29 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type) types.Type {
 	return nil
 }
 
-func typesMatch(a, b types.Type) bool {
-	if a == b || a.Signature() == b.Signature() {
+func typesMatch(actual, expected types.Type) bool {
+	if actual == expected || actual.Signature() == expected.Signature() {
 		return true
 	}
 
 	// Handle empty collections (e.g., [] matching array<int>)
-	if _, ok := a.(types.ArrayType); ok {
-		if actArr, ok := b.(types.ArrayType); ok {
-			return actArr.ElemType == types.Null
+	if actArr, ok := actual.(types.ArrayType); ok {
+		if expectedArr, ok := expected.(types.ArrayType); ok {
+			if actArr.IsEmpty {
+				return true
+			}
+
+			return typesMatch(actArr.ElemType, expectedArr.ElemType)
 		}
 	}
 
-	if expMap, ok := a.(types.MapType); ok {
-		if actMap, ok := b.(types.MapType); ok {
-			keysMatch := actMap.KeyType == types.Null || expMap.KeyType.Signature() == actMap.KeyType.Signature()
-			valsMatch := actMap.ValueType == types.Null || expMap.ValueType.Signature() == actMap.ValueType.Signature()
-			return keysMatch && valsMatch
+	if expMap, ok := actual.(types.MapType); ok {
+		if actMap, ok := expected.(types.MapType); ok {
+			if actMap.IsEmpty {
+				return true
+			}
+
+			return typesMatch(expMap.KeyType, actMap.KeyType) && typesMatch(expMap.ValueType, actMap.ValueType)
 		}
 	}
 
