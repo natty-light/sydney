@@ -192,6 +192,12 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseReturnStmt()
 	case token.For:
 		return p.parseForStmt()
+	case token.Func:
+		if p.peekTokenIs(token.Identifier) {
+			return p.parseFunctionDeclarationStmt()
+		}
+
+		return p.parseExpressionOrAssignmentStmt()
 	default:
 		return p.parseExpressionOrAssignmentStmt()
 	}
@@ -502,6 +508,49 @@ func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []types.Type) {
 	}
 
 	return idents, tt
+}
+
+func (p *Parser) parseFunctionDeclarationStmt() ast.Stmt {
+	stmt := &ast.FunctionDeclarationStmt{Token: p.currToken}
+
+	if !p.expectPeek(token.Identifier) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+
+	if !p.expectPeek(token.LeftParen) {
+		p.errors = append(p.errors, fmt.Sprintf("missing opening parenthesis for function declaration"))
+		return nil
+	}
+
+	params, pTypes := p.parseFunctionParameters()
+	stmt.Params = params
+
+	fType := types.FunctionType{Params: pTypes, Return: nil}
+	if p.peekTokenIs(token.Arrow) {
+		p.nextToken()
+		p.nextToken()
+
+		fType.Return = p.parseType()
+	} else {
+		fType.Return = types.Unit
+	}
+
+	stmt.Type = fType
+
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected body for function %s declaration", stmt.Name.String()))
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStmt()
+
+	if p.peekTokenIs(token.Semicolon) {
+		p.nextToken()
+	}
+
+	return stmt
 }
 
 func (p *Parser) parseMacroParameters() []*ast.Identifier {

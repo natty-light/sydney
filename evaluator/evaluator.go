@@ -57,6 +57,12 @@ func Eval(node ast.Node, s *object.Scope) object.Object {
 		if isError(errorMaybe) {
 			return errorMaybe
 		}
+	case *ast.FunctionDeclarationStmt:
+		params := node.Params
+		body := node.Body
+		obj := &object.Function{Parameters: params, Body: body}
+		name := node.Name.Value
+		s.DeclareVar(name, obj, true)
 	// Literals
 	case *ast.IntegerLiteral:
 		return &object.Integer{Value: node.Value}

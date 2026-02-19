@@ -184,6 +184,33 @@ func TestIfExpressionErrorChecking(t *testing.T) {
 	testTypeErrors(t, tests)
 }
 
+func TestFunctionDeclarationErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         "func f(int x) -> int { return false; };",
+			expectedError: "cannot return bool from function expecting int",
+		},
+		{
+			input:         "func f(int x) { x + 2; return x; };",
+			expectedError: "cannot return int from function expecting unit",
+		},
+		{
+			input:         "func f(int x) -> int { if (x == 0) { return false; } else { return x; };",
+			expectedError: "cannot return bool from function expecting int",
+		},
+		{
+			input:         "func f(int x) -> int { if (x == 0) { return x; } else { return false; };",
+			expectedError: "cannot return bool from function expecting int",
+		},
+		{
+			input:         "func f() -> int { if (x == 0) { return x; } else { return false; };",
+			expectedError: "undefined identifier: x",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 	for _, tt := range tests {
 

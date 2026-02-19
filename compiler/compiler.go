@@ -381,6 +381,45 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		c.emit(code.OpHash, len(node.Pairs)*2)
+	case *ast.FunctionDeclarationStmt:
+		c.enterScope()
+
+		c.symbolTable.DefineFunctionName(node.Name.Value)
+		for _, p := range node.Params {
+			c.symbolTable.DefineImmutable(p.Value)
+		}
+
+		err := c.Compile(node.Body)
+		if err != nil {
+			return err
+		}
+
+		if c.lastInstructionIs(code.OpPop) {
+			c.replaceLastPopWithReturn()
+		}
+
+		if !c.lastInstructionIs(code.OpReturn) {
+			c.emit(code.OpReturn)
+		}
+
+		freeSymbols := c.symbolTable.FreeSymbols
+		numLocals := c.symbolTable.numDefinitions
+		instructions := c.leaveScope()
+
+		// iterate over free symbols and load them onto stack
+		for _, s := range freeSymbols {
+			c.loadSymbol(s)
+		}
+
+		compiledFn := &object.CompiledFunction{
+			Instructions:  instructions,
+			NumLocals:     numLocals,
+			NumParameters: len(node.Params),
+		}
+
+		fnIdx := c.addConstant(compiledFn)
+
+		c.emit(code.OpClosure, fnIdx, len(freeSymbols))
 	case *ast.FunctionLiteral:
 		c.enterScope()
 

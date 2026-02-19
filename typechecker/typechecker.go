@@ -134,6 +134,27 @@ func (c *Checker) check(node ast.Node) types.Type {
 		c.env = oldEnv
 
 		return lastType
+	case *ast.FunctionDeclarationStmt:
+		fType, ok := node.Type.(types.FunctionType)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign %s to function %s", node.Type.Signature(), node.Name.String()))
+			return types.Unit
+		}
+		c.env.Set(node.Name.Value, node.Type)
+
+		oldReturnType := c.currentReturnType
+		c.currentReturnType = fType.Return
+		oldEnv := c.env
+		c.env = NewTypeEnv(oldEnv)
+
+		for i, param := range node.Params {
+			c.env.Set(param.Value, fType.Params[i])
+		}
+
+		c.check(node.Body)
+
+		c.env = oldEnv
+		c.currentReturnType = oldReturnType
 	}
 
 	return types.Unit
@@ -221,7 +242,7 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 		t, ok := c.env.Get(expr.Value)
 		if !ok {
 			c.errors = append(c.errors, fmt.Sprintf("undefined identifier: %s", expr.Value))
-			return nil
+			return types.Unit
 		}
 
 		return t

@@ -1107,6 +1107,99 @@ func TestFunctionLiteralWithName(t *testing.T) {
 	}
 }
 
+func TestFunctionDeclaration(t *testing.T) {
+	tests := []struct {
+		input              string
+		expectedName       string
+		expectedParams     []string
+		expectedParamTypes []string
+		expectedReturnType string
+	}{
+		{
+			input:              "func f(int x) -> int { return x * 2; };",
+			expectedName:       "f",
+			expectedParams:     []string{"x"},
+			expectedParamTypes: []string{"int"},
+			expectedReturnType: "int",
+		},
+		{
+			input:              "func f(int x, bool y) -> int { if (y) { return x; } else { return x - 2 } };",
+			expectedName:       "f",
+			expectedParams:     []string{"x", "y"},
+			expectedParamTypes: []string{"int", "bool"},
+			expectedReturnType: "int",
+		},
+		{
+			input:              "func f(int x) { print(x); };",
+			expectedName:       "f",
+			expectedParamTypes: []string{"int"},
+			expectedReturnType: "unit",
+			expectedParams:     []string{"x"},
+		},
+		{
+			input:              "func f(int x) { print(x); };",
+			expectedName:       "f",
+			expectedParamTypes: []string{"int"},
+			expectedReturnType: "unit",
+			expectedParams:     []string{"x"},
+		},
+		{
+			input:              "func f() { };",
+			expectedName:       "f",
+			expectedParamTypes: []string{},
+			expectedReturnType: "unit",
+			expectedParams:     []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+		if len(program.Stmts) != 1 {
+			t.Fatalf("program.Stmts does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+		}
+
+		stmt, ok := program.Stmts[0].(*ast.FunctionDeclarationStmt)
+		if !ok {
+			t.Fatalf("program.Stmts[0] is not *ast.FunctionDeclarationStmt. got=%T", program.Stmts[0])
+		}
+
+		if stmt.Name.String() != tt.expectedName {
+			t.Fatalf("stmt.Name.String() wrong. want %q, got=%q", tt.expectedName, stmt.Name.String())
+		}
+		if len(stmt.Params) != len(tt.expectedParams) {
+			t.Fatalf("got wrong number of parameters. want=%d, got=%d", len(tt.expectedParams), len(stmt.Params))
+		}
+
+		for i, param := range tt.expectedParams {
+			if stmt.Params[i].String() != param {
+				t.Fatalf("wrong argument %d, got %s expected %s", i, stmt.Params[i], param)
+			}
+		}
+
+		fType, ok := stmt.Type.(types.FunctionType)
+		if !ok {
+			t.Fatalf("stmt.Type is not *types.FunctionType. got=%T", stmt.Type)
+		}
+
+		if len(fType.Params) != len(tt.expectedParamTypes) {
+			t.Fatalf("got wrong number of parameters. want=%d, got=%d", len(tt.expectedParams), len(stmt.Params))
+		}
+
+		for i, param := range tt.expectedParamTypes {
+			if fType.Params[i].Signature() != param {
+				t.Fatalf("wrong argument type %d, got %s expected %s", i, fType.Params[i].Signature(), param)
+			}
+		}
+
+		if fType.Return.Signature() != tt.expectedReturnType {
+			t.Fatalf("wrong return type, got %s expected %s", fType.Return.Signature(), tt.expectedReturnType)
+		}
+	}
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {
