@@ -21,7 +21,7 @@ func main() {
 
 	if len(args) == 1 {
 		// If no filename was passed as a command line argument, run the repl
-		repl.StartEval(os.Stdin, os.Stdout)
+		repl.StartVM(os.Stdin, os.Stdout)
 	} else {
 		if args[1] == "run" {
 			Run(args[2])

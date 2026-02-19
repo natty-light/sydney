@@ -62,6 +62,7 @@ func StartVM(in io.Reader, out io.Writer) {
 	constants := []object.Object{}
 	globals := make([]object.Object, vm.GlobalsSize)
 	symbolTable := compiler.NewSymbolTable()
+	typeEnv := typechecker.NewTypeEnv(nil)
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
@@ -79,6 +80,14 @@ func StartVM(in io.Reader, out io.Writer) {
 		program := p.ParseProgram()
 		if len(p.Errors()) != 0 {
 			printErrors(out, p.Errors())
+			continue
+		}
+
+		c := typechecker.New(typeEnv)
+		errs := c.Check(program)
+
+		if len(errs) != 0 {
+			printErrors(out, errs)
 			continue
 		}
 
