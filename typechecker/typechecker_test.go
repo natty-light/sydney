@@ -76,6 +76,10 @@ func TestTypeErrorChecking(t *testing.T) {
 			"mut string x = \"hello\"; -x;",
 			"invalid operation: - is not defined for string",
 		},
+		{
+			"mut int x = 5; mut int x = 4;",
+			"variable x already declared",
+		},
 	}
 
 	testTypeErrors(t, tests)

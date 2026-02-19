@@ -18,10 +18,12 @@ func (e *TypeEnv) Set(name string, t types.Type) {
 	e.store[name] = t
 }
 
-func (e *TypeEnv) Get(name string) (types.Type, bool) {
+func (e *TypeEnv) Get(name string) (types.Type, bool, bool) {
+	fromOuter := false
 	t, ok := e.store[name]
 	if !ok && e.outer != nil {
-		return e.outer.Get(name)
+		t, _, ok = e.outer.Get(name)
+		fromOuter = true
 	}
-	return t, ok
+	return t, fromOuter, ok
 }

@@ -67,6 +67,11 @@ func (c *Checker) check(node ast.Node) types.Type {
 		}
 		return c.check(node.Body)
 	case *ast.VarDeclarationStmt:
+		if _, fromOuter, ok := c.env.Get(node.Name.Value); ok && !fromOuter {
+			c.errors = append(c.errors, fmt.Sprintf("variable %s already declared", node.Name.Value))
+			return types.Unit
+		}
+
 		valType := c.typeOf(node.Value)
 		if node.Type != nil {
 			if !typesMatch(node.Type, valType) {
@@ -79,7 +84,7 @@ func (c *Checker) check(node ast.Node) types.Type {
 		return types.Unit
 	case *ast.VarAssignmentStmt:
 		valType := c.typeOf(node.Value)
-		varType, ok := c.env.Get(node.Identifier.Value)
+		varType, _, ok := c.env.Get(node.Identifier.Value)
 		if !ok {
 			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", node.Identifier.Value))
 		}
@@ -99,7 +104,7 @@ func (c *Checker) check(node ast.Node) types.Type {
 
 		indexOrKeyType := c.typeOf(node.Left.Index)
 
-		t, ok := c.env.Get(ident.Value)
+		t, _, ok := c.env.Get(ident.Value)
 		if !ok {
 			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", ident.Value))
 		}
@@ -256,7 +261,7 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 
 		return types.MapType{KeyType: keyType, ValueType: valType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 	case *ast.Identifier:
-		t, ok := c.env.Get(expr.Value)
+		t, _, ok := c.env.Get(expr.Value)
 		if !ok {
 			c.errors = append(c.errors, fmt.Sprintf("undefined identifier: %s", expr.Value))
 			return types.Unit
@@ -289,7 +294,7 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 
 		return cType
 	case *ast.CallExpr:
-		fn, ok := c.env.Get(expr.Function.String())
+		fn, _, ok := c.env.Get(expr.Function.String())
 		if !ok {
 			c.errors = append(c.errors, fmt.Sprintf("unresolved symbol: %s", expr.Function.String()))
 			return nil
@@ -515,6 +520,4 @@ func typesMatch(actual, expected types.Type) bool {
 	}
 
 	return actual.Signature() == expected.Signature()
-
-	return false
 }
