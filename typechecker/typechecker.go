@@ -2,6 +2,7 @@ package typechecker
 
 import (
 	"fmt"
+	"sort"
 	"sydney/ast"
 	"sydney/types"
 )
@@ -118,7 +119,7 @@ func (c *Checker) check(node ast.Node) types.Type {
 			}
 
 			if !typesMatch(valType, colType.ValueType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map %s of type %s", valType.Signature(), ident.Value, valType.Signature()))
+				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map %s of type %s", valType.Signature(), ident.Value, colType.Signature()))
 			}
 		}
 
@@ -200,12 +201,14 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 		var elemType types.Type
 		for _, element := range expr.Elements {
 			eType := c.typeOf(element)
-			if eType != nil {
+			if elemType == nil {
 				elemType = eType
 				continue
 			}
+
 			if !typesMatch(eType, elemType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: array element got %s, expected %s", eType.Signature(), elemType.Signature()))
+				continue
 			}
 		}
 		isEmpty := len(expr.Elements) == 0
@@ -218,7 +221,17 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 	case *ast.HashLiteral:
 		var keyType, valType types.Type
 
-		for k, v := range expr.Pairs {
+		keys := make([]ast.Expr, 0, len(expr.Pairs))
+		for k := range expr.Pairs {
+			keys = append(keys, k)
+		}
+
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i].String() < keys[j].String()
+		})
+
+		for _, k := range keys {
+			v := expr.Pairs[k]
 			kType := c.typeOf(k)
 			vType := c.typeOf(v)
 
@@ -267,10 +280,11 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 		var aType types.Type
 		if expr.Alternative != nil {
 			aType = c.check(expr.Alternative)
-		}
-		if !typesMatch(cType, aType) {
-			c.errors = append(c.errors, fmt.Sprintf("consequence and alternative for if expression must result in same type"))
-			return types.Unit
+
+			if !typesMatch(cType, aType) {
+				c.errors = append(c.errors, fmt.Sprintf("consequence and alternative for if expression must result in same type"))
+				return types.Unit
+			}
 		}
 
 		return cType
@@ -286,6 +300,10 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 			c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fn.Signature(), expr.Function.String()))
 			return nil
 		}
+		if len(expr.Arguments) != len(fnType.Params) {
+			c.errors = append(c.errors, fmt.Sprintf("wrong number of arguments for function %s, wanted %d, got %d", expr.Function.String(), len(expr.Arguments), len(fnType.Params)))
+		}
+
 		for i, arg := range expr.Arguments {
 			argType := c.typeOf(arg)
 			if !typesMatch(argType, fnType.Params[i]) {
@@ -364,7 +382,7 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
 		}
 
-		return lt
+		return types.Bool
 	case "<=":
 		if !typesMatch(lt, rt) {
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))

@@ -153,6 +153,10 @@ func TestArrayTypeErrorChecking(t *testing.T) {
 			"mut array<null> a = []; a = [0];",
 			"type mismatch: cannot assign array<int> to variable a of type array<null>",
 		},
+		{
+			"mut array<int> a = [1, false, \"hello\"];",
+			"type mismatch: array element got bool, expected int",
+		},
 	}
 
 	testTypeErrors(t, tests)
@@ -167,6 +171,14 @@ func TestMapTypeErrorChecking(t *testing.T) {
 		{
 			"mut map <int, int> a = {}; a = { 1: false };",
 			"type mismatch: cannot assign map<int, bool> to variable a of type map<int, int>",
+		},
+		{
+			"const map<int, int> a = { 1: 0, false: 0};",
+			"type mismatch: map key got bool, expected int",
+		},
+		{
+			"const map<int, int> a = { 1: 0, 0: false};",
+			"type mismatch: map value got int, expected bool",
 		},
 	}
 
