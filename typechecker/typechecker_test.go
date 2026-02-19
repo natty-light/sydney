@@ -161,6 +161,10 @@ func TestArrayTypeErrorChecking(t *testing.T) {
 			"mut array<int> a = [1, false, \"hello\"];",
 			"type mismatch: array element got bool, expected int",
 		},
+		{
+			"const array<array<int>> a = [[null]]",
+			"type mismatch: cannot assign array<array<null>> to variable a of type array<array<int>>",
+		},
 	}
 
 	testTypeErrors(t, tests)
