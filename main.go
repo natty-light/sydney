@@ -10,6 +10,7 @@ import (
 	"sydney/object"
 	"sydney/parser"
 	"sydney/repl"
+	"sydney/typechecker"
 	"sydney/vm"
 )
 
@@ -39,10 +40,10 @@ func main() {
 }
 
 func Run(filename string) {
-
 	constants := []object.Object{}
 	globals := make([]object.Object, vm.GlobalsSize)
 	symbolTable := compiler.NewSymbolTable()
+	typeEnv := typechecker.NewTypeEnv(nil)
 	for i, v := range object.Builtins {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
@@ -60,6 +61,14 @@ func Run(filename string) {
 	program := p.ParseProgram()
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
+		return
+	}
+
+	c := typechecker.New(typeEnv)
+	typeErrs := c.Check(program)
+
+	if len(typeErrs) != 0 {
+		printParserErrors(os.Stdout, typeErrs)
 		return
 	}
 

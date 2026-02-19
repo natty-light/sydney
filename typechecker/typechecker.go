@@ -182,6 +182,10 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 		oldEnv := c.env
 		c.env = NewTypeEnv(oldEnv)
 
+		if expr.Name != "" {
+			c.env.Set(expr.Name, expr.Type)
+		}
+
 		for i, param := range expr.Parameters {
 			c.env.Set(param.Value, expr.Type.Params[i])
 		}
@@ -268,6 +272,8 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 			c.errors = append(c.errors, fmt.Sprintf("consequence and alternative for if expression must result in same type"))
 			return types.Unit
 		}
+
+		return cType
 	case *ast.CallExpr:
 		fn, ok := c.env.Get(expr.Function.String())
 		if !ok {
