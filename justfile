@@ -1,4 +1,4 @@
 test:
     go test ./... -cover -coverprofile coverage
 build:
-    go build -o syd
+    go build -o sydney
