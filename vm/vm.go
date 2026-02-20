@@ -296,6 +296,49 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
+		case code.OpStruct:
+			objIdx := code.ReadUint16(ins[ip+1:])
+			typeObj := vm.constants[objIdx].(*object.TypeObject)
+			numFields := code.ReadUint8(ins[ip+3:])
+			vm.currentFrame().ip += 3
+			objs := make([]object.Object, numFields)
+			for i := 0; i < int(numFields); i++ {
+				obj := vm.pop()
+				objs[i] = obj
+			}
+
+			obj := &object.Struct{T: typeObj, Fields: objs}
+			err := vm.push(obj)
+			if err != nil {
+				return err
+			}
+		case code.OpGetField:
+			fieldIdx := code.ReadUint8(ins[ip+1:])
+			vm.currentFrame().ip += 1
+
+			left := vm.pop()
+			s, ok := left.(*object.Struct)
+			if !ok {
+				return fmt.Errorf("expected struct, got %T", left)
+			}
+
+			err := vm.push(s.Fields[fieldIdx])
+			if err != nil {
+				return err
+			}
+		case code.OpSetField:
+			fieldIdx := code.ReadUint8(ins[ip+1:])
+			vm.currentFrame().ip += 1
+
+			value := vm.pop()
+			left := vm.pop()
+
+			s, ok := left.(*object.Struct)
+			if !ok {
+				return fmt.Errorf("expected struct, got %T", left)
+			}
+
+			s.Fields[fieldIdx] = value
 		}
 	}
 	return nil

@@ -42,8 +42,8 @@ func (c *Checker) Check(node ast.Node) []string {
 	return c.errors
 }
 
-func (c *Checker) check(node ast.Node) types.Type {
-	switch node := node.(type) {
+func (c *Checker) check(n ast.Node) types.Type {
+	switch node := n.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
 			c.check(stmt)
@@ -199,6 +199,8 @@ func (c *Checker) check(node ast.Node) types.Type {
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
 		}
 
+		n.(*ast.SelectorAssignmentStmt).Left.ResolvedType = structType
+
 		return types.Unit
 	}
 
@@ -333,15 +335,15 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 
 		return cType
 	case *ast.CallExpr:
-		fn, _, ok := c.env.Get(expr.Function.String())
-		if !ok {
+		fnTypeRaw := c.typeOf(expr.Function)
+		if fnTypeRaw == nil || fnTypeRaw == types.Unit {
 			c.errors = append(c.errors, fmt.Sprintf("unresolved symbol: %s", expr.Function.String()))
 			return nil
 		}
 
-		fnType, ok := fn.(types.FunctionType)
+		fnType, ok := fnTypeRaw.(types.FunctionType)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fn.Signature(), expr.Function.String()))
+			c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fnTypeRaw.Signature(), expr.Function.String()))
 			return nil
 		}
 		if len(expr.Arguments) != len(fnType.Params) {
@@ -396,9 +398,7 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 			return types.Unit
 		}
 
-		expr.ResolvedType = structType
-		e = expr
-
+		e.(*ast.SelectorExpr).ResolvedType = structType
 		return structType.Types[i]
 	case *ast.StructLiteral:
 		t, ok := c.definedStructs[expr.Name]
@@ -432,8 +432,7 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
 			}
 		}
-		expr.ResolvedType = structType
-		e = expr
+		e.(*ast.StructLiteral).ResolvedType = structType
 
 		return structType
 	}

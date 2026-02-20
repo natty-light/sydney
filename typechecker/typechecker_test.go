@@ -26,6 +26,21 @@ func TestValidTypeChecking(t *testing.T) {
 	}
 }
 
+func TestFirstClassFunctions(t *testing.T) {
+	source := `const returnsOne = func() -> int { 1; };
+			const returnsOneReturner = func() -> fn<() -> int> { returnsOne; };
+			returnsOneReturner()();`
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := New(nil)
+	c.Check(program)
+	errors := c.Errors()
+	if len(errors) != 0 {
+		t.Fatalf("typechecker errors: %v", errors)
+	}
+}
+
 func TestTypeErrorChecking(t *testing.T) {
 	tests := []TypeErrorTest{
 		{ // var declaration
@@ -50,7 +65,7 @@ func TestTypeErrorChecking(t *testing.T) {
 		},
 		{ // function symbol resolution
 			"f(5);",
-			"unresolved symbol: f",
+			"undefined identifier:: f",
 		},
 		{ // calling non function
 			"mut int x = 0; x();",

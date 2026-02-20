@@ -7,6 +7,8 @@ import (
 	"sydney/lexer"
 	"sydney/object"
 	"sydney/parser"
+	"sydney/typechecker"
+	"sydney/types"
 	"testing"
 )
 
@@ -694,7 +696,7 @@ func TestIndexExpressions(t *testing.T) {
 func TestFunctions(t *testing.T) {
 	tests := []compilerTestCase{
 		{
-			source: "func() { return 5 + 10 }",
+			source: "func() -> int { return 5 + 10 }",
 			expectedConstants: []interface{}{5, 10,
 				[]code.Instructions{
 					// 0000
@@ -715,7 +717,7 @@ func TestFunctions(t *testing.T) {
 			},
 		},
 		{
-			source: "func() { 5 + 10 }",
+			source: "func() -> int { 5 + 10 }",
 			expectedConstants: []interface{}{5, 10,
 				[]code.Instructions{
 					// 0000
@@ -736,7 +738,7 @@ func TestFunctions(t *testing.T) {
 			},
 		},
 		{
-			source: "func() { 1; 2 }",
+			source: "func() -> int { 1; 2 }",
 			expectedConstants: []interface{}{1, 2,
 				[]code.Instructions{
 					// 0000
@@ -1376,6 +1378,51 @@ func TestIndexAssignment(t *testing.T) {
 	runCompilerTests(t, tests)
 }
 
+func TestStructs(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			source: `define struct Point { x int, y int }
+					const Point p = Point { x: 0, y: 0 };
+					p.x;
+					p.y;
+					p.x = 1;`,
+			expectedConstants: []interface{}{
+				0,
+				0,
+				&object.TypeObject{
+					T: types.StructType{
+						Fields: []string{"x", "y"},
+						Types:  []types.Type{types.Int, types.Int},
+						Name:   "Point",
+					},
+				},
+				1,
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpConstant, 1),
+				code.Make(code.OpStruct, 2, 2),
+
+				code.Make(code.OpSetImmutableGlobal, 0),
+
+				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetField, 0),
+				code.Make(code.OpPop),
+
+				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetField, 1),
+				code.Make(code.OpPop),
+
+				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpConstant, 3),
+				code.Make(code.OpSetField, 0),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
 func runCompilerTests(t *testing.T, tests []compilerTestCase) {
 	t.Helper()
 
@@ -1405,7 +1452,11 @@ func runCompilerTests(t *testing.T, tests []compilerTestCase) {
 func parse(source string) *ast.Program {
 	l := lexer.New(source)
 	p := parser.New(l)
-	return p.ParseProgram()
+	program := p.ParseProgram()
+	c := typechecker.New(nil)
+	c.Check(program)
+
+	return program
 }
 
 func testInstructions(expected []code.Instructions, actual code.Instructions) error {
@@ -1448,6 +1499,11 @@ func testConstants(expected []interface{}, actual []object.Object) error {
 			if err != nil {
 				return fmt.Errorf("constant %d - testStringObject failed: %s", i, err)
 			}
+		case object.TypeObject:
+			err := testTypeObject(constant, actual[i])
+			if err != nil {
+				return fmt.Errorf("constant %d - testTypeObject failed: %s", i, err)
+			}
 		case []code.Instructions:
 			fn, ok := actual[i].(*object.CompiledFunction)
 			if !ok {
@@ -1485,6 +1541,36 @@ func testStringObject(expected string, actual object.Object) error {
 
 	if result.Value != expected {
 		return fmt.Errorf("object has wrong value. got=%s, want=%s", result.Value, expected)
+	}
+
+	return nil
+}
+
+func testTypeObject(expected object.TypeObject, actual object.Object) error {
+	result, ok := actual.(*object.TypeObject)
+	if !ok {
+		return fmt.Errorf("object is not TypeObject. got=%T (%+v)", actual, actual)
+	}
+	switch t := expected.T.(type) {
+	case types.StructType:
+		at, ok := result.T.(*types.StructType)
+		if !ok {
+			return fmt.Errorf("object is not TypeObject. got=%T (%+v)", actual, actual)
+		}
+		if at.Name != t.Name {
+			return fmt.Errorf("object has wrong name. got=%s, want=%s", t.Name, at.Name)
+		}
+
+		for i, field := range t.Fields {
+			if at.Fields[i] != field {
+				return fmt.Errorf("object has wrong field. got=%s, want=%s", t.Fields[i], field)
+			}
+		}
+		for i, tt := range t.Types {
+			if at.Types[i].Signature() != tt.Signature() {
+				return fmt.Errorf("object field %s has wrong type, got %s, want=%s", t.Fields[i], tt.Signature(), at.Types[i].Signature())
+			}
+		}
 	}
 
 	return nil

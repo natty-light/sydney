@@ -32,6 +32,8 @@ const (
 	MacroObj            ObjectType = "Macro"
 	CompiledFunctionObj ObjectType = "CompiledFunction"
 	ClosureObj          ObjectType = "Closure"
+	StructObj           ObjectType = "Struct"
+	TypeObj             ObjectType = "TypeObject"
 )
 
 type (
@@ -126,6 +128,15 @@ type (
 		Fn   *CompiledFunction
 		Free []Object
 	}
+
+	Struct struct {
+		T      *TypeObject
+		Fields []Object
+	}
+
+	TypeObject struct {
+		T types.Type
+	}
 )
 
 func (i *Integer) Type() ObjectType {
@@ -190,6 +201,14 @@ func (c *CompiledFunction) Type() ObjectType {
 
 func (c *Closure) Type() ObjectType {
 	return ClosureObj
+}
+
+func (s *Struct) Type() ObjectType {
+	return StructObj
+}
+
+func (t *TypeObject) Type() ObjectType {
+	return TypeObj
 }
 
 func (i *Integer) Inspect() string {
@@ -301,6 +320,29 @@ func (c *CompiledFunction) Inspect() string {
 
 func (c *Closure) Inspect() string {
 	return fmt.Sprintf("Closure[%p]", c)
+}
+
+func (s *Struct) Inspect() string {
+	var out bytes.Buffer
+	t := s.T.T.(types.StructType)
+
+	out.WriteString(t.Name)
+	out.WriteString(" { ")
+	for i, f := range s.Fields {
+		out.WriteString(t.Fields[i])
+		out.WriteString(": ")
+		out.WriteString(f.Inspect())
+		if i != len(s.Fields)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(" }")
+
+	return out.String()
+}
+
+func (t *TypeObject) Inspect() string {
+	return t.T.Signature()
 }
 
 // HashKey functions

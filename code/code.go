@@ -47,6 +47,9 @@ const (
 	OpGetFree
 	OpCurrentClosure
 	OpIndexSet
+	OpStruct
+	OpGetField
+	OpSetField
 )
 
 type (
@@ -92,7 +95,10 @@ var definitions = map[Opcode]*Definition{
 	OpClosure:            {"OpClosure", []int{2, 1}},
 	OpGetFree:            {"OpGetFree", []int{1}},
 	OpCurrentClosure:     {"OpCurrentClosure", []int{}},
-	OpIndexSet:           {"OpIndexSet", []int{}}, // values on the stack
+	OpIndexSet:           {"OpIndexSet", []int{}},   // values on the stack
+	OpStruct:             {"OpStruct", []int{2, 1}}, // num fields
+	OpGetField:           {"OpGetField", []int{1}},  // idx
+	OpSetField:           {"OpSetField", []int{1}},
 }
 
 func Lookup(op byte) (*Definition, error) {
