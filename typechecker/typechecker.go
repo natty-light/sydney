@@ -173,30 +173,23 @@ func (c *Checker) check(n ast.Node) types.Type {
 		c.definedStructs[node.Name.Value] = node.Type
 	case *ast.SelectorAssignmentStmt:
 		valType := c.typeOf(node.Value)
-		lt := c.typeOf(node.Left.Left)
-		name, ok := node.Left.Left.(*ast.Identifier)
+
+		structTypeRaw := c.typeOf(node.Left.Left)
+
+		structType, ok := structTypeRaw.(types.StructType)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value %s of type %s", node.Value.String(), lt.Signature()))
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value of type %s", structTypeRaw.Signature()))
+			return types.Unit
 		}
+
 		field := node.Left.Value.(*ast.Identifier)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("idk what to put here"))
-		}
-
-		varType, _, ok := c.env.Get(name.Value)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of undefined variable %s", name.Value))
-		}
-
-		structType, ok := varType.(types.StructType)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value %s of type %s", node.Value.String(), lt.Signature()))
-			return types.Unit // bail here because everything else relies on structType actually being a struct
+			return types.Unit
 		}
 
 		idx := slices.Index(structType.Fields, field.Value)
 		if idx == -1 {
-			c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", name.Value, structType.Name, field.Value))
+			c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", structType.Name, structType.Name, field.Value))
 			return types.Unit
 		}
 
