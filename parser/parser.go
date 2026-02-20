@@ -27,6 +27,7 @@ const (
 	PREFIX
 	CALL
 	INDEX
+	SELECTOR
 )
 
 var precedences = map[token.TokenType]Precedence{
@@ -45,6 +46,7 @@ var precedences = map[token.TokenType]Precedence{
 	token.Modulo:             PRODUCT,
 	token.LeftParen:          CALL,
 	token.LeftSquareBracket:  INDEX,
+	token.Dot:                SELECTOR,
 }
 
 type Parser struct {
@@ -57,6 +59,8 @@ type Parser struct {
 
 	prefixParseFns map[token.TokenType]prefixParseFn
 	infixParseFns  map[token.TokenType]infixParseFn
+
+	definedStructs map[string]types.Type
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -68,7 +72,7 @@ func New(l *lexer.Lexer) *Parser {
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 
-	p.registerPrefix(token.Identifier, p.parseIdentifier)
+	p.registerPrefix(token.Identifier, p.parseIdentifierOrStructLiteral)
 	p.registerPrefix(token.Integer, p.parseIntegerLiteral)
 	p.registerPrefix(token.Bang, p.parsePrefixExpr)
 	p.registerPrefix(token.Minus, p.parsePrefixExpr)
@@ -100,6 +104,9 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.Or, p.parseInfixExpr)
 	p.registerInfix(token.LeftParen, p.parseCallExpr)
 	p.registerInfix(token.LeftSquareBracket, p.parseIndexExpr)
+	p.registerInfix(token.Dot, p.parseSelectorExpr)
+
+	p.definedStructs = make(map[string]types.Type)
 	return p
 }
 
@@ -198,6 +205,9 @@ func (p *Parser) parseStatement() ast.Stmt {
 		}
 
 		return p.parseExpressionOrAssignmentStmt()
+	case token.Define:
+		p.nextToken() // move past define
+		return p.parseStructDefinitionStmt()
 	default:
 		return p.parseExpressionOrAssignmentStmt()
 	}
@@ -797,6 +807,14 @@ func (p *Parser) parseType() types.Type {
 		return p.parseArrayType()
 	case token.FunctionType:
 		return p.parseFunctionType()
+	case token.Identifier:
+		t, ok := p.definedStructs[p.currToken.Literal]
+		if !ok {
+			p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.currToken.Literal))
+			return nil
+		}
+
+		return t
 	}
 
 	p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.peekToken.Type))
@@ -886,6 +904,110 @@ func (p *Parser) parseMapType() types.Type {
 	}
 
 	return types.MapType{KeyType: k, ValueType: v}
+}
+
+func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
+	stmt := &ast.StructDefinitionStmt{}
+
+	// this will change when we add interface defns as we will consume that token in an if statement
+	if !p.currTokenIs(token.Struct) {
+		p.errors = append(p.errors, fmt.Sprintf("expected struct, got %s", p.currToken.Literal))
+		return nil
+	}
+	if !p.expectPeek(token.Identifier) {
+		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		return nil
+	}
+	name := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	stmt.Name = name
+
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	fields := make([]string, 0)
+	tt := make([]types.Type, 0)
+
+	for !p.peekTokenIs(token.RightCurlyBracket) {
+		p.nextToken() // move to ident
+		if !p.currTokenIs(token.Identifier) {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			return nil
+		}
+		fields = append(fields, p.currToken.Literal)
+		p.nextToken() // we don't have a way to peek for a set of types so advance and let the type parser catch it
+		tt = append(tt, p.parseType())
+
+		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
+			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
+			return nil
+		}
+	}
+	if !p.expectPeek(token.RightCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		return nil
+	}
+	t := types.StructType{Fields: fields, Types: tt, Name: stmt.Name.Value}
+
+	stmt.Type = t
+	p.definedStructs[stmt.Name.Value] = t
+
+	return stmt
+}
+
+func (p *Parser) parseStructLiteral() ast.Expr {
+	expr := &ast.StructLiteral{Token: p.currToken, Name: p.currToken.Literal, Fields: make([]string, 0), Values: make([]ast.Expr, 0)}
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	for !p.peekTokenIs(token.RightCurlyBracket) {
+		p.nextToken() // advance to field name
+		if !p.currTokenIs(token.Identifier) {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			return nil
+		}
+		expr.Fields = append(expr.Fields, p.currToken.Literal)
+		if !p.expectPeek(token.Colon) {
+			p.errors = append(p.errors, fmt.Sprintf("expected :, got %s", p.currToken.Literal))
+			return nil
+		}
+
+		p.nextToken() // move to value expr
+		expr.Values = append(expr.Values, p.parseExpression(LOWEST))
+
+		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
+			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
+			return nil
+		}
+	}
+
+	if !p.expectPeek(token.RightCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		return nil
+	}
+	p.nextToken() // eat }
+	return expr
+}
+
+func (p *Parser) parseIdentifierOrStructLiteral() ast.Expr {
+	if p.peekTokenIs(token.LeftCurlyBracket) {
+		return p.parseStructLiteral()
+	}
+
+	return p.parseIdentifier()
+}
+
+func (p *Parser) parseSelectorExpr(left ast.Expr) ast.Expr {
+	expr := &ast.SelectorExpr{Token: p.currToken, Left: left}
+	if !p.expectPeek(token.Identifier) {
+		return nil
+	}
+	expr.Value = p.parseIdentifier()
+
+	return expr
 }
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {
