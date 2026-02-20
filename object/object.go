@@ -83,6 +83,7 @@ type (
 
 	BuiltIn struct {
 		Fn BuiltInFunction
+		T  types.FunctionType
 	}
 
 	Array struct {

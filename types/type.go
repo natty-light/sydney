@@ -21,8 +21,9 @@ type ArrayType struct {
 }
 
 type FunctionType struct {
-	Params []Type
-	Return Type
+	Params   []Type
+	Return   Type
+	Variadic bool
 }
 
 type MapType struct {
@@ -44,6 +45,8 @@ const (
 	Bool   BasicType = "bool"
 	Null   BasicType = "null"
 	Unit   BasicType = "unit"
+	Any    BasicType = "any"
+	Infer  BasicType = "infer"
 )
 
 func (b BasicType) Signature() string {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sydney/types"
 )
 
 var Builtins = []struct {
@@ -23,10 +24,13 @@ var Builtins = []struct {
 					return &Integer{Value: int64(len(arg.Value))}
 				case *Array:
 					return &Integer{Value: int64(len(arg.Elements))}
+				case *Hash:
+					return &Integer{Value: int64(len(arg.Pairs))}
 				default:
 					return newError("argument to `len` of wrong type. got=%s", args[0].Type())
 				}
 			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Any}}, Return: types.Infer},
 		},
 	},
 	{
@@ -44,6 +48,7 @@ var Builtins = []struct {
 				fmt.Println(out.String())
 				return nil
 			},
+			T: types.FunctionType{Params: []types.Type{types.Any}, Return: types.Unit, Variadic: true},
 		},
 	},
 	{
@@ -63,6 +68,7 @@ var Builtins = []struct {
 				}
 				return nil
 			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Any}}, Return: types.Infer},
 		},
 	},
 	{
@@ -83,6 +89,7 @@ var Builtins = []struct {
 				}
 				return nil
 			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Any}}, Return: types.Infer},
 		},
 	},
 	{
@@ -104,6 +111,7 @@ var Builtins = []struct {
 				}
 				return nil
 			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Any}}, Return: types.ArrayType{ElemType: types.Infer}},
 		},
 	},
 	{
@@ -127,6 +135,7 @@ var Builtins = []struct {
 
 				return &Array{Elements: newElems}
 			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Any}}, Return: types.ArrayType{ElemType: types.Infer}},
 		},
 	},
 	{
@@ -166,6 +175,7 @@ var Builtins = []struct {
 
 				return &Array{Elements: newElems}
 			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Any}}, Return: types.ArrayType{ElemType: types.Infer}},
 		},
 	},
 	{
@@ -195,6 +205,7 @@ var Builtins = []struct {
 
 				return &Array{Elements: keys}
 			},
+			T: types.FunctionType{Params: []types.Type{types.MapType{KeyType: types.Any, ValueType: types.Any}}, Return: types.ArrayType{ElemType: types.Infer}},
 		},
 	},
 	{
@@ -217,8 +228,21 @@ var Builtins = []struct {
 
 				return &Array{Elements: values}
 			},
+			T: types.FunctionType{Params: []types.Type{types.MapType{KeyType: types.Any, ValueType: types.Any}}, Return: types.ArrayType{ElemType: types.Infer}},
 		},
 	},
+}
+
+var BuiltInMap = map[string]bool{
+	"len":    true,
+	"print":  true,
+	"first":  true,
+	"last":   true,
+	"append": true,
+	"rest":   true,
+	"slice":  true,
+	"keys":   true,
+	"values": true,
 }
 
 func GetBuiltInByName(name string) *BuiltIn {

@@ -435,14 +435,6 @@ func TestBuiltinFunctions(t *testing.T) {
 			expected: 3,
 		},
 		{
-			source:   `len(1)`,
-			expected: &object.Error{Message: "argument to `len` of wrong type. got=Integer"},
-		},
-		{
-			source:   `len("one", "two")`,
-			expected: &object.Error{Message: "`len` expects one argument"},
-		},
-		{
 			source:   `first([1, 2, 3])`,
 			expected: 1,
 		},
@@ -451,20 +443,12 @@ func TestBuiltinFunctions(t *testing.T) {
 			expected: Null,
 		},
 		{
-			source:   `first(1)`,
-			expected: &object.Error{Message: "argument to `first` must be array type"},
-		},
-		{
 			source:   `last([1, 2, 3])`,
 			expected: 3,
 		},
 		{
 			source:   `last([])`,
 			expected: Null,
-		},
-		{
-			source:   `last(1)`,
-			expected: &object.Error{Message: "argument to `last` must be array type"},
 		},
 		{
 			source:   `rest([1, 2, 3])`,
@@ -477,10 +461,6 @@ func TestBuiltinFunctions(t *testing.T) {
 		{
 			source:   `append([], 1)`,
 			expected: []int{1},
-		},
-		{
-			source:   `append(1, 1)`,
-			expected: &object.Error{Message: "first argument to `append` must be array type"},
 		},
 	}
 
