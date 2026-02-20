@@ -90,6 +90,12 @@ type (
 		Name  *Identifier
 		Type  types.StructType
 	}
+
+	SelectorAssignmentStmt struct {
+		Token token.Token
+		Left  *SelectorExpr
+		Value Expr
+	}
 )
 
 // Expressions and literals
@@ -308,6 +314,10 @@ func (s *SelectorExpr) TokenLiteral() string {
 	return s.Token.Literal
 }
 
+func (s *SelectorAssignmentStmt) TokenLiteral() string {
+	return s.Token.Literal
+}
+
 // Statements
 func (p *Program) String() string {
 	var out bytes.Buffer
@@ -422,6 +432,15 @@ func (s *StructDefinitionStmt) String() string {
 		}
 	}
 	out.WriteString(" }")
+	return out.String()
+}
+
+func (s *SelectorAssignmentStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Left.String())
+	out.WriteString(" = ")
+	out.WriteString(s.Value.String())
+
 	return out.String()
 }
 
@@ -630,6 +649,7 @@ func (f *ForStmt) statementNode()                 {}
 func (i *IndexAssignmentStmt) statementNode()     {}
 func (f *FunctionDeclarationStmt) statementNode() {}
 func (s *StructDefinitionStmt) statementNode()    {}
+func (s *SelectorAssignmentStmt) statementNode()  {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

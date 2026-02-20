@@ -786,6 +786,30 @@ func TestParsingIndexAssignments(t *testing.T) {
 
 }
 
+func TestParsingSelectorAssignments(t *testing.T) {
+	source := "a.x = 1;"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.SelectorAssignmentStmt)
+	if !ok {
+		t.Fatalf("stmt is not *ast.SelectorAssignmentStmt")
+	}
+
+	testIntegerLiteral(t, stmt.Value, 1)
+	if !testIdentifier(t, stmt.Left.Left, "a") {
+		t.Fatalf("stmt.Left.Left is not a.")
+	}
+
+	if !testIdentifier(t, stmt.Left.Value, "x") {
+		t.Fatalf("stmt.Left.Value is not x")
+	}
+
+}
+
 func TestNullLiteral(t *testing.T) {
 	source := "null;"
 

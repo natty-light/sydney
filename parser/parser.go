@@ -302,6 +302,14 @@ func (p *Parser) parseExpressionOrAssignmentStmt() ast.Stmt {
 			}
 		}
 
+		if selectorExpr, ok := expr.(*ast.SelectorExpr); ok {
+			return &ast.SelectorAssignmentStmt{
+				Token: assignmentTok,
+				Left:  selectorExpr,
+				Value: value,
+			}
+		}
+
 		if ident, ok := expr.(*ast.Identifier); ok {
 			return &ast.VarAssignmentStmt{
 				Identifier: ident,
