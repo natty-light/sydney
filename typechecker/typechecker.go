@@ -166,17 +166,51 @@ func (c *Checker) check(node ast.Node) types.Type {
 		c.currentReturnType = oldReturnType
 	case *ast.StructDefinitionStmt:
 		c.definedStructs[node.Name.Value] = node.Type
+	case *ast.SelectorAssignmentStmt:
+		valType := c.typeOf(node.Value)
+		lt := c.typeOf(node.Left.Left)
+		name, ok := node.Left.Left.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value %s of type %s", node.Value.String(), lt.Signature()))
+		}
+		field := node.Left.Value.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("idk what to put here"))
+		}
+
+		varType, _, ok := c.env.Get(name.Value)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of undefined variable %s", name.Value))
+		}
+
+		structType, ok := varType.(types.StructType)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value %s of type %s", node.Value.String(), lt.Signature()))
+			return types.Unit // bail here because everything else relies on structType actually being a struct
+		}
+
+		idx := slices.Index(structType.Fields, field.Value)
+		if idx == -1 {
+			c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", name.Value, structType.Name, field.Value))
+			return types.Unit
+		}
+
+		if !typesMatch(valType, structType.Types[idx]) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
+		}
+
+		return types.Unit
 	}
 
 	return types.Unit
 }
 
-func (c *Checker) typeOf(expr ast.Expr) types.Type {
-	if expr == nil {
+func (c *Checker) typeOf(e ast.Expr) types.Type {
+	if e == nil {
 		return types.Null
 	}
 
-	switch expr := expr.(type) {
+	switch expr := e.(type) {
 	case *ast.IntegerLiteral:
 		return types.Int
 	case *ast.StringLiteral:
@@ -362,6 +396,9 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 			return types.Unit
 		}
 
+		expr.ResolvedType = structType
+		e = expr
+
 		return structType.Types[i]
 	case *ast.StructLiteral:
 		t, ok := c.definedStructs[expr.Name]
@@ -395,6 +432,8 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
 			}
 		}
+		expr.ResolvedType = structType
+		e = expr
 
 		return structType
 	}

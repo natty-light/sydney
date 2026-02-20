@@ -150,10 +150,11 @@ type (
 	}
 
 	StructLiteral struct {
-		Token  token.Token
-		Name   string
-		Fields []string
-		Values []Expr
+		Token        token.Token
+		Name         string
+		Fields       []string
+		Values       []Expr
+		ResolvedType types.StructType
 	}
 
 	// Expressions
@@ -195,9 +196,10 @@ type (
 	}
 
 	SelectorExpr struct {
-		Token token.Token
-		Left  Expr
-		Value Expr
+		Token        token.Token
+		Left         Expr
+		Value        Expr
+		ResolvedType types.StructType
 	}
 )
 

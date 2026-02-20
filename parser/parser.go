@@ -792,9 +792,11 @@ func (p *Parser) isPeekTokenType() bool {
 		fallthrough
 	case token.ArrayType:
 		return true
-	default:
-		return false
 	}
+
+	_, ok := p.definedStructs[p.peekToken.Literal]
+
+	return ok
 }
 
 func (p *Parser) parseType() types.Type {
