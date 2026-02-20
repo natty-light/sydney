@@ -1,8 +1,8 @@
 package vm
 
 import (
-	"quonk/code"
-	"quonk/object"
+	"sydney/code"
+	"sydney/object"
 )
 
 type Frame struct {

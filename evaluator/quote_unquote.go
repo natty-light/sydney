@@ -2,9 +2,9 @@ package evaluator
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/object"
-	"quonk/token"
+	"sydney/ast"
+	"sydney/object"
+	"sydney/token"
 )
 
 func quote(node ast.Node, s *object.Scope) object.Object {

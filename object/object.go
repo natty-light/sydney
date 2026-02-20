@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"hash/fnv"
-	"quonk/ast"
-	"quonk/code"
 	"strconv"
+	"sydney/ast"
+	"sydney/code"
+	"sydney/types"
 
 	"strings"
 )
@@ -324,4 +325,21 @@ func (s *String) HashKey() HashKey {
 	h.Write([]byte(s.Value))
 
 	return HashKey{Type: s.Type(), HashValue: h.Sum64(), ObjectValue: s.Value}
+}
+
+func GetZeroValue(t types.Type) Object {
+	if _, ok := t.(types.BasicType); ok {
+		switch t {
+		case types.Int:
+			return &Integer{Value: 0}
+		case types.Float:
+			return &Float{Value: 0}
+		case types.String:
+			return &String{Value: ""}
+		case types.Bool:
+			return &Boolean{Value: false}
+		}
+	}
+
+	return nil
 }

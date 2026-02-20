@@ -3,12 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"quonk/compiler"
-	"quonk/evaluator"
-	"quonk/lexer"
-	"quonk/object"
-	"quonk/parser"
-	"quonk/vm"
+	"sydney/compiler"
+	"sydney/evaluator"
+	"sydney/lexer"
+	"sydney/object"
+	"sydney/parser"
+	"sydney/vm"
 	"time"
 )
 

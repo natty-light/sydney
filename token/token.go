@@ -23,6 +23,16 @@ const (
 	For    TokenType = "For"
 	Macro  TokenType = "Macro"
 
+	// Types
+	IntType    TokenType = "IntegerType"
+	StringType TokenType = "StringType"
+	FloatType  TokenType = "FloatType"
+	BoolType   TokenType = "BoolType"
+	//NullType     TokenType = "NullType"
+	ArrayType    TokenType = "ArrayType"
+	MapType      TokenType = "MapType"
+	FunctionType TokenType = "FunctionType"
+
 	// Grouping
 	LeftParen          TokenType = "LeftParen"
 	RightParen         TokenType = "RightParen"
@@ -53,6 +63,7 @@ const (
 	NotEqualTo         TokenType = "NotEqual"
 	And                TokenType = "And"
 	Or                 TokenType = "Or"
+	Arrow              TokenType = "Arrow"
 
 	EOF     TokenType = "EOF" // End of File
 	Illegal TokenType = "Illegal"
@@ -61,9 +72,8 @@ const (
 type Token struct {
 	Literal string
 	Type    TokenType
-	Line    int
 }
 
-func MakeToken(Type TokenType, char byte, Line int) Token {
-	return Token{Type: Type, Literal: string(char), Line: Line}
+func MakeToken(Type TokenType, char byte) Token {
+	return Token{Type: Type, Literal: string(char)}
 }

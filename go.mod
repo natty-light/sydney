@@ -1,3 +1,3 @@
-module quonk
+module sydney
 
 go 1.20

@@ -1,4 +1,7 @@
+*.sy
 *.qs
 QuonkScript
 quonk
 .idea
+**/coverage
+syd

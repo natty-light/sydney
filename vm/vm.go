@@ -2,9 +2,9 @@ package vm
 
 import (
 	"fmt"
-	"quonk/code"
-	"quonk/compiler"
-	"quonk/object"
+	"sydney/code"
+	"sydney/compiler"
+	"sydney/object"
 )
 
 const StackSize = 2048
@@ -284,6 +284,15 @@ func (vm *VM) Run() error {
 		case code.OpCurrentClosure:
 			currentClosure := vm.currentFrame().cl
 			err := vm.push(currentClosure)
+			if err != nil {
+				return err
+			}
+		case code.OpIndexSet:
+			value := vm.pop()
+			index := vm.pop()
+			left := vm.pop()
+
+			err := vm.executeIndexAssignment(left, index, value)
 			if err != nil {
 				return err
 			}
@@ -653,6 +662,34 @@ func (vm *VM) pushClosure(constIdx, numFree int) error {
 	closure := &object.Closure{Fn: fn, Free: free}
 
 	return vm.push(closure)
+}
+
+func (vm *VM) executeIndexAssignment(collection, index, value object.Object) error {
+	switch col := collection.(type) {
+	case *object.Array:
+		idx, ok := index.(*object.Integer)
+		if !ok {
+			return fmt.Errorf("index must be an integer: %s", index.Type())
+		}
+
+		i := int(idx.Value)
+		if i < 0 || i > len(col.Elements) {
+			return fmt.Errorf("index out of bounds: %d", i)
+		}
+
+		col.Elements[i] = value
+		return nil
+	case *object.Hash:
+		key, ok := index.(object.Hashable)
+		if !ok {
+			return fmt.Errorf("unusable as hash key: %s", index.Type())
+		}
+		col.Pairs[key.HashKey()] = object.HashPair{Key: index, Value: value}
+
+		return nil
+	default:
+		return fmt.Errorf("unusable as index assignment: %s", collection.Type())
+	}
 }
 
 // utility functions

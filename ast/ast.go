@@ -3,8 +3,9 @@ package ast
 import (
 	"bytes"
 	"fmt"
-	"quonk/token"
 	"strings"
+	"sydney/token"
+	"sydney/types"
 )
 
 // Interfaces
@@ -40,6 +41,7 @@ type (
 		Name     *Identifier
 		Value    Expr
 		Constant bool
+		Type     types.Type
 	}
 
 	ReturnStmt struct {
@@ -68,6 +70,20 @@ type (
 		Condition Expr
 		Body      *BlockStmt
 	}
+
+	IndexAssignmentStmt struct {
+		Token token.Token
+		Left  *IndexExpr
+		Value Expr
+	}
+
+	FunctionDeclarationStmt struct {
+		Token  token.Token
+		Name   *Identifier
+		Params []*Identifier
+		Body   *BlockStmt
+		Type   types.Type
+	}
 )
 
 // Expressions and literals
@@ -88,6 +104,7 @@ type (
 		Parameters []*Identifier
 		Body       *BlockStmt
 		Name       string
+		Type       types.FunctionType
 	}
 
 	StringLiteral struct {
@@ -252,6 +269,14 @@ func (m *MacroLiteral) TokenLiteral() string {
 	return m.Token.Literal
 }
 
+func (i *IndexAssignmentStmt) TokenLiteral() string {
+	return i.Token.Literal
+}
+
+func (f *FunctionDeclarationStmt) TokenLiteral() string {
+	return f.Token.Literal
+}
+
 // Statements
 func (p *Program) String() string {
 	var out bytes.Buffer
@@ -318,6 +343,36 @@ func (f *ForStmt) String() string {
 	out.WriteString(") {")
 	out.WriteString(f.Body.String())
 	out.WriteString("}")
+
+	return out.String()
+}
+
+func (i *IndexAssignmentStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString(i.Left.String())
+	out.WriteString(" = ")
+	out.WriteString(i.Value.String())
+
+	return out.String()
+}
+
+func (f *FunctionDeclarationStmt) String() string {
+	var out bytes.Buffer
+
+	params := make([]string, 0)
+
+	for _, p := range f.Params {
+		params = append(params, p.String())
+	}
+
+	out.WriteString(f.TokenLiteral())
+	if f.Name != nil {
+		out.WriteString(fmt.Sprintf(" %s ", f.Name.String()))
+	}
+	out.WriteString("(")
+	out.WriteString(strings.Join(params, ", "))
+	out.WriteString(") ")
+	out.WriteString(f.Body.String())
 
 	return out.String()
 }
@@ -493,12 +548,14 @@ func (m *MacroLiteral) String() string {
 }
 
 // Statements
-func (v *VarDeclarationStmt) statementNode() {}
-func (r *ReturnStmt) statementNode()         {}
-func (e *ExpressionStmt) statementNode()     {}
-func (b *BlockStmt) statementNode()          {}
-func (v *VarAssignmentStmt) statementNode()  {}
-func (f *ForStmt) statementNode()            {}
+func (v *VarDeclarationStmt) statementNode()      {}
+func (r *ReturnStmt) statementNode()              {}
+func (e *ExpressionStmt) statementNode()          {}
+func (b *BlockStmt) statementNode()               {}
+func (v *VarAssignmentStmt) statementNode()       {}
+func (f *ForStmt) statementNode()                 {}
+func (i *IndexAssignmentStmt) statementNode()     {}
+func (f *FunctionDeclarationStmt) statementNode() {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

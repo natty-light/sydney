@@ -2,9 +2,11 @@ package parser
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/lexer"
 	"strconv"
+	"strings"
+	"sydney/ast"
+	"sydney/lexer"
+	"sydney/types"
 	"testing"
 )
 
@@ -14,13 +16,17 @@ func TestVarDeclarationStmts(t *testing.T) {
 		source        string
 		expectedIdent string
 		expectedValue interface{}
+		expectedType  types.Type
 		isConst       bool
 	}{
-		{"mut x = 5;", "x", 5, false},
-		{"const y = true;", "y", true, true},
-		{"mut foo = y;", "foo", "y", false},
-		{"mut x = null", "x", "null", false},
-		{"mut x;", "x", "null", false},
+		{"mut int x = 5;", "x", 5, types.Int, false},
+		{"const bool y = true;", "y", true, types.Bool, true},
+		{"mut foo = y;", "foo", "y", nil, false},
+		{"mut x = null", "x", "null", nil, false},
+		{"mut int x;", "x", nil, types.Int, false},
+		{"mut map<string, int> m;", "m", nil, types.MapType{KeyType: types.String, ValueType: types.Int}, false},
+		{"mut array<int> a;", "a", nil, types.ArrayType{ElemType: types.Int}, false},
+		{"mut fn<(int) -> int> f;", "f", nil, types.FunctionType{Params: []types.Type{types.Int}, Return: types.Int}, false},
 	}
 
 	for _, tt := range tests {
@@ -39,6 +45,15 @@ func TestVarDeclarationStmts(t *testing.T) {
 		}
 
 		val := stmt.(*ast.VarDeclarationStmt).Value
+
+		if !strings.Contains(tt.source, "=") {
+			if val != tt.expectedValue {
+				t.Fatalf("expecting value %s, got %s", tt.expectedValue, val)
+			} else {
+				return
+			}
+		}
+
 		str := val.String()
 		if str == "null" {
 			if !testNullLiteral(t, val) {
@@ -496,7 +511,7 @@ func TestIfElseExpr(t *testing.T) {
 }
 
 func TestFunctionLiteralParsing(t *testing.T) {
-	source := "func(x, y) { x + y; }"
+	source := "func(int x, int y) -> int { x + y; }"
 
 	l := lexer.New(source)
 	p := New(l)
@@ -540,10 +555,12 @@ func TestFunctionParameterParsing(t *testing.T) {
 	tests := []struct {
 		input          string
 		expectedParams []string
+		expectedTypes  []string
+		expectedReturn interface{}
 	}{
-		{input: "func() {}", expectedParams: []string{}},
-		{input: "func(x) {}", expectedParams: []string{"x"}},
-		{input: "func(x, y, z) {}", expectedParams: []string{"x", "y", "z"}},
+		{"func() {}", []string{}, []string{}, nil},
+		{input: "func(int x) -> int {}", expectedParams: []string{"x"}, expectedTypes: []string{"int"}, expectedReturn: "int"},
+		{input: "func(int x, int y, bool z) -> bool {}", expectedParams: []string{"x", "y", "z"}, expectedTypes: []string{"int", "int", "bool"}, expectedReturn: "bool"},
 	}
 
 	for _, tt := range tests {
@@ -558,6 +575,8 @@ func TestFunctionParameterParsing(t *testing.T) {
 		if len(function.Parameters) != len(tt.expectedParams) {
 			t.Errorf("parameter length wrong. want %d. got=%d", len(tt.expectedParams), len(function.Parameters))
 		}
+
+		testFunctionType(t, function.Type, tt.expectedTypes, tt.expectedReturn)
 
 		for i, ident := range tt.expectedParams {
 			testLiteralExpr(t, function.Parameters[i], ident)
@@ -745,6 +764,26 @@ func TestParsingIndexExpr(t *testing.T) {
 	if !testInfixExpr(t, expr.Index, 1, "+", 1) {
 		return
 	}
+}
+
+func TestParsingIndexAssignments(t *testing.T) {
+	source := "a[0] = 1;"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.IndexAssignmentStmt)
+	if !ok {
+		t.Fatalf("stmt is not *ast.IndexAssignmentStmt")
+	}
+
+	testIntegerLiteral(t, stmt.Value, 1)
+	if !testIdentifier(t, stmt.Left.Left, "a") {
+		t.Fatalf("stmt.Left.Left is not *ast.IndexExpr.")
+	}
+
 }
 
 func TestNullLiteral(t *testing.T) {
@@ -1068,6 +1107,99 @@ func TestFunctionLiteralWithName(t *testing.T) {
 	}
 }
 
+func TestFunctionDeclaration(t *testing.T) {
+	tests := []struct {
+		input              string
+		expectedName       string
+		expectedParams     []string
+		expectedParamTypes []string
+		expectedReturnType string
+	}{
+		{
+			input:              "func f(int x) -> int { return x * 2; };",
+			expectedName:       "f",
+			expectedParams:     []string{"x"},
+			expectedParamTypes: []string{"int"},
+			expectedReturnType: "int",
+		},
+		{
+			input:              "func f(int x, bool y) -> int { if (y) { return x; } else { return x - 2 } };",
+			expectedName:       "f",
+			expectedParams:     []string{"x", "y"},
+			expectedParamTypes: []string{"int", "bool"},
+			expectedReturnType: "int",
+		},
+		{
+			input:              "func f(int x) { print(x); };",
+			expectedName:       "f",
+			expectedParamTypes: []string{"int"},
+			expectedReturnType: "unit",
+			expectedParams:     []string{"x"},
+		},
+		{
+			input:              "func f(int x) { print(x); };",
+			expectedName:       "f",
+			expectedParamTypes: []string{"int"},
+			expectedReturnType: "unit",
+			expectedParams:     []string{"x"},
+		},
+		{
+			input:              "func f() { };",
+			expectedName:       "f",
+			expectedParamTypes: []string{},
+			expectedReturnType: "unit",
+			expectedParams:     []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+		if len(program.Stmts) != 1 {
+			t.Fatalf("program.Stmts does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+		}
+
+		stmt, ok := program.Stmts[0].(*ast.FunctionDeclarationStmt)
+		if !ok {
+			t.Fatalf("program.Stmts[0] is not *ast.FunctionDeclarationStmt. got=%T", program.Stmts[0])
+		}
+
+		if stmt.Name.String() != tt.expectedName {
+			t.Fatalf("stmt.Name.String() wrong. want %q, got=%q", tt.expectedName, stmt.Name.String())
+		}
+		if len(stmt.Params) != len(tt.expectedParams) {
+			t.Fatalf("got wrong number of parameters. want=%d, got=%d", len(tt.expectedParams), len(stmt.Params))
+		}
+
+		for i, param := range tt.expectedParams {
+			if stmt.Params[i].String() != param {
+				t.Fatalf("wrong argument %d, got %s expected %s", i, stmt.Params[i], param)
+			}
+		}
+
+		fType, ok := stmt.Type.(types.FunctionType)
+		if !ok {
+			t.Fatalf("stmt.Type is not *types.FunctionType. got=%T", stmt.Type)
+		}
+
+		if len(fType.Params) != len(tt.expectedParamTypes) {
+			t.Fatalf("got wrong number of parameters. want=%d, got=%d", len(tt.expectedParams), len(stmt.Params))
+		}
+
+		for i, param := range tt.expectedParamTypes {
+			if fType.Params[i].Signature() != param {
+				t.Fatalf("wrong argument type %d, got %s expected %s", i, fType.Params[i].Signature(), param)
+			}
+		}
+
+		if fType.Return.Signature() != tt.expectedReturnType {
+			t.Fatalf("wrong return type, got %s expected %s", fType.Return.Signature(), tt.expectedReturnType)
+		}
+	}
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {
@@ -1262,4 +1394,23 @@ func testFloatLiteral(t *testing.T, i ast.Expr, value float64) bool {
 	}
 
 	return true
+}
+
+func testFunctionType(t *testing.T, ty types.FunctionType, expectedParams []string, expectedReturn interface{}) {
+	if len(ty.Params) != len(expectedParams) {
+		t.Fatalf("len(params) not %d. got=%d", len(ty.Params), len(expectedParams))
+	}
+
+	for i, p := range ty.Params {
+		if p.Signature() != expectedParams[i] {
+			t.Fatalf("params[%d].Signature() not %s. got=%s", i, p.Signature(), expectedParams[i])
+		}
+	}
+
+	if expectedReturn != nil {
+		asStr, _ := expectedReturn.(string)
+		if asStr != ty.Return.Signature() {
+			t.Fatalf("Return.Signature() not %s. got=%s", ty.Return.Signature(), asStr)
+		}
+	}
 }

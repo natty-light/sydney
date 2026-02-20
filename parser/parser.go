@@ -2,10 +2,11 @@ package parser
 
 import (
 	"fmt"
-	"quonk/ast"
-	"quonk/lexer"
-	"quonk/token"
 	"strconv"
+	"sydney/ast"
+	"sydney/lexer"
+	"sydney/token"
+	"sydney/types"
 )
 
 type (
@@ -115,7 +116,7 @@ func (p *Parser) registerInfix(tokenType token.TokenType, fn infixParseFn) {
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
-	msg := fmt.Sprintf("Honk! no prefix parse function for %s found", t)
+	msg := fmt.Sprintf("no prefix parse function for %s found", t)
 	p.errors = append(p.errors, msg)
 }
 
@@ -146,8 +147,8 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("Honk! expected next token to be %s, got %s instead on line %d",
-		t, p.peekToken.Type, p.peekToken.Line)
+	msg := fmt.Sprintf("expected next token to be %s, got %s instead",
+		t, p.peekToken.Type)
 	p.errors = append(p.errors, msg)
 }
 
@@ -189,16 +190,16 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseVarDeclarationStmt()
 	case token.Return:
 		return p.parseReturnStmt()
-	case token.Identifier:
-		if p.peekTokenIs(token.Assign) {
-			return p.parseAssignmentStmt()
-		} else {
-			return p.parseExpressionStmt()
-		}
 	case token.For:
 		return p.parseForStmt()
+	case token.Func:
+		if p.peekTokenIs(token.Identifier) {
+			return p.parseFunctionDeclarationStmt()
+		}
+
+		return p.parseExpressionOrAssignmentStmt()
 	default:
-		return p.parseExpressionStmt()
+		return p.parseExpressionOrAssignmentStmt()
 	}
 }
 
@@ -209,6 +210,12 @@ func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
 
 	stmt := &ast.VarDeclarationStmt{Token: p.currToken, Constant: isConst}
 
+	// parse type. constant variables do not need a type annotation, mutable variables that are uninitialized do
+	if p.isPeekTokenType() {
+		p.nextToken()
+		stmt.Type = p.parseType()
+	}
+
 	// expectPeek eats?
 	if !p.expectPeek(token.Identifier) {
 		return nil
@@ -218,13 +225,13 @@ func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
 
 	if p.peekTokenIs(token.Semicolon) {
 		if isConst {
-			p.errors = append(p.errors, fmt.Sprintf("Honk! const variable must be initialized on line %d", p.currToken.Line))
+			p.errors = append(p.errors, "const variable must be initialized")
+			return nil
+		} else if stmt.Type == nil {
+			p.errors = append(p.errors, "uninitialized mut variable must have a type")
 			return nil
 		} else {
-			p.nextToken() // advance past semi
-			// I am unsure about creating this token here, but it's not being added to the list of tokens, so it should
-			// be fine
-			stmt.Value = &ast.NullLiteral{Token: token.Token{Literal: "null", Type: token.Null, Line: p.currToken.Line}}
+			p.nextToken() // advance past ;
 			return stmt
 		}
 	}
@@ -261,15 +268,44 @@ func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
 	return stmt
 }
 
-func (p *Parser) parseExpressionStmt() *ast.ExpressionStmt {
-	stmt := &ast.ExpressionStmt{Token: p.currToken}
+func (p *Parser) parseExpressionOrAssignmentStmt() ast.Stmt {
+	exprTok := p.currToken
+	expr := p.parseExpression(LOWEST)
 
-	stmt.Expr = p.parseExpression(LOWEST)
+	if p.peekTokenIs(token.Assign) {
+		p.nextToken()
+
+		assignmentTok := p.currToken
+		p.nextToken()
+
+		value := p.parseExpression(LOWEST)
+
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+
+		if idxExpr, ok := expr.(*ast.IndexExpr); ok {
+			return &ast.IndexAssignmentStmt{
+				Token: assignmentTok,
+				Left:  idxExpr,
+				Value: value,
+			}
+		}
+
+		if ident, ok := expr.(*ast.Identifier); ok {
+			return &ast.VarAssignmentStmt{
+				Identifier: ident,
+				Token:      assignmentTok,
+				Value:      value,
+			}
+		}
+	}
 
 	if p.peekTokenIs(token.Semicolon) {
 		p.nextToken()
 	}
-	return stmt
+
+	return &ast.ExpressionStmt{Token: exprTok, Expr: expr}
 }
 
 func (p *Parser) parseBlockStmt() *ast.BlockStmt {
@@ -286,26 +322,6 @@ func (p *Parser) parseBlockStmt() *ast.BlockStmt {
 		p.nextToken() // what is this advance for
 	}
 	return block
-}
-
-func (p *Parser) parseAssignmentStmt() ast.Stmt {
-
-	ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
-
-	if !p.expectPeek(token.Assign) {
-		return nil
-	}
-	p.nextToken() // advance past =
-
-	stmt := &ast.VarAssignmentStmt{Identifier: ident, Token: ident.Token}
-	val := p.parseExpression(LOWEST) // Maybe this should be LOWEST, but since the only thing lower than ASSIGNMENT is LOWEST i think we are ok
-	stmt.Value = val
-
-	if !p.expectPeek(token.Semicolon) {
-		return nil
-	}
-
-	return stmt
 }
 
 // Expressions
@@ -432,12 +448,20 @@ func (p *Parser) parseIfExpr() ast.Expr {
 
 func (p *Parser) parseFunctionLiteral() ast.Expr {
 	function := &ast.FunctionLiteral{Token: p.currToken}
-
 	if !p.expectPeek(token.LeftParen) {
 		return nil
 	}
 
-	function.Parameters = p.parseFunctionParameters()
+	params, ts := p.parseFunctionParameters()
+	function.Parameters = params
+
+	fType := types.FunctionType{Params: ts, Return: nil}
+
+	if p.peekTokenIs(token.Arrow) {
+		p.nextToken()
+		p.nextToken() // parseType requires us to be on the type token
+		fType.Return = p.parseType()
+	}
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		return nil
@@ -445,10 +469,91 @@ func (p *Parser) parseFunctionLiteral() ast.Expr {
 
 	function.Body = p.parseBlockStmt()
 
+	function.Type = fType
+
 	return function
 }
 
-func (p *Parser) parseFunctionParameters() []*ast.Identifier {
+func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []types.Type) {
+	idents := make([]*ast.Identifier, 0)
+	tt := make([]types.Type, 0)
+
+	if p.peekTokenIs(token.RightParen) {
+		p.nextToken()
+		return idents, tt
+	}
+
+	p.nextToken()
+	t := p.parseType()
+	tt = append(tt, t)
+	p.nextToken()
+
+	ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	idents = append(idents, ident)
+
+	// This loop will start with currToken equal to an ident
+	for p.peekTokenIs(token.Comma) {
+		p.nextToken() // advance comma to currToken
+		p.nextToken() // advance past comma to next type
+		t := p.parseType()
+		tt = append(tt, t)
+		p.nextToken() // move past type
+		ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+		idents = append(idents, ident)
+	}
+
+	if !p.expectPeek(token.RightParen) {
+		p.errors = append(p.errors, fmt.Sprintf("missing closing parenthesis"))
+		return nil, nil
+	}
+
+	return idents, tt
+}
+
+func (p *Parser) parseFunctionDeclarationStmt() ast.Stmt {
+	stmt := &ast.FunctionDeclarationStmt{Token: p.currToken}
+
+	if !p.expectPeek(token.Identifier) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+
+	if !p.expectPeek(token.LeftParen) {
+		p.errors = append(p.errors, fmt.Sprintf("missing opening parenthesis for function declaration"))
+		return nil
+	}
+
+	params, pTypes := p.parseFunctionParameters()
+	stmt.Params = params
+
+	fType := types.FunctionType{Params: pTypes, Return: nil}
+	if p.peekTokenIs(token.Arrow) {
+		p.nextToken()
+		p.nextToken()
+
+		fType.Return = p.parseType()
+	} else {
+		fType.Return = types.Unit
+	}
+
+	stmt.Type = fType
+
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected body for function %s declaration", stmt.Name.String()))
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStmt()
+
+	if p.peekTokenIs(token.Semicolon) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseMacroParameters() []*ast.Identifier {
 	idents := make([]*ast.Identifier, 0)
 
 	if p.peekTokenIs(token.RightParen) {
@@ -464,12 +569,13 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 	// This loop will start with currToken equal to an ident
 	for p.peekTokenIs(token.Comma) {
 		p.nextToken() // advance comma to currToken
-		p.nextToken() // advance past comma to next ident
+		p.nextToken() // advance to ident
 		ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 		idents = append(idents, ident)
 	}
 
 	if !p.expectPeek(token.RightParen) {
+		p.errors = append(p.errors, fmt.Sprintf("missing closing parenthesis"))
 		return nil
 	}
 
@@ -631,7 +737,7 @@ func (p *Parser) parseMacroLiteral() ast.Expr {
 		return nil
 	}
 
-	macro.Parameters = p.parseFunctionParameters()
+	macro.Parameters = p.parseMacroParameters()
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		return nil
@@ -640,4 +746,148 @@ func (p *Parser) parseMacroLiteral() ast.Expr {
 	macro.Body = p.parseBlockStmt()
 
 	return macro
+}
+
+var typeMap = map[token.TokenType]types.Type{
+	token.IntType:    types.Int,
+	token.FloatType:  types.Float,
+	token.StringType: types.String,
+	token.Null:       types.Null,
+	token.BoolType:   types.Bool,
+}
+
+func (p *Parser) isPeekTokenType() bool {
+	switch p.peekToken.Type {
+	case token.IntType:
+		fallthrough
+	case token.FloatType:
+		fallthrough
+	case token.StringType:
+		fallthrough
+	case token.BoolType:
+		fallthrough
+	case token.Null:
+		fallthrough
+	case token.FunctionType:
+		fallthrough
+	case token.MapType:
+		fallthrough
+	case token.ArrayType:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Parser) parseType() types.Type {
+	switch p.currToken.Type {
+	case token.IntType:
+		return typeMap[p.currToken.Type]
+	case token.FloatType:
+		return typeMap[p.currToken.Type]
+	case token.StringType:
+		return typeMap[p.currToken.Type]
+	case token.BoolType:
+		return typeMap[p.currToken.Type]
+	case token.Null:
+		return typeMap[p.currToken.Type]
+	case token.MapType:
+		return p.parseMapType()
+	case token.ArrayType:
+		return p.parseArrayType()
+	case token.FunctionType:
+		return p.parseFunctionType()
+	}
+
+	p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.peekToken.Type))
+	return nil
+}
+
+func (p *Parser) parseFunctionType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("function", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+	if !p.expectPeek(token.LeftParen) {
+		p.errors = append(p.errors, getTypeParseError("function", token.LeftParen, p.peekToken.Type))
+		return nil
+	}
+	params := make([]types.Type, 0)
+
+	for !p.peekTokenIs(token.RightParen) {
+		p.nextToken()
+		t := p.parseType()
+		if p.peekTokenIs(token.RightParen) {
+			params = append(params, t)
+			break
+		}
+
+		if !p.expectPeek(token.Comma) {
+			p.errors = append(p.errors, getTypeParseError("function", token.Comma, p.peekToken.Type))
+			return nil
+		}
+		params = append(params, t)
+	}
+
+	if !p.expectPeek(token.RightParen) {
+		p.errors = append(p.errors, getTypeParseError("function", token.RightParen, p.peekToken.Type))
+		return nil
+	}
+
+	if !p.expectPeek(token.Arrow) {
+		p.errors = append(p.errors, getTypeParseError("function", token.Arrow, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	r := p.parseType()
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("function", token.GreaterThan, p.peekToken.Type))
+	}
+
+	return types.FunctionType{Params: params, Return: r}
+
+}
+
+func (p *Parser) parseArrayType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("array", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	t := p.parseType() // recursively get type for array
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("array", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.ArrayType{ElemType: t}
+}
+
+func (p *Parser) parseMapType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("map", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	k := p.parseType() // recursively get type for key type
+
+	if !p.expectPeek(token.Comma) {
+		p.errors = append(p.errors, getTypeParseError("map", token.Comma, p.peekToken.Type))
+		return nil
+	}
+
+	p.nextToken()
+	v := p.parseType()
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("map", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.MapType{KeyType: k, ValueType: v}
+}
+
+func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {
+	return fmt.Sprintf("expected %q for %s type annotation, got %q", expected, name, got)
 }
