@@ -1389,7 +1389,28 @@ func TestParseInterfaceDefinition(t *testing.T) {
 			t.Fatalf("wrong signature. want=%q, got=%q", tt.Signature(), expectedType.Types[i].Signature())
 		}
 	}
+}
 
+func TestParseInterfaceImplementation(t *testing.T) {
+	source := "define implementation Circle -> Diameter, Area"
+	expected := []string{"Diameter", "Area"}
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Body does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.InterfaceImplementationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.InterfaceImplementationStmt. got=%T", program.Stmts[0])
+	}
+
+	testIdentifier(t, stmt.StructName, "Circle")
+	for i, e := range expected {
+		testIdentifier(t, stmt.InterfaceNames[i], e)
+	}
 }
 
 func testStructLiteral(t *testing.T, expr *ast.StructLiteral, expectedFields []ExpectedStructField, expectedName string) {

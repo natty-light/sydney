@@ -213,6 +213,8 @@ func (p *Parser) parseStatement() ast.Stmt {
 			return p.parseStructDefinitionStmt()
 		} else if p.currTokenIs(token.Interface) {
 			return p.parseInterfaceDefinitionStmt()
+		} else if p.currTokenIs(token.Implementation) {
+			return p.parseInterfaceImplementationStmt()
 		}
 		p.errors = append(p.errors, fmt.Sprintf("expected interface or struct, got %s instead", p.currToken.Literal))
 		return nil
@@ -1027,6 +1029,36 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 
 	stmt.Type = t
 	p.definedInterfaces[stmt.Name.Value] = t
+
+	return stmt
+}
+
+func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
+	stmt := &ast.InterfaceImplementationStmt{}
+	if !p.expectPeek(token.Identifier) {
+		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		return nil
+	}
+	stmt.StructName = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	if !p.expectPeek(token.Arrow) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ->, got %s", p.currToken.Literal))
+		return nil
+	}
+	p.nextToken() // move past ->
+
+	interfaceNames := make([]*ast.Identifier, 0)
+	interfaceNames = append(interfaceNames, &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal})
+	p.nextToken()
+	for p.currTokenIs(token.Comma) {
+		p.nextToken()
+		if !p.currTokenIs(token.Identifier) {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			return nil
+		}
+		interfaceNames = append(interfaceNames, &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal})
+	}
+
+	stmt.InterfaceNames = interfaceNames
 
 	return stmt
 }

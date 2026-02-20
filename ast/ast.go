@@ -102,6 +102,12 @@ type (
 		Name  *Identifier
 		Type  types.InterfaceType
 	}
+
+	InterfaceImplementationStmt struct {
+		Token          token.Token
+		StructName     *Identifier
+		InterfaceNames []*Identifier
+	}
 )
 
 // Expressions and literals
@@ -330,6 +336,10 @@ func (i *InterfaceDefinitionStmt) TokenLiteral() string {
 	return i.Token.Literal
 }
 
+func (i *InterfaceImplementationStmt) TokenLiteral() string {
+	return i.Token.Literal
+}
+
 // Statements
 func (p *Program) String() string {
 	var out bytes.Buffer
@@ -460,6 +470,29 @@ func (i *InterfaceDefinitionStmt) String() string {
 	var out bytes.Buffer
 	out.WriteString("define interface")
 	out.WriteString(i.Type.Signature())
+
+	return out.String()
+}
+
+func (i *InterfaceImplementationStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("define implementation ")
+	out.WriteString(i.StructName.String())
+	out.WriteString(" -> ")
+	if len(i.InterfaceNames) > 1 {
+		out.WriteString("(")
+	}
+
+	for idx, n := range i.InterfaceNames {
+		out.WriteString(n.String())
+		if idx < len(i.InterfaceNames)-1 {
+			out.WriteString(", ")
+		}
+	}
+
+	if len(i.InterfaceNames) > 1 {
+		out.WriteString(")")
+	}
 
 	return out.String()
 }
@@ -660,17 +693,18 @@ func (s *StructLiteral) String() string {
 }
 
 // Statements
-func (v *VarDeclarationStmt) statementNode()      {}
-func (r *ReturnStmt) statementNode()              {}
-func (e *ExpressionStmt) statementNode()          {}
-func (b *BlockStmt) statementNode()               {}
-func (v *VarAssignmentStmt) statementNode()       {}
-func (f *ForStmt) statementNode()                 {}
-func (i *IndexAssignmentStmt) statementNode()     {}
-func (f *FunctionDeclarationStmt) statementNode() {}
-func (s *StructDefinitionStmt) statementNode()    {}
-func (s *SelectorAssignmentStmt) statementNode()  {}
-func (s *InterfaceDefinitionStmt) statementNode() {}
+func (v *VarDeclarationStmt) statementNode()          {}
+func (r *ReturnStmt) statementNode()                  {}
+func (e *ExpressionStmt) statementNode()              {}
+func (b *BlockStmt) statementNode()                   {}
+func (v *VarAssignmentStmt) statementNode()           {}
+func (f *ForStmt) statementNode()                     {}
+func (i *IndexAssignmentStmt) statementNode()         {}
+func (f *FunctionDeclarationStmt) statementNode()     {}
+func (s *StructDefinitionStmt) statementNode()        {}
+func (s *SelectorAssignmentStmt) statementNode()      {}
+func (i *InterfaceDefinitionStmt) statementNode()     {}
+func (i *InterfaceImplementationStmt) statementNode() {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}
