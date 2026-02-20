@@ -65,7 +65,7 @@ func TestTypeErrorChecking(t *testing.T) {
 		},
 		{ // function symbol resolution
 			"f(5);",
-			"undefined identifier:: f",
+			"undefined identifier: f",
 		},
 		{ // calling non function
 			"mut int x = 0; x();",
@@ -280,6 +280,29 @@ func TestSelectorExpressionTypeErrorChecking(t *testing.T) {
 					const p = Point { x: 0, y: 0 };
 					p.z;`,
 			expectedError: "field z of struct type p not found",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestBuiltinFunctionTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         "len(1)",
+			expectedError: "invalid argument type int for len()",
+		},
+		{
+			input:         "len([1], [2])",
+			expectedError: "len() expects exactly 1 argument",
+		},
+		{
+			input:         "len(3.14)",
+			expectedError: "invalid argument type float for len()",
+		},
+		{
+			input:         "append([false], 1)",
+			expectedError: "type mismatch: got int for append() value",
 		},
 	}
 

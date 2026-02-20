@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"sydney/ast"
+	"sydney/object"
 	"sydney/types"
 )
 
@@ -23,6 +24,10 @@ func New(globalEnv *TypeEnv) *Checker {
 			outer: nil,
 		}
 	}
+	for _, v := range object.Builtins {
+		env.Set(v.Name, v.BuiltIn.T)
+	}
+
 	errors := make([]string, 0)
 
 	return &Checker{
@@ -335,29 +340,7 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 
 		return cType
 	case *ast.CallExpr:
-		fnTypeRaw := c.typeOf(expr.Function)
-		if fnTypeRaw == nil || fnTypeRaw == types.Unit {
-			c.errors = append(c.errors, fmt.Sprintf("unresolved symbol: %s", expr.Function.String()))
-			return nil
-		}
-
-		fnType, ok := fnTypeRaw.(types.FunctionType)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fnTypeRaw.Signature(), expr.Function.String()))
-			return nil
-		}
-		if len(expr.Arguments) != len(fnType.Params) {
-			c.errors = append(c.errors, fmt.Sprintf("wrong number of arguments for function %s, wanted %d, got %d", expr.Function.String(), len(expr.Arguments), len(fnType.Params)))
-		}
-
-		for i, arg := range expr.Arguments {
-			argType := c.typeOf(arg)
-			if !typesMatch(argType, fnType.Params[i]) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", argType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()))
-				return nil
-			}
-		}
-		return fnType.Return
+		return c.typeOfCallExpr(expr)
 	case *ast.IndexExpr:
 		lt := c.typeOf(expr.Left)
 		idxT := c.typeOf(expr.Index)
@@ -583,13 +566,198 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type) types.Type {
 	return nil
 }
 
+func (c *Checker) typeOfCallExpr(expr *ast.CallExpr) types.Type {
+	fnTypeRaw := c.typeOf(expr.Function)
+	if ident, ok := expr.Function.(*ast.Identifier); ok {
+		switch ident.Value {
+		case "len":
+			return c.checkLenBuiltIn(expr)
+		case "print":
+			return c.checkPrintBuiltIn(expr)
+		case "first":
+			return c.checkFirstBuiltIn(expr)
+		case "last":
+			return c.checkLastBuiltIn(expr)
+		case "append":
+			return c.checkAppendBuiltIn(expr)
+		case "rest":
+			return c.checkRestBuiltIn(expr)
+		case "slice":
+			return c.checkSliceBuiltIn(expr)
+		case "keys":
+			return c.checkKeysBuiltIn(expr)
+		case "values":
+			return c.checkValuesBuiltIn(expr)
+
+		}
+	}
+
+	if fnTypeRaw == nil || fnTypeRaw == types.Unit {
+		c.errors = append(c.errors, fmt.Sprintf("unresolved symbol: %s", expr.Function.String()))
+		return nil
+	}
+
+	fnType, ok := fnTypeRaw.(types.FunctionType)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fnTypeRaw.Signature(), expr.Function.String()))
+		return nil
+	}
+	if len(expr.Arguments) != len(fnType.Params) || fnType.Variadic {
+		c.errors = append(c.errors, fmt.Sprintf("wrong number of arguments for function %s, wanted %d, got %d", expr.Function.String(), len(expr.Arguments), len(fnType.Params)))
+	}
+
+	for i, arg := range expr.Arguments {
+		argType := c.typeOf(arg)
+		if !typesMatch(argType, fnType.Params[i]) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", argType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()))
+			return nil
+		}
+	}
+	return fnType.Return
+}
+
+func (c *Checker) checkLenBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("len() expects exactly 1 argument"))
+		return types.Int
+	}
+
+	argType := c.typeOf(expr.Arguments[0])
+	_, isArray := argType.(types.ArrayType)
+	_, isMap := argType.(types.MapType)
+	if argType != types.String && !isArray && !isMap && !isString(argType) {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for len()", argType.Signature()))
+	}
+
+	return types.Int
+}
+
+func (c *Checker) checkPrintBuiltIn(expr *ast.CallExpr) types.Type {
+	return types.Unit
+}
+
+func (c *Checker) checkFirstBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("first() expects exactly 1 argument"))
+		return types.Int
+	}
+
+	argType := c.typeOf(expr.Arguments[0])
+	arrType, isArray := argType.(types.ArrayType)
+
+	if !isArray {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for first()", argType.Signature()))
+		return types.Unit
+	}
+
+	return arrType.ElemType
+}
+
+func (c *Checker) checkLastBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("last() expects exactly 1 argument"))
+		return types.Int
+	}
+
+	argType := c.typeOf(expr.Arguments[0])
+	arrType, isArray := argType.(types.ArrayType)
+
+	if !isArray {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for last()", argType.Signature()))
+		return types.Unit
+	}
+
+	return arrType.ElemType
+}
+
+func (c *Checker) checkAppendBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 2 {
+		c.errors = append(c.errors, fmt.Sprintf("append() expects exactly 2 arguments"))
+		return types.Unit
+	}
+	argType := c.typeOf(expr.Arguments[0])
+
+	arrType, isArray := argType.(types.ArrayType)
+
+	if !isArray {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for append()", argType.Signature()))
+		return types.Unit
+	}
+
+	valType := c.typeOf(expr.Arguments[1])
+	if !typesMatch(valType, arrType.ElemType) && !arrType.IsEmpty {
+		c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for append() value", valType.Signature()))
+	}
+
+	return arrType
+}
+
+func (c *Checker) checkRestBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("rest() expects exactly 1 argument"))
+	}
+
+	argType := c.typeOf(expr.Arguments[0])
+	arrType, isArray := argType.(types.ArrayType)
+	if !isArray {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for rest()", argType.Signature()))
+		return types.Unit
+	}
+
+	return arrType
+}
+
+func (c *Checker) checkSliceBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 3 {
+		c.errors = append(c.errors, fmt.Sprintf("slice() expects exactly 3 arguments"))
+	}
+	arrayArgType := c.typeOf(expr.Arguments[0])
+	startType := c.typeOf(expr.Arguments[1])
+	endType := c.typeOf(expr.Arguments[2])
+	arrType, isArray := arrayArgType.(types.ArrayType)
+	if !isArray {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()))
+		return types.Unit
+	}
+
+	if startType != types.Int {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()))
+	}
+
+	if endType != types.Int {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()))
+	}
+
+	return arrType
+}
+
+func (c *Checker) checkKeysBuiltIn(expr ast.Expr) types.Type {
+	t := c.typeOf(expr)
+	mapType, ok := t.(types.MapType)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
+	}
+
+	return &types.ArrayType{ElemType: mapType.KeyType}
+}
+
+func (c *Checker) checkValuesBuiltIn(expr ast.Expr) types.Type {
+	t := c.typeOf(expr)
+	mapType, ok := t.(types.MapType)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
+	}
+
+	return &types.ArrayType{ElemType: mapType.ValueType}
+}
+
 func typesMatch(actual, expected types.Type) bool {
 	if actual == nil || expected == nil {
 		return actual == expected
 	}
 	if _, ok := actual.(types.BasicType); ok {
 		if _, ok := expected.(types.BasicType); ok {
-			return actual == expected
+			return actual == expected || actual == types.Any || expected == types.Any
 		}
 	}
 
@@ -615,4 +783,8 @@ func typesMatch(actual, expected types.Type) bool {
 	}
 
 	return actual.Signature() == expected.Signature()
+}
+
+func isString(t types.Type) bool {
+	return t.Signature() == types.String.Signature()
 }
