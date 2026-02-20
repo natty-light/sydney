@@ -302,9 +302,8 @@ func (vm *VM) Run() error {
 			numFields := code.ReadUint8(ins[ip+3:])
 			vm.currentFrame().ip += 3
 			objs := make([]object.Object, numFields)
-			for i := 0; i < int(numFields); i++ {
-				obj := vm.pop()
-				objs[i] = obj
+			for i := int(numFields) - 1; i >= 0; i-- { // iterate in reverse since stack is lifo
+				objs[i] = vm.pop()
 			}
 
 			obj := &object.Struct{T: typeObj, Fields: objs}

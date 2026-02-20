@@ -1251,10 +1251,7 @@ func TestStructDefinition(t *testing.T) {
 
 func TestStructLiteral(t *testing.T) {
 	source := "Person { name: \"Alice\", age: 42 };"
-	expectedFields := []struct {
-		name  string
-		value interface{}
-	}{
+	expectedFields := []ExpectedStructField{
 		{
 			name:  "name",
 			value: "Alice",
@@ -1283,7 +1280,66 @@ func TestStructLiteral(t *testing.T) {
 		t.Fatalf("expected stmt.Expr to be *ast.StructLiteral. got=%T", stmt.Expr)
 	}
 
-	if expr.Name != "Person" {
+	testStructLiteral(t, expr, expectedFields, "Person")
+}
+
+type ExpectedStructField struct {
+	name                       string
+	value                      interface{}
+	expectedEmbeddedStructName string
+	expectedEmbeddedFields     []ExpectedStructField
+}
+
+func TestParseEmbeddedStructs(t *testing.T) {
+	source := "Circle { center: Point { x: 0, y: 0 }, radius: 5 };"
+	expectedFields := []ExpectedStructField{
+		{
+			name: "center",
+			value: &ast.StructLiteral{
+				Name:   "Person",
+				Fields: []string{"x", "y"},
+				Values: []ast.Expr{&ast.IntegerLiteral{Value: 0}, &ast.IntegerLiteral{Value: 0}},
+			},
+			expectedEmbeddedStructName: "Person",
+			expectedEmbeddedFields: []ExpectedStructField{
+				{
+					name:  "x",
+					value: 0,
+				},
+				{
+					name:  "y",
+					value: 0,
+				},
+			},
+		}, {
+			name:  "radius",
+			value: 5,
+		},
+	}
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Body does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("expected program.Stmts to be *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+
+	expr, ok := stmt.Expr.(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("expected stmt.Expr to be *ast.StructLiteral. got=%T", stmt.Expr)
+	}
+
+	testStructLiteral(t, expr, expectedFields, "Circle")
+}
+
+func testStructLiteral(t *testing.T, expr *ast.StructLiteral, expectedFields []ExpectedStructField, expectedName string) {
+	if expr.Name != expectedName {
 		t.Fatalf("expr.Name wrong. want %q, got=%q", "Person", expr.Name)
 	}
 	if len(expr.Fields) != len(expectedFields) {
@@ -1296,6 +1352,13 @@ func TestStructLiteral(t *testing.T) {
 		if field.name != expr.Fields[i] {
 			t.Fatalf("wrong field %d, got %s expected %s", i, field, expr.Fields[i])
 		}
+
+		embeddedStruct, ok := field.value.(*ast.StructLiteral)
+		if ok {
+			testStructLiteral(t, embeddedStruct, field.expectedEmbeddedFields, field.expectedEmbeddedStructName)
+			continue
+		}
+
 		switch field.value.(type) {
 		case string:
 			str, ok := expr.Values[i].(*ast.StringLiteral)

@@ -1418,6 +1418,49 @@ func TestStructs(t *testing.T) {
 				code.Make(code.OpSetField, 0),
 			},
 		},
+		{
+			source: `define struct Point { x int, y int }
+					const Point p = Point { x: 0, y: 0 };
+					
+					func printPoint(Point p) {
+						print(p)
+					};
+					
+					printPoint(p);`,
+			expectedConstants: []interface{}{
+				0,
+				0,
+				&object.TypeObject{
+					T: types.StructType{
+						Fields: []string{"x", "y"},
+						Types:  []types.Type{types.Int, types.Int},
+						Name:   "Point",
+					},
+				},
+				[]code.Instructions{
+					code.Make(code.OpGetBuiltIn, 1),
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpCall, 1),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpConstant, 1),
+				code.Make(code.OpStruct, 2, 2),
+
+				code.Make(code.OpSetImmutableGlobal, 0),
+
+				code.Make(code.OpClosure, 3, 0),
+				code.Make(code.OpSetImmutableGlobal, 1),
+
+				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpCall, 1),
+				code.Make(code.OpPop),
+			},
+		},
 	}
 
 	runCompilerTests(t, tests)

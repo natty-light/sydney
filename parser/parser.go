@@ -998,7 +998,6 @@ func (p *Parser) parseStructLiteral() ast.Expr {
 		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
 		return nil
 	}
-	p.nextToken() // eat }
 	return expr
 }
 

@@ -386,6 +386,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpHash, len(node.Pairs)*2)
 	case *ast.FunctionDeclarationStmt:
+		symbol := c.symbolTable.DefineImmutable(node.Name.Value)
 		c.enterScope()
 
 		c.symbolTable.DefineFunctionName(node.Name.Value)
@@ -424,6 +425,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		fnIdx := c.addConstant(compiledFn)
 
 		c.emit(code.OpClosure, fnIdx, len(freeSymbols))
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetImmutableGlobal, symbol.Index)
+		} else {
+			c.emit(code.OpSetImmutableLocal, symbol.Index)
+		}
+
 	case *ast.FunctionLiteral:
 		c.enterScope()
 
