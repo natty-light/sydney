@@ -786,6 +786,30 @@ func TestParsingIndexAssignments(t *testing.T) {
 
 }
 
+func TestParsingSelectorAssignments(t *testing.T) {
+	source := "a.x = 1;"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.SelectorAssignmentStmt)
+	if !ok {
+		t.Fatalf("stmt is not *ast.SelectorAssignmentStmt")
+	}
+
+	testIntegerLiteral(t, stmt.Value, 1)
+	if !testIdentifier(t, stmt.Left.Left, "a") {
+		t.Fatalf("stmt.Left.Left is not a.")
+	}
+
+	if !testIdentifier(t, stmt.Left.Value, "x") {
+		t.Fatalf("stmt.Left.Value is not x")
+	}
+
+}
+
 func TestNullLiteral(t *testing.T) {
 	source := "null;"
 
@@ -1197,6 +1221,124 @@ func TestFunctionDeclaration(t *testing.T) {
 		if fType.Return.Signature() != tt.expectedReturnType {
 			t.Fatalf("wrong return type, got %s expected %s", fType.Return.Signature(), tt.expectedReturnType)
 		}
+	}
+}
+
+func TestStructDefinition(t *testing.T) {
+	source := "define struct Person { name string, age int }"
+	expectedType := types.StructType{Name: "Person", Fields: []string{"name", "age"}, Types: []types.Type{types.String, types.Int}}
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Body does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("expected program.Stmts[0] to be *ast.StructDefinitionStmt. got=%T", program.Stmts[0])
+	}
+
+	if stmt.Name.String() != "Person" {
+		t.Fatalf("stmt.Name.String() wrong. want %q, got=%q", "Person", stmt.Name.String())
+	}
+
+	if stmt.Type.Signature() != expectedType.Signature() {
+		t.Fatalf("stmt.Type.Signature() wrong. want %q, got=%q", expectedType.Signature(), stmt.Type.Signature())
+	}
+}
+
+func TestStructLiteral(t *testing.T) {
+	source := "Person { name: \"Alice\", age: 42 };"
+	expectedFields := []struct {
+		name  string
+		value interface{}
+	}{
+		{
+			name:  "name",
+			value: "Alice",
+		},
+		{
+			name:  "age",
+			value: 42,
+		},
+	}
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Body does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("expected program.Stmts to be *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+
+	expr, ok := stmt.Expr.(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("expected stmt.Expr to be *ast.StructLiteral. got=%T", stmt.Expr)
+	}
+
+	if expr.Name != "Person" {
+		t.Fatalf("expr.Name wrong. want %q, got=%q", "Person", expr.Name)
+	}
+	if len(expr.Fields) != len(expectedFields) {
+		t.Fatalf("got wrong number of fields, want=%d, got=%d", len(expectedFields), len(expr.Fields))
+	}
+	if len(expr.Values) != len(expectedFields) {
+		t.Fatalf("got wrong number of values, want=%d, got=%d", len(expectedFields), len(expr.Values))
+	}
+	for i, field := range expectedFields {
+		if field.name != expr.Fields[i] {
+			t.Fatalf("wrong field %d, got %s expected %s", i, field, expr.Fields[i])
+		}
+		switch field.value.(type) {
+		case string:
+			str, ok := expr.Values[i].(*ast.StringLiteral)
+			if !ok {
+				t.Fatalf("expected stmt.Values[%d] to be *ast.StringLiteral. got=%T", i, expr.Values[i])
+			}
+			if str.Value != field.value {
+				t.Fatalf("wrong value for field %s, got %s expected %s", field.name, str.Value, field.value)
+			}
+		case int:
+			num, ok := expr.Values[i].(*ast.IntegerLiteral)
+			if !ok {
+				t.Fatalf("expected stmt.Values[%d] to be *ast.IntegerLiteral. got=%T", i, expr.Values[i])
+			}
+
+			if int(num.Value) != field.value {
+				t.Fatalf("wrong value for field %s, got %d expected %v", field.name, num.Value, field.value)
+			}
+		default:
+			t.Fatalf("wrong type for field %d, got %T", i, field)
+		}
+	}
+}
+
+func TestSelectorExpr(t *testing.T) {
+	source := "p.x"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	expr, ok := stmt.Expr.(*ast.SelectorExpr)
+	if !ok {
+		t.Fatalf("expr not *ast.IndexExpr. got=%T", stmt.Expr)
+	}
+
+	if !testIdentifier(t, expr.Left, "p") {
+		return
+	}
+	if !testIdentifier(t, expr.Value, "x") {
+		return
 	}
 }
 

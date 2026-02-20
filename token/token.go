@@ -22,6 +22,8 @@ const (
 	Return TokenType = "Return"
 	For    TokenType = "For"
 	Macro  TokenType = "Macro"
+	Define TokenType = "Define"
+	Struct TokenType = "Struct"
 
 	// Types
 	IntType    TokenType = "IntegerType"

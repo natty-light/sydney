@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"sydney/ast"
 	"sydney/code"
@@ -16,6 +17,8 @@ type Compiler struct {
 
 	scopes     []CompilationScope
 	scopeIndex int
+
+	structTypes map[string]types.StructType
 }
 
 type Bytecode struct {
@@ -51,6 +54,7 @@ func New() *Compiler {
 		symbolTable: symbolTable,
 		scopes:      []CompilationScope{mainScope},
 		scopeIndex:  0,
+		structTypes: make(map[string]types.StructType),
 	}
 }
 
@@ -463,6 +467,45 @@ func (c *Compiler) Compile(node ast.Node) error {
 		fnIdx := c.addConstant(compiledFn)
 
 		c.emit(code.OpClosure, fnIdx, len(freeSymbols))
+	case *ast.StructLiteral:
+		t := node.ResolvedType
+		for _, field := range t.Fields {
+			idx := slices.Index(node.Fields, field)
+			err := c.Compile(node.Values[idx])
+			if err != nil {
+				return err
+			}
+		}
+
+		typeObj := &object.TypeObject{T: t}
+		idx := c.addConstant(typeObj)
+
+		c.emit(code.OpStruct, idx, len(t.Fields))
+	case *ast.SelectorExpr:
+		err := c.Compile(node.Left)
+		if err != nil {
+			return err
+		}
+
+		fieldIdent := node.Value.(*ast.Identifier)
+		// resolved type is appended in typechecker
+		idx := slices.Index(node.ResolvedType.Fields, fieldIdent.Value)
+
+		c.emit(code.OpGetField, idx)
+	case *ast.SelectorAssignmentStmt:
+		err := c.Compile(node.Left.Left) // compile collection ident
+		if err != nil {
+			return err
+		}
+		err = c.Compile(node.Value) // compile index
+		if err != nil {
+			return err
+		}
+
+		fieldIdent := node.Left.Value.(*ast.Identifier)
+		idx := slices.Index(node.Left.ResolvedType.Fields, fieldIdent.Value)
+
+		c.emit(code.OpSetField, idx)
 	}
 	return nil
 }
@@ -609,4 +652,14 @@ func (c *Compiler) emitZeroValue(t types.Type) error {
 	}
 
 	return nil
+}
+
+func (c *Compiler) lookUpStruct(name string) (types.StructType, bool) {
+	t, ok := c.structTypes[name]
+
+	return t, ok
+}
+
+func (c *Compiler) setStruct(name string, t types.StructType) {
+	c.structTypes[name] = t
 }

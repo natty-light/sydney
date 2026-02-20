@@ -252,6 +252,8 @@ var keywords = map[string]token.TokenType{
 	"macro":  token.Macro,
 	"array":  token.ArrayType,
 	"map":    token.MapType,
+	"struct": token.Struct,
+	"define": token.Define,
 }
 
 var types = map[string]token.TokenType{

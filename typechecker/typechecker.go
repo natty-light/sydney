@@ -2,6 +2,7 @@ package typechecker
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"sydney/ast"
 	"sydney/types"
@@ -11,6 +12,7 @@ type Checker struct {
 	env               *TypeEnv
 	errors            []string
 	currentReturnType types.Type
+	definedStructs    map[string]types.Type
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -27,6 +29,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		env,
 		errors,
 		nil,
+		make(map[string]types.Type),
 	}
 }
 
@@ -39,8 +42,8 @@ func (c *Checker) Check(node ast.Node) []string {
 	return c.errors
 }
 
-func (c *Checker) check(node ast.Node) types.Type {
-	switch node := node.(type) {
+func (c *Checker) check(n ast.Node) types.Type {
+	switch node := n.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
 			c.check(stmt)
@@ -161,17 +164,55 @@ func (c *Checker) check(node ast.Node) types.Type {
 
 		c.env = oldEnv
 		c.currentReturnType = oldReturnType
+	case *ast.StructDefinitionStmt:
+		c.definedStructs[node.Name.Value] = node.Type
+	case *ast.SelectorAssignmentStmt:
+		valType := c.typeOf(node.Value)
+		lt := c.typeOf(node.Left.Left)
+		name, ok := node.Left.Left.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value %s of type %s", node.Value.String(), lt.Signature()))
+		}
+		field := node.Left.Value.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("idk what to put here"))
+		}
+
+		varType, _, ok := c.env.Get(name.Value)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of undefined variable %s", name.Value))
+		}
+
+		structType, ok := varType.(types.StructType)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value %s of type %s", node.Value.String(), lt.Signature()))
+			return types.Unit // bail here because everything else relies on structType actually being a struct
+		}
+
+		idx := slices.Index(structType.Fields, field.Value)
+		if idx == -1 {
+			c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", name.Value, structType.Name, field.Value))
+			return types.Unit
+		}
+
+		if !typesMatch(valType, structType.Types[idx]) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
+		}
+
+		n.(*ast.SelectorAssignmentStmt).Left.ResolvedType = structType
+
+		return types.Unit
 	}
 
 	return types.Unit
 }
 
-func (c *Checker) typeOf(expr ast.Expr) types.Type {
-	if expr == nil {
+func (c *Checker) typeOf(e ast.Expr) types.Type {
+	if e == nil {
 		return types.Null
 	}
 
-	switch expr := expr.(type) {
+	switch expr := e.(type) {
 	case *ast.IntegerLiteral:
 		return types.Int
 	case *ast.StringLiteral:
@@ -294,15 +335,15 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 
 		return cType
 	case *ast.CallExpr:
-		fn, _, ok := c.env.Get(expr.Function.String())
-		if !ok {
+		fnTypeRaw := c.typeOf(expr.Function)
+		if fnTypeRaw == nil || fnTypeRaw == types.Unit {
 			c.errors = append(c.errors, fmt.Sprintf("unresolved symbol: %s", expr.Function.String()))
 			return nil
 		}
 
-		fnType, ok := fn.(types.FunctionType)
+		fnType, ok := fnTypeRaw.(types.FunctionType)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fn.Signature(), expr.Function.String()))
+			c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fnTypeRaw.Signature(), expr.Function.String()))
 			return nil
 		}
 		if len(expr.Arguments) != len(fnType.Params) {
@@ -340,6 +381,60 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 		}
 		c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
 		return nil
+	case *ast.SelectorExpr:
+		t := c.typeOf(expr.Left)
+		structType, ok := t.(types.StructType)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot access field of non-struct value %s of type %s", expr.Left.TokenLiteral(), t.Signature()))
+		}
+		val, ok := expr.Value.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("idk what to put here I'll figure it out later"))
+			return types.Unit
+		}
+		i := slices.Index(structType.Fields, val.Value)
+		if i == -1 {
+			c.errors = append(c.errors, fmt.Sprintf("field %s of struct type %s not found", val.Value, expr.Left.TokenLiteral()))
+			return types.Unit
+		}
+
+		e.(*ast.SelectorExpr).ResolvedType = structType
+		return structType.Types[i]
+	case *ast.StructLiteral:
+		t, ok := c.definedStructs[expr.Name]
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("unknown type %s", expr.Name))
+			return types.Unit
+		}
+
+		structType := t.(types.StructType)
+		providedFields := make(map[string]ast.Expr)
+		for i, name := range expr.Fields {
+			providedFields[name] = expr.Values[i]
+		}
+
+		for _, expected := range structType.Fields {
+			if _, ok := providedFields[expected]; !ok {
+				c.errors = append(c.errors, fmt.Sprintf("missing field %s in struct literal %s", expected, expr.Name))
+			}
+		}
+
+		for i, fieldName := range expr.Fields {
+			idx := slices.Index(structType.Fields, fieldName)
+			if idx == -1 {
+				c.errors = append(c.errors, fmt.Sprintf("field %s of struct type %s not found", fieldName, expr.Name))
+				continue
+			}
+
+			expectedType := structType.Types[idx]
+			actualType := c.typeOf(expr.Values[i])
+			if !typesMatch(actualType, expectedType) {
+				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
+			}
+		}
+		e.(*ast.StructLiteral).ResolvedType = structType
+
+		return structType
 	}
 	return nil
 }

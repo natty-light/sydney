@@ -84,6 +84,18 @@ type (
 		Body   *BlockStmt
 		Type   types.Type
 	}
+
+	StructDefinitionStmt struct {
+		Token token.Token
+		Name  *Identifier
+		Type  types.StructType
+	}
+
+	SelectorAssignmentStmt struct {
+		Token token.Token
+		Left  *SelectorExpr
+		Value Expr
+	}
 )
 
 // Expressions and literals
@@ -137,6 +149,14 @@ type (
 		Body       *BlockStmt
 	}
 
+	StructLiteral struct {
+		Token        token.Token
+		Name         string
+		Fields       []string
+		Values       []Expr
+		ResolvedType types.StructType
+	}
+
 	// Expressions
 	Identifier struct {
 		Token token.Token // token.Ident
@@ -173,6 +193,13 @@ type (
 		Token token.Token
 		Left  Expr
 		Index Expr
+	}
+
+	SelectorExpr struct {
+		Token        token.Token
+		Left         Expr
+		Value        Expr
+		ResolvedType types.StructType
 	}
 )
 
@@ -277,6 +304,22 @@ func (f *FunctionDeclarationStmt) TokenLiteral() string {
 	return f.Token.Literal
 }
 
+func (s *StructLiteral) TokenLiteral() string {
+	return s.Token.Literal
+}
+
+func (s *StructDefinitionStmt) TokenLiteral() string {
+	return s.Token.Literal
+}
+
+func (s *SelectorExpr) TokenLiteral() string {
+	return s.Token.Literal
+}
+
+func (s *SelectorAssignmentStmt) TokenLiteral() string {
+	return s.Token.Literal
+}
+
 // Statements
 func (p *Program) String() string {
 	var out bytes.Buffer
@@ -377,6 +420,32 @@ func (f *FunctionDeclarationStmt) String() string {
 	return out.String()
 }
 
+func (s *StructDefinitionStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("define struct")
+	out.WriteString(s.Name.String())
+	out.WriteString(" { ")
+	for i, f := range s.Type.Fields {
+		out.WriteString(f)
+		out.WriteString(" ")
+		out.WriteString(s.Type.Types[i].Signature())
+		if i < len(s.Type.Fields)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(" }")
+	return out.String()
+}
+
+func (s *SelectorAssignmentStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Left.String())
+	out.WriteString(" = ")
+	out.WriteString(s.Value.String())
+
+	return out.String()
+}
+
 // Expressions
 func (i *Identifier) String() string {
 	return i.Value
@@ -454,6 +523,15 @@ func (i *IfExpr) String() string {
 		out.WriteString("else ")
 		out.WriteString(i.Alternative.String())
 	}
+
+	return out.String()
+}
+
+func (s *SelectorExpr) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Left.String())
+	out.WriteString(".")
+	out.WriteString(s.Value.String())
 
 	return out.String()
 }
@@ -547,6 +625,22 @@ func (m *MacroLiteral) String() string {
 	return out.String()
 }
 
+func (s *StructLiteral) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Name)
+	out.WriteString(" { ")
+	for i, f := range s.Fields {
+		out.WriteString(f)
+		out.WriteString(" ")
+		out.WriteString(s.Values[i].String())
+		if i < len(s.Fields)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(" }")
+	return out.String()
+}
+
 // Statements
 func (v *VarDeclarationStmt) statementNode()      {}
 func (r *ReturnStmt) statementNode()              {}
@@ -556,6 +650,8 @@ func (v *VarAssignmentStmt) statementNode()       {}
 func (f *ForStmt) statementNode()                 {}
 func (i *IndexAssignmentStmt) statementNode()     {}
 func (f *FunctionDeclarationStmt) statementNode() {}
+func (s *StructDefinitionStmt) statementNode()    {}
+func (s *SelectorAssignmentStmt) statementNode()  {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}
@@ -573,3 +669,5 @@ func (n *NullLiteral) expressionNode()     {}
 func (h *HashLiteral) expressionNode()     {}
 func (f *FloatLiteral) expressionNode()    {}
 func (m *MacroLiteral) expressionNode()    {}
+func (s *StructLiteral) expressionNode()   {}
+func (s *SelectorExpr) expressionNode()    {}

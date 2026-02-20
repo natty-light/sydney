@@ -31,6 +31,12 @@ type MapType struct {
 	CollectionType
 }
 
+type StructType struct {
+	Name   string
+	Fields []string
+	Types  []Type
+}
+
 const (
 	Int    BasicType = "int"
 	Float  BasicType = "float"
@@ -71,5 +77,22 @@ func (m MapType) Signature() string {
 	out.WriteString(", ")
 	out.WriteString(m.ValueType.Signature())
 	out.WriteString(">")
+	return out.String()
+}
+
+func (s StructType) Signature() string {
+	var out bytes.Buffer
+	out.WriteString(s.Name)
+	out.WriteString(" { ")
+	for i, field := range s.Fields {
+		out.WriteString(field)
+		out.WriteString(" ")
+		out.WriteString(s.Types[i].Signature())
+		if i < len(s.Fields)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(" }")
+
 	return out.String()
 }

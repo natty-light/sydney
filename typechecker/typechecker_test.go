@@ -26,6 +26,21 @@ func TestValidTypeChecking(t *testing.T) {
 	}
 }
 
+func TestFirstClassFunctions(t *testing.T) {
+	source := `const returnsOne = func() -> int { 1; };
+			const returnsOneReturner = func() -> fn<() -> int> { returnsOne; };
+			returnsOneReturner()();`
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := New(nil)
+	c.Check(program)
+	errors := c.Errors()
+	if len(errors) != 0 {
+		t.Fatalf("typechecker errors: %v", errors)
+	}
+}
+
 func TestTypeErrorChecking(t *testing.T) {
 	tests := []TypeErrorTest{
 		{ // var declaration
@@ -50,7 +65,7 @@ func TestTypeErrorChecking(t *testing.T) {
 		},
 		{ // function symbol resolution
 			"f(5);",
-			"unresolved symbol: f",
+			"undefined identifier:: f",
 		},
 		{ // calling non function
 			"mut int x = 0; x();",
@@ -231,9 +246,48 @@ func TestFunctionDeclarationErrorChecking(t *testing.T) {
 	testTypeErrors(t, tests)
 }
 
+func TestStructLiteralTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define struct Point { x int, y int }
+					const p = Circle { x: 0, y: false };`,
+			expectedError: "unknown type Circle",
+		},
+		{
+			input: `define struct Point { x int, y int }
+					const p = Point { x: 0, y: false };`,
+			expectedError: "type mismatch for field y in struct Point: expected int, got bool",
+		},
+		{
+			input: `define struct Point { x int, y int }
+					const p = Point { x: 0 };`,
+			expectedError: "missing field y in struct literal Point",
+		},
+		{
+			input: `define struct Point { x int, y int }
+					const p = Point { x: 0, y: 0, z: 0 };`,
+			expectedError: "field z of struct type Point not found",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestSelectorExpressionTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define struct Point { x int, y int }
+					const p = Point { x: 0, y: 0 };
+					p.z;`,
+			expectedError: "field z of struct type p not found",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 	for _, tt := range tests {
-
 		l := lexer.New(tt.input)
 		p := parser.New(l)
 		program := p.ParseProgram()

@@ -32,6 +32,7 @@ func TestNextToken(t *testing.T) {
 	{"foo": "bar" }
 	5.2;
 	macro(x, y) { x + y; };
+	define struct Person { age int, name string }
 	`
 
 	tests := []struct {
@@ -192,6 +193,16 @@ func TestNextToken(t *testing.T) {
 		{token.RightCurlyBracket, "}"},
 		{token.Semicolon, ";"},
 
+		{token.Define, "define"},
+		{token.Struct, "struct"},
+		{token.Identifier, "Person"},
+		{token.LeftCurlyBracket, "{"},
+		{token.Identifier, "age"},
+		{token.IntType, "int"},
+		{token.Comma, ","},
+		{token.Identifier, "name"},
+		{token.StringType, "string"},
+		{token.RightCurlyBracket, "}"},
 		{token.EOF, ""},
 	}
 

@@ -7,6 +7,7 @@ import (
 	"sydney/lexer"
 	"sydney/object"
 	"sydney/parser"
+	"sydney/typechecker"
 	"testing"
 )
 
@@ -115,10 +116,6 @@ func TestBooleanExpressions(t *testing.T) {
 		{"!false", true},
 		{"!!true", true},
 		{"!!false", false},
-		{"!1", false},
-		{"!!1", true},
-		{"!0", true},
-		{"!!0", false},
 	}
 
 	runVmTests(t, tests)
@@ -129,7 +126,6 @@ func TestConditionals(t *testing.T) {
 		{"if (true) { 10 }", 10},
 		{"if (true) { 10 } else { 20 }", 10},
 		{"if (false) { 10 } else { 20 }", 20},
-		{"if (1) { 10 }", 10},
 		{"if (1 < 2) { 10 }", 10},
 		{"if (1 < 2) { 10 } else { 20 }", 10},
 		{"if (1 > 2) { 10 } else { 20 }", 20},
@@ -218,7 +214,6 @@ func TestIndexExpressions(t *testing.T) {
 		{"{1: 1, 2: 2}[1]", 1},
 		{"{1: 1, 2: 2}[2]", 2},
 		{"{1: 1}[0]", Null},
-		{"{}[0]", Null},
 	}
 
 	runVmTests(t, tests)
@@ -227,18 +222,18 @@ func TestIndexExpressions(t *testing.T) {
 func TestCallingFunctionsWithoutArguments(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			source:   `const fivePlusTen = func() { 5 + 10; }; fivePlusTen();`,
+			source:   `const fivePlusTen = func() -> int { 5 + 10; }; fivePlusTen();`,
 			expected: 15,
 		},
 		{
-			source:   `const one = func() { 1; }; const two = func() { 2; }; one() + two();`,
+			source:   `const one = func() -> int { 1; }; const two = func() -> int { 2; }; one() + two();`,
 			expected: 3,
 		},
 		{
 			source: `
-			const a = func() { 1; };
-			const b = func() { a() + 1; };
-			const c = func() { b() + 1; };
+			const a = func() -> int { 1; };
+			const b = func() -> int { a() + 1; };
+			const c = func() -> int { b() + 1; };
 			c();`,
 			expected: 3,
 		},
@@ -250,11 +245,11 @@ func TestCallingFunctionsWithoutArguments(t *testing.T) {
 func TestFunctionsWithReturnStatements(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			source:   `const earlyExit = func() { return 99; 100; }; earlyExit();`,
+			source:   `const earlyExit = func() -> int { return 99; 100; }; earlyExit();`,
 			expected: 99,
 		},
 		{
-			source:   `const earlyExit = func() { return 99; return 100; }; earlyExit();`,
+			source:   `const earlyExit = func() -> int { return 99; return 100; }; earlyExit();`,
 			expected: 99,
 		},
 	}
@@ -283,8 +278,8 @@ func TestFunctionsWithoutReturnValue(t *testing.T) {
 func TestFirstClassFunctions(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			source: `const returnsOne = func() { 1; };
-			const returnsOneReturner = func() { returnsOne; };
+			source: `const returnsOne = func() -> int { 1; };
+			const returnsOneReturner = func() -> fn<() -> int> { returnsOne; };
 			returnsOneReturner()();`,
 			expected: 1,
 		},
@@ -296,35 +291,35 @@ func TestFirstClassFunctions(t *testing.T) {
 func TestCallingFunctionsWithBindings(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			source:   `const one = func() { const one = 1; one; }; one()`,
+			source:   `const one = func() -> int { const one = 1; one; }; one()`,
 			expected: 1,
 		},
 		{
-			source: `const oneAndTwo = func() { const one = 1; const two = 2; one + two; };
+			source: `const oneAndTwo = func() -> int { const one = 1; const two = 2; one + two; };
 			oneAndTwo();`,
 			expected: 3,
 		},
 		{
 			source: `
-			const oneAndTwo = func() {const one = 1; const two = 2; one + two; };
-			const threeAndFour = func() { const three = 3; const four = 4; three + four; };
+			const oneAndTwo = func() -> int {const one = 1; const two = 2; one + two; };
+			const threeAndFour = func() -> int { const three = 3; const four = 4; three + four; };
 			oneAndTwo() + threeAndFour();
 			`,
 			expected: 10,
 		},
 		{
 			source: `
-			const firstFunc = func() { const x = 50; x };
-			const secondFunc = func() { const x = 100; x };
+			const firstFunc = func() -> int { const x = 50; x };
+			const secondFunc = func() -> int { const x = 100; x };
 			firstFunc() + secondFunc();
 			`,
 			expected: 150,
 		},
 		{
 			source: `
-			mut globalNum = 50;
-			const minusOne = func() { const num = 1; globalNum - num; };
-			const minusTwo = func() { const num = 2; globalNum - num; };
+			mut int globalNum = 50;
+			const minusOne = func() -> int { const num = 1; globalNum - num; };
+			const minusTwo = func() -> int { const num = 2; globalNum - num; };
 			minusOne() + minusTwo();
 			`,
 			expected: 97,
@@ -496,7 +491,7 @@ func TestClosures(t *testing.T) {
 	tests := []vmTestCase{
 		{
 			source: `
-			const newClosure = func(int a) {
+			const newClosure = func(int a) -> fn<() -> int> {
 				func() -> int { a; };
 			}
 			const closure = newClosure(99);
@@ -604,11 +599,32 @@ func TestIndexAssingment(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestStructs(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `define struct Point { x int, y int }
+					const Point p = Point { x: 0, y: 0 };
+					p.y = 1;
+					p.x = 1;
+					p.x + p.y;`,
+			expected: 2,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 
 	for _, tt := range tests {
 		program := parse(tt.source)
+
+		c := typechecker.New(nil)
+		errors := c.Check(program)
+		if len(errors) != 0 {
+			t.Fatal(errors)
+		}
 
 		comp := compiler.New()
 		err := comp.Compile(program)
