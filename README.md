@@ -168,3 +168,38 @@ ifelse(10 > 5, print("true"), print("false"));
 ```
 
 The `quote` and `unquote` functions are used within macros to manipulate AST nodes. `quote` returns the AST of its argument, and `unquote` evaluates an expression and inserts the resulting AST into a quoted block.
+
+## Interfaces and Implementations
+Sydney provides a way to define interfaces and explicitly declare that a struct implements an interface.
+
+### Interfaces
+An interface defines a set of method signatures. It is defined using the `define interface` keywords.
+
+```
+define interface Pointer {
+    getX() -> int,
+    setX(int val)
+}
+```
+
+### Implementations
+A struct can be declared to implement an interface using the `define implementation` statement. This serves as a contract that the type checker will verify.
+
+```
+define struct Point {
+    x int,
+    y int
+}
+
+func getX(Point p) -> int {
+    return p.x;
+}
+
+func setX(Point p, int val) {
+    p.x = val;
+}
+
+define implementation Point -> Pointer;
+```
+
+The type checker will ensure that all methods defined in the interface are implemented as functions that take the struct as their first argument and match the required signatures.

@@ -33,6 +33,8 @@ func TestNextToken(t *testing.T) {
 	5.2;
 	macro(x, y) { x + y; };
 	define struct Person { age int, name string }
+	define interface Pointer { getX() -> int, setX(int x) }
+	define implementation Point -> Pointer
 	`
 
 	tests := []struct {
@@ -203,6 +205,30 @@ func TestNextToken(t *testing.T) {
 		{token.Identifier, "name"},
 		{token.StringType, "string"},
 		{token.RightCurlyBracket, "}"},
+
+		{token.Define, "define"},
+		{token.Interface, "interface"},
+		{token.Identifier, "Pointer"},
+		{token.LeftCurlyBracket, "{"},
+		{token.Identifier, "getX"},
+		{token.LeftParen, "("},
+		{token.RightParen, ")"},
+		{token.Arrow, "->"},
+		{token.IntType, "int"},
+		{token.Comma, ","},
+		{token.Identifier, "setX"},
+		{token.LeftParen, "("},
+		{token.IntType, "int"},
+		{token.Identifier, "x"},
+		{token.RightParen, ")"},
+		{token.RightCurlyBracket, "}"},
+
+		{token.Define, "define"},
+		{token.Implementation, "implementation"},
+		{token.Identifier, "Point"},
+		{token.Arrow, "->"},
+		{token.Identifier, "Pointer"},
+
 		{token.EOF, ""},
 	}
 

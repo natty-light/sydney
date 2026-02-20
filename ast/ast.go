@@ -96,6 +96,12 @@ type (
 		Left  *SelectorExpr
 		Value Expr
 	}
+
+	InterfaceDefinitionStmt struct {
+		Token token.Token
+		Name  *Identifier
+		Type  types.InterfaceType
+	}
 )
 
 // Expressions and literals
@@ -320,6 +326,10 @@ func (s *SelectorAssignmentStmt) TokenLiteral() string {
 	return s.Token.Literal
 }
 
+func (i *InterfaceDefinitionStmt) TokenLiteral() string {
+	return i.Token.Literal
+}
+
 // Statements
 func (p *Program) String() string {
 	var out bytes.Buffer
@@ -442,6 +452,14 @@ func (s *SelectorAssignmentStmt) String() string {
 	out.WriteString(s.Left.String())
 	out.WriteString(" = ")
 	out.WriteString(s.Value.String())
+
+	return out.String()
+}
+
+func (i *InterfaceDefinitionStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("define interface")
+	out.WriteString(i.Type.Signature())
 
 	return out.String()
 }
@@ -652,6 +670,7 @@ func (i *IndexAssignmentStmt) statementNode()     {}
 func (f *FunctionDeclarationStmt) statementNode() {}
 func (s *StructDefinitionStmt) statementNode()    {}
 func (s *SelectorAssignmentStmt) statementNode()  {}
+func (s *InterfaceDefinitionStmt) statementNode() {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

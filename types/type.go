@@ -38,6 +38,12 @@ type StructType struct {
 	Types  []Type
 }
 
+type InterfaceType struct {
+	Name    string
+	Methods []string
+	Types   []Type
+}
+
 const (
 	Int    BasicType = "int"
 	Float  BasicType = "float"
@@ -92,6 +98,32 @@ func (s StructType) Signature() string {
 		out.WriteString(" ")
 		out.WriteString(s.Types[i].Signature())
 		if i < len(s.Fields)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(" }")
+
+	return out.String()
+}
+
+func (s InterfaceType) Signature() string {
+	var out bytes.Buffer
+	out.WriteString(s.Name)
+	out.WriteString(" { ")
+	for i, method := range s.Methods {
+		t := s.Types[i].(FunctionType)
+		out.WriteString(method)
+		out.WriteString("(")
+		for i, tt := range t.Params {
+			out.WriteString(tt.Signature())
+			if i < len(t.Params)-1 {
+				out.WriteString(", ")
+			}
+		}
+		out.WriteString(")")
+		out.WriteString("->")
+		out.WriteString(t.Return.Signature())
+		if i < len(s.Methods)-1 {
 			out.WriteString(", ")
 		}
 	}

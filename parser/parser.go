@@ -60,7 +60,8 @@ type Parser struct {
 	prefixParseFns map[token.TokenType]prefixParseFn
 	infixParseFns  map[token.TokenType]infixParseFn
 
-	definedStructs map[string]types.Type
+	definedStructs    map[string]types.Type
+	definedInterfaces map[string]types.Type
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -107,6 +108,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.Dot, p.parseSelectorExpr)
 
 	p.definedStructs = make(map[string]types.Type)
+	p.definedInterfaces = make(map[string]types.Type)
 	return p
 }
 
@@ -207,7 +209,13 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseExpressionOrAssignmentStmt()
 	case token.Define:
 		p.nextToken() // move past define
-		return p.parseStructDefinitionStmt()
+		if p.currTokenIs(token.Struct) {
+			return p.parseStructDefinitionStmt()
+		} else if p.currTokenIs(token.Interface) {
+			return p.parseInterfaceDefinitionStmt()
+		}
+		p.errors = append(p.errors, fmt.Sprintf("expected interface or struct, got %s instead", p.currToken.Literal))
+		return nil
 	default:
 		return p.parseExpressionOrAssignmentStmt()
 	}
@@ -818,10 +826,14 @@ func (p *Parser) parseType() types.Type {
 	case token.FunctionType:
 		return p.parseFunctionType()
 	case token.Identifier:
+		var t types.Type = nil
 		t, ok := p.definedStructs[p.currToken.Literal]
 		if !ok {
-			p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.currToken.Literal))
-			return nil
+			t, ok = p.definedInterfaces[p.currToken.Literal]
+			if !ok {
+				p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.currToken.Literal))
+				return nil
+			}
 		}
 
 		return t
@@ -829,6 +841,20 @@ func (p *Parser) parseType() types.Type {
 
 	p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.peekToken.Type))
 	return nil
+}
+
+func (p *Parser) parseInterfaceMethod() types.Type {
+	_, ts := p.parseFunctionParameters()
+
+	fType := types.FunctionType{Params: ts, Return: types.Unit}
+
+	if p.peekTokenIs(token.Arrow) {
+		p.nextToken()
+		p.nextToken() // parseType requires us to be on the type token
+		fType.Return = p.parseType()
+	}
+
+	return fType
 }
 
 func (p *Parser) parseFunctionType() types.Type {
@@ -918,12 +944,6 @@ func (p *Parser) parseMapType() types.Type {
 
 func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 	stmt := &ast.StructDefinitionStmt{}
-
-	// this will change when we add interface defns as we will consume that token in an if statement
-	if !p.currTokenIs(token.Struct) {
-		p.errors = append(p.errors, fmt.Sprintf("expected struct, got %s", p.currToken.Literal))
-		return nil
-	}
 	if !p.expectPeek(token.Identifier) {
 		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
 		return nil
@@ -962,6 +982,51 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 
 	stmt.Type = t
 	p.definedStructs[stmt.Name.Value] = t
+
+	return stmt
+}
+
+func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
+	stmt := &ast.InterfaceDefinitionStmt{}
+	if !p.expectPeek(token.Identifier) {
+		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	name := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	stmt.Name = name
+
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	methods := make([]string, 0)
+	tt := make([]types.Type, 0)
+
+	for !p.peekTokenIs(token.RightCurlyBracket) {
+		p.nextToken() // move to ident
+		if !p.currTokenIs(token.Identifier) {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			return nil
+		}
+		methods = append(methods, p.currToken.Literal)
+		p.nextToken() // we don't have a way to peek for a set of types so advance and let the type parser catch it
+		tt = append(tt, p.parseInterfaceMethod())
+
+		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
+			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
+			return nil
+		}
+	}
+	if !p.expectPeek(token.RightCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		return nil
+	}
+	t := types.InterfaceType{Methods: methods, Types: tt, Name: stmt.Name.Value}
+
+	stmt.Type = t
+	p.definedInterfaces[stmt.Name.Value] = t
 
 	return stmt
 }
