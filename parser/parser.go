@@ -183,7 +183,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 		if stmt != nil {
 			program.Stmts = append(program.Stmts, stmt)
 		}
-		p.nextToken() // advance past semis?
+		p.nextToken()
 	}
 	return program
 }

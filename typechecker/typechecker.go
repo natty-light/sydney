@@ -2,6 +2,7 @@ package typechecker
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"sydney/ast"
 	"sydney/types"
@@ -11,6 +12,7 @@ type Checker struct {
 	env               *TypeEnv
 	errors            []string
 	currentReturnType types.Type
+	definedStructs    map[string]types.Type
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -27,6 +29,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		env,
 		errors,
 		nil,
+		make(map[string]types.Type),
 	}
 }
 
@@ -161,6 +164,8 @@ func (c *Checker) check(node ast.Node) types.Type {
 
 		c.env = oldEnv
 		c.currentReturnType = oldReturnType
+	case *ast.StructDefinitionStmt:
+		c.definedStructs[node.Name.Value] = node.Type
 	}
 
 	return types.Unit
@@ -340,6 +345,58 @@ func (c *Checker) typeOf(expr ast.Expr) types.Type {
 		}
 		c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
 		return nil
+	case *ast.SelectorExpr:
+		t := c.typeOf(expr.Left)
+		structType, ok := t.(types.StructType)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("cannot access field of non-struct value %s of type %s", expr.Left.TokenLiteral(), t.Signature()))
+		}
+		val, ok := expr.Value.(*ast.Identifier)
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("idk what to put here I'll figure it out later"))
+			return types.Unit
+		}
+		i := slices.Index(structType.Fields, val.Value)
+		if i == -1 {
+			c.errors = append(c.errors, fmt.Sprintf("field %s of struct type %s not found", val.Value, expr.Left.TokenLiteral()))
+			return types.Unit
+		}
+
+		return structType.Types[i]
+	case *ast.StructLiteral:
+		t, ok := c.definedStructs[expr.Name]
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("unknown type %s", expr.Name))
+			return types.Unit
+		}
+
+		structType := t.(types.StructType)
+		providedFields := make(map[string]ast.Expr)
+		for i, name := range expr.Fields {
+			providedFields[name] = expr.Values[i]
+		}
+
+		for _, expected := range structType.Fields {
+			if _, ok := providedFields[expected]; !ok {
+				c.errors = append(c.errors, fmt.Sprintf("missing field %s in struct literal %s", expected, expr.Name))
+			}
+		}
+
+		for i, fieldName := range expr.Fields {
+			idx := slices.Index(structType.Fields, fieldName)
+			if idx == -1 {
+				c.errors = append(c.errors, fmt.Sprintf("field %s of struct type %s not found", fieldName, expr.Name))
+				continue
+			}
+
+			expectedType := structType.Types[idx]
+			actualType := c.typeOf(expr.Values[i])
+			if !typesMatch(actualType, expectedType) {
+				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
+			}
+		}
+
+		return structType
 	}
 	return nil
 }
