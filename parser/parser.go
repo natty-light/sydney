@@ -980,7 +980,7 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
 		return nil
 	}
-	t := types.StructType{Fields: fields, Types: tt, Name: stmt.Name.Value}
+	t := types.StructType{Fields: fields, Types: tt, Name: stmt.Name.Value, Interfaces: make([]types.Type, 0), SatisfiedInterfaces: make([]string, 0)}
 
 	stmt.Type = t
 	p.definedStructs[stmt.Name.Value] = t
@@ -1048,8 +1048,8 @@ func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
 
 	interfaceNames := make([]*ast.Identifier, 0)
 	interfaceNames = append(interfaceNames, &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal})
-	p.nextToken()
-	for p.currTokenIs(token.Comma) {
+	for p.peekTokenIs(token.Comma) {
+		p.nextToken()
 		p.nextToken()
 		if !p.currTokenIs(token.Identifier) {
 			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))

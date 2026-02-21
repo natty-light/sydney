@@ -33,9 +33,11 @@ type MapType struct {
 }
 
 type StructType struct {
-	Name   string
-	Fields []string
-	Types  []Type
+	Name                string
+	Fields              []string
+	Types               []Type
+	Interfaces          []Type
+	SatisfiedInterfaces []string
 }
 
 type InterfaceType struct {
@@ -101,7 +103,14 @@ func (s StructType) Signature() string {
 			out.WriteString(", ")
 		}
 	}
-	out.WriteString(" }")
+	out.WriteString(" } impl ")
+
+	for i, field := range s.Interfaces {
+		out.WriteString(field.(InterfaceType).Name)
+		if i < len(s.Interfaces)-1 {
+			out.WriteString(", ")
+		}
+	}
 
 	return out.String()
 }
