@@ -199,11 +199,11 @@ func (c *Checker) check(n ast.Node) types.Type {
 	case *ast.SelectorAssignmentStmt:
 		valType := c.typeOf(node.Value)
 
-		structTypeRaw := c.typeOf(node.Left.Left)
+		str := c.typeOf(node.Left.Left)
 
-		structType, ok := structTypeRaw.(types.StructType)
+		structType, ok := toStruct(str)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value of type %s", structTypeRaw.Signature()))
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value of type %s", str.Signature()))
 			return types.Unit
 		}
 
@@ -235,7 +235,12 @@ func (c *Checker) hoistBase(n ast.Node) {
 	case *ast.StructDefinitionStmt:
 		c.definedStructs[node.Name.Value] = node.Type
 	case *ast.InterfaceDefinitionStmt:
+		node.Type.MethodIndices = make(map[string]int)
+		for i, mn := range node.Type.Methods {
+			node.Type.MethodIndices[mn] = i
+		}
 		c.env.Set(node.Name.Value, node.Type)
+		n = node
 	case *ast.VarDeclarationStmt:
 		if node.Type != nil {
 			// Only check the current scope's store to allow shadowing
@@ -856,7 +861,7 @@ func (c *Checker) validateImplementation(node *ast.InterfaceImplementationStmt) 
 }
 
 func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
-	structType, ok := t.(types.StructType)
+	structType, ok := toStruct(t)
 	if !ok {
 		return "", false
 	}
@@ -868,7 +873,7 @@ func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
 	}
 
 	for _, interfaceRaw := range withInterfaces.Interfaces {
-		interfaceType := interfaceRaw.(types.InterfaceType)
+		interfaceType, _ := toInterface(interfaceRaw)
 		for _, mn := range interfaceType.Methods {
 			if mn == name {
 				return sn, true
@@ -895,10 +900,17 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 	}
 
 	for i, arg := range expr.Arguments {
-		argType := c.typeOf(arg)
-		if !c.typesMatch(argType, fnType.Params[i]) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", argType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()))
+		aType := c.typeOf(arg)
+		pType := fnType.Params[i]
+		if !c.typesMatch(aType, pType) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", aType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()))
 			return nil
+		}
+		_, sok := toStruct(aType)
+		it, iok := toInterface(pType)
+
+		if sok && iok {
+			expr.Arguments[i].SetCastTo(it)
 		}
 	}
 	return fnType.Return
@@ -943,35 +955,33 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 	if actual == nil || expected == nil {
 		return actual == expected
 	}
-	if _, ok := actual.(types.BasicType); ok {
-		if _, ok := expected.(types.BasicType); ok {
-			return actual == expected || actual == types.Any || expected == types.Any
-		}
+	if isBasicType(actual) && isBasicType(expected) {
+		return actual == expected || actual == types.Any || expected == types.Any
 	}
 
 	// Handle empty collections (e.g., [] matching array<int>)
-	if actArr, ok := actual.(types.ArrayType); ok {
-		if expectedArr, ok := expected.(types.ArrayType); ok {
-			if actArr.IsEmpty {
+	if aa, ok := toArray(actual); ok {
+		if ea, ok := toArray(expected); ok {
+			if aa.IsEmpty {
 				return true
 			}
 
-			return c.typesMatch(actArr.ElemType, expectedArr.ElemType)
+			return c.typesMatch(aa.ElemType, ea.ElemType)
 		}
 	}
 
-	if expMap, ok := actual.(types.MapType); ok {
-		if actMap, ok := expected.(types.MapType); ok {
-			if actMap.IsEmpty {
+	if em, ok := toMap(expected); ok {
+		if am, ok := toMap(actual); ok {
+			if am.IsEmpty || em.IsEmpty { // this is a shitty fix to a logic bug in where this is called for maps
 				return true
 			}
 
-			return c.typesMatch(expMap.KeyType, actMap.KeyType) && c.typesMatch(expMap.ValueType, actMap.ValueType)
+			return c.typesMatch(em.KeyType, am.KeyType) && c.typesMatch(em.ValueType, am.ValueType)
 		}
 	}
 
-	if it, ok := expected.(types.InterfaceType); ok {
-		if st, ok := actual.(types.StructType); ok {
+	if it, ok := toInterface(expected); ok {
+		if st, ok := toStruct(actual); ok {
 			return c.structSatisfiesInterface(st, it)
 		}
 	}
@@ -981,4 +991,30 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 
 func isString(t types.Type) bool {
 	return t.Signature() == types.String.Signature()
+}
+
+func toStruct(t types.Type) (types.StructType, bool) {
+	typ, ok := t.(types.StructType)
+
+	return typ, ok
+}
+
+func toInterface(t types.Type) (types.InterfaceType, bool) {
+	typ, ok := t.(types.InterfaceType)
+	return typ, ok
+}
+
+func isBasicType(t types.Type) bool {
+	_, ok := t.(types.BasicType)
+	return ok
+}
+
+func toArray(t types.Type) (types.ArrayType, bool) {
+	typ, ok := t.(types.ArrayType)
+	return typ, ok
+}
+
+func toMap(t types.Type) (types.MapType, bool) {
+	typ, ok := t.(types.MapType)
+	return typ, ok
 }

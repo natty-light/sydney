@@ -24,6 +24,7 @@ type (
 	Expr interface {
 		Node
 		expressionNode()
+		SetCastTo(it types.InterfaceType)
 	}
 )
 
@@ -33,6 +34,14 @@ type (
 		Stmts []Stmt
 	}
 )
+
+type castable struct{ CastTo types.InterfaceType }
+
+func (c *castable) SetCastTo(it types.InterfaceType) { c.CastTo = it }
+
+type noCast struct{}
+
+func (n *noCast) SetCastTo(it types.InterfaceType) {}
 
 // Statements
 type (
@@ -117,11 +126,13 @@ type (
 	IntegerLiteral struct {
 		Token token.Token
 		Value int64
+		noCast
 	}
 
 	BooleanLiteral struct {
 		Token token.Token
 		Value bool
+		noCast
 	}
 
 	FunctionLiteral struct {
@@ -130,36 +141,43 @@ type (
 		Body       *BlockStmt
 		Name       string
 		Type       types.FunctionType
+		noCast
 	}
 
 	StringLiteral struct {
 		Token token.Token
 		Value string
+		noCast
 	}
 
 	ArrayLiteral struct {
 		Token    token.Token
 		Elements []Expr
+		noCast
 	}
 
 	NullLiteral struct {
 		Token token.Token
+		noCast
 	}
 
 	HashLiteral struct {
 		Token token.Token
 		Pairs map[Expr]Expr
+		noCast
 	}
 
 	FloatLiteral struct {
 		Token token.Token
 		Value float64
+		noCast
 	}
 
 	MacroLiteral struct {
 		Token      token.Token
 		Parameters []*Identifier
 		Body       *BlockStmt
+		noCast
 	}
 
 	StructLiteral struct {
@@ -168,18 +186,21 @@ type (
 		Fields       []string
 		Values       []Expr
 		ResolvedType types.StructType
+		castable
 	}
 
 	// Expressions
 	Identifier struct {
 		Token token.Token // token.Ident
 		Value string
+		castable
 	}
 
 	PrefixExpr struct {
 		Token    token.Token
 		Operator string
 		Right    Expr
+		noCast
 	}
 
 	InfixExpr struct {
@@ -187,6 +208,7 @@ type (
 		Left     Expr
 		Operator string
 		Right    Expr
+		noCast
 	}
 
 	IfExpr struct {
@@ -194,6 +216,7 @@ type (
 		Condition   Expr
 		Consequence *BlockStmt
 		Alternative *BlockStmt
+		castable
 	}
 
 	CallExpr struct {
@@ -201,12 +224,14 @@ type (
 		Function    Expr
 		Arguments   []Expr
 		MangledName string
+		castable
 	}
 
 	IndexExpr struct {
 		Token token.Token
 		Left  Expr
 		Index Expr
+		castable
 	}
 
 	SelectorExpr struct {
@@ -214,6 +239,7 @@ type (
 		Left         Expr
 		Value        Expr
 		ResolvedType types.StructType
+		castable
 	}
 )
 

@@ -41,9 +41,10 @@ type StructType struct {
 }
 
 type InterfaceType struct {
-	Name    string
-	Methods []string
-	Types   []Type
+	Name          string
+	Methods       []string
+	MethodIndices map[string]int
+	Types         []Type
 }
 
 const (
