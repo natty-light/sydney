@@ -8,6 +8,7 @@ import (
 	"sydney/lexer"
 	"sydney/object"
 	"sydney/parser"
+	"sydney/typechecker"
 	"sydney/vm"
 	"time"
 )
@@ -15,7 +16,7 @@ import (
 var engine = flag.String("engine", "vm", "use 'vm' or 'eval'")
 
 var source = `
-const fib = func(x) {
+const fib = func(int x) -> int {
 	if (x == 0) {
 		return 0;
 	} else {
@@ -37,6 +38,8 @@ func main() {
 	l := lexer.New(source)
 	p := parser.New(l)
 	prog := p.ParseProgram()
+	c := typechecker.New(nil)
+	c.Check(prog)
 
 	if *engine == "vm" {
 		comp := compiler.New()
