@@ -12,18 +12,69 @@ type TypeErrorTest struct {
 }
 
 func TestValidTypeChecking(t *testing.T) {
-	source := "const int x = 5; x;"
+	source := []string{
+		"const int x = 5; x;",
+		"define interface Area { area() -> float }",
+		`define struct Point { x int, y int }
+		define struct Circle { p Point, radius float }
+		
+		define interface Area { area() -> float }
+		define implementation Circle -> Area
+		func area(Circle c) -> float {
+			const pi = 3.14;
+			return c.radius * c.radius * pi;
+		};`,
 
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	c := New(nil)
-	c.Check(program)
+		`define struct Rect { w float, h float }
+		define struct Point { x float, y float }
+		define struct Circle { p Point, r float }
+		
+		define interface Area { area() -> float }
+		
+		define implementation Circle -> Area
+		define implementation Rect -> Area
+		
+		func area(Circle c) -> float {
+			const pi = 3.14;
+			return c.r * c.r * pi;
+		}
+		
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}`,
+		`define struct Rect { w float, h float }
 
-	errors := c.Errors()
-	if len(errors) != 0 {
-		t.Fatalf("typechecker errors: %v", errors)
+		define interface Area { area() -> float }
+
+		define implementation Rect -> Area
+
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}
+		
+		func getArea(Area a) -> float {
+			return a.area();
+		}
+		
+		const Rect r = Rect { w: 2.0, h: 2.0 };
+
+		getArea(r);`,
 	}
+
+	for _, s := range source {
+
+		l := lexer.New(s)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		c := New(nil)
+		c.Check(program)
+
+		errors := c.Errors()
+		if len(errors) != 0 {
+			t.Fatalf("typechecker errors: %v", errors)
+		}
+	}
+
 }
 
 func TestFirstClassFunctions(t *testing.T) {
@@ -80,8 +131,8 @@ func TestTypeErrorChecking(t *testing.T) {
 			"type mismatch: cannot assign int to variable x of type string",
 		},
 		{ // if alternative
-			"mut int x = 5; if (x == 5) { mut string x = \"hello\"; } else { mut string x = 5; }",
-			"type mismatch: cannot assign int to variable x of type string",
+			"mut int x = 5; if (x == 5) { mut string x = \"hello\"; } else { x = \"world\"; }",
+			"type mismatch: cannot assign string to variable x of type int",
 		},
 		{ // prefix expression !
 			"mut int x = 5; !x;",

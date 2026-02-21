@@ -594,6 +594,64 @@ func TestStructs(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestInterfaces(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `
+		define struct Rect { w int, h int }
+		define struct Point { x int, y int }
+		define struct Circle { p Point, r int }
+
+		define interface Area { area() -> int }
+
+		define implementation Circle -> Area
+		define implementation Rect -> Area
+
+		func area(Circle c) -> int {
+			const pi = 3;
+			return c.r * c.r * pi;
+		}
+
+		func area(Rect r) -> int {
+			return r.w * r.h;
+		}
+
+		const Rect r = Rect { w: 2, h: 2 }
+		r.area();
+		`,
+			expected: 4,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestInterfacesAsParams(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `define struct Rect { w float, h float }
+		define interface Area { area() -> float }
+		define implementation Rect -> Area
+
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}
+		
+		func getArea(Area a) -> float {
+			return a.area();
+		}
+		
+		const Rect r = Rect { w: 2.0, h: 2.0 };
+
+		getArea(r);
+`,
+			expected: 4.0,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 

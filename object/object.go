@@ -34,6 +34,8 @@ const (
 	ClosureObj          ObjectType = "Closure"
 	StructObj           ObjectType = "Struct"
 	TypeObj             ObjectType = "TypeObject"
+	InterfaceObj        ObjectType = "Interface"
+	ItabObj             ObjectType = "Itab"
 )
 
 type (
@@ -138,6 +140,17 @@ type (
 	TypeObject struct {
 		T types.Type
 	}
+
+	Interface struct {
+		Value Object
+		Itab  *Itab
+	}
+
+	Itab struct {
+		InterfaceName  string
+		ConcreteName   string
+		MethodsIndices []int // indices into constant pool
+	}
 )
 
 func (i *Integer) Type() ObjectType {
@@ -210,6 +223,14 @@ func (s *Struct) Type() ObjectType {
 
 func (t *TypeObject) Type() ObjectType {
 	return TypeObj
+}
+
+func (i *Interface) Type() ObjectType {
+	return InterfaceObj
+}
+
+func (i *Itab) Type() ObjectType {
+	return ItabObj
 }
 
 func (i *Integer) Inspect() string {
@@ -344,6 +365,27 @@ func (s *Struct) Inspect() string {
 
 func (t *TypeObject) Inspect() string {
 	return t.T.Signature()
+}
+
+func (i *Interface) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString("interface ")
+	out.WriteString(i.Value.Inspect())
+	out.WriteString(" {\n")
+	out.WriteString(i.Itab.Inspect())
+	out.WriteString("\n}")
+
+	return out.String()
+}
+
+func (i *Itab) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString("itab ")
+	out.WriteString(i.InterfaceName)
+	out.WriteString(" -> ")
+	out.WriteString(i.ConcreteName)
+
+	return out.String()
 }
 
 // HashKey functions

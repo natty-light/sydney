@@ -33,9 +33,18 @@ type MapType struct {
 }
 
 type StructType struct {
-	Name   string
-	Fields []string
-	Types  []Type
+	Name                string
+	Fields              []string
+	Types               []Type
+	Interfaces          []Type
+	SatisfiedInterfaces []string
+}
+
+type InterfaceType struct {
+	Name          string
+	Methods       []string
+	MethodIndices map[string]int
+	Types         []Type
 }
 
 const (
@@ -84,14 +93,27 @@ func (m MapType) Signature() string {
 }
 
 func (s StructType) Signature() string {
+	return s.Name
+}
+
+func (s InterfaceType) Signature() string {
 	var out bytes.Buffer
 	out.WriteString(s.Name)
 	out.WriteString(" { ")
-	for i, field := range s.Fields {
-		out.WriteString(field)
-		out.WriteString(" ")
-		out.WriteString(s.Types[i].Signature())
-		if i < len(s.Fields)-1 {
+	for i, method := range s.Methods {
+		t := s.Types[i].(FunctionType)
+		out.WriteString(method)
+		out.WriteString("(")
+		for i, tt := range t.Params {
+			out.WriteString(tt.Signature())
+			if i < len(t.Params)-1 {
+				out.WriteString(", ")
+			}
+		}
+		out.WriteString(")")
+		out.WriteString("->")
+		out.WriteString(t.Return.Signature())
+		if i < len(s.Methods)-1 {
 			out.WriteString(", ")
 		}
 	}

@@ -338,6 +338,43 @@ func (vm *VM) Run() error {
 			}
 
 			s.Fields[fieldIdx] = value
+		case code.OpBox:
+			itabIdx := code.ReadUint16(ins[ip+1:])
+			vm.currentFrame().ip += 2
+			val := vm.pop()
+			i := &object.Interface{Value: val, Itab: vm.constants[itabIdx].(*object.Itab)}
+			err := vm.push(i)
+			if err != nil {
+				return err
+			}
+		case code.OpCallInterface:
+			// stack looks like [ ... iface obj, arg1, ... argN]
+
+			method := code.ReadUint16(ins[ip+1:])
+			numArgs := int(code.ReadUint8(ins[ip+3:]))
+			vm.currentFrame().ip += 3
+			args := make([]object.Object, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+
+			iObj := vm.pop()
+			i, ok := iObj.(*object.Interface)
+			if !ok {
+				return fmt.Errorf("expected interface, got %T", iObj)
+			}
+
+			globalIdx := i.Itab.MethodsIndices[method]
+			closure := vm.globals[globalIdx].(*object.Closure)
+			err := vm.push(i.Value)
+			if err != nil {
+				return err
+			}
+
+			err = vm.callClosure(closure, numArgs+1)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

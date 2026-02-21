@@ -50,6 +50,8 @@ const (
 	OpStruct
 	OpGetField
 	OpSetField
+	OpBox
+	OpCallInterface
 )
 
 type (
@@ -99,6 +101,8 @@ var definitions = map[Opcode]*Definition{
 	OpStruct:             {"OpStruct", []int{2, 1}}, // num fields
 	OpGetField:           {"OpGetField", []int{1}},  // idx
 	OpSetField:           {"OpSetField", []int{1}},
+	OpBox:                {"OpBox", []int{2}},              // itab idx
+	OpCallInterface:      {"OpCallInterface", []int{2, 1}}, // methodIdx, numArgs
 }
 
 func Lookup(op byte) (*Definition, error) {

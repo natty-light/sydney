@@ -24,6 +24,8 @@ type (
 	Expr interface {
 		Node
 		expressionNode()
+		SetCastTo(it *types.InterfaceType)
+		GetCastTo() *types.InterfaceType
 	}
 )
 
@@ -33,6 +35,16 @@ type (
 		Stmts []Stmt
 	}
 )
+
+type castable struct{ CastTo *types.InterfaceType }
+
+func (c *castable) SetCastTo(it *types.InterfaceType) { c.CastTo = it }
+func (c *castable) GetCastTo() *types.InterfaceType   { return c.CastTo }
+
+type noCast struct{}
+
+func (n *noCast) SetCastTo(_ *types.InterfaceType) {}
+func (n *noCast) GetCastTo() *types.InterfaceType  { return nil }
 
 // Statements
 type (
@@ -78,11 +90,12 @@ type (
 	}
 
 	FunctionDeclarationStmt struct {
-		Token  token.Token
-		Name   *Identifier
-		Params []*Identifier
-		Body   *BlockStmt
-		Type   types.Type
+		Token       token.Token
+		Name        *Identifier
+		Params      []*Identifier
+		Body        *BlockStmt
+		Type        types.Type
+		MangledName string
 	}
 
 	StructDefinitionStmt struct {
@@ -96,6 +109,18 @@ type (
 		Left  *SelectorExpr
 		Value Expr
 	}
+
+	InterfaceDefinitionStmt struct {
+		Token token.Token
+		Name  *Identifier
+		Type  types.InterfaceType
+	}
+
+	InterfaceImplementationStmt struct {
+		Token          token.Token
+		StructName     *Identifier
+		InterfaceNames []*Identifier
+	}
 )
 
 // Expressions and literals
@@ -104,11 +129,13 @@ type (
 	IntegerLiteral struct {
 		Token token.Token
 		Value int64
+		noCast
 	}
 
 	BooleanLiteral struct {
 		Token token.Token
 		Value bool
+		noCast
 	}
 
 	FunctionLiteral struct {
@@ -117,36 +144,43 @@ type (
 		Body       *BlockStmt
 		Name       string
 		Type       types.FunctionType
+		noCast
 	}
 
 	StringLiteral struct {
 		Token token.Token
 		Value string
+		noCast
 	}
 
 	ArrayLiteral struct {
 		Token    token.Token
 		Elements []Expr
+		noCast
 	}
 
 	NullLiteral struct {
 		Token token.Token
+		noCast
 	}
 
 	HashLiteral struct {
 		Token token.Token
 		Pairs map[Expr]Expr
+		noCast
 	}
 
 	FloatLiteral struct {
 		Token token.Token
 		Value float64
+		noCast
 	}
 
 	MacroLiteral struct {
 		Token      token.Token
 		Parameters []*Identifier
 		Body       *BlockStmt
+		noCast
 	}
 
 	StructLiteral struct {
@@ -155,18 +189,22 @@ type (
 		Fields       []string
 		Values       []Expr
 		ResolvedType types.StructType
+		castable
 	}
 
 	// Expressions
 	Identifier struct {
-		Token token.Token // token.Ident
-		Value string
+		Token        token.Token // token.Ident
+		Value        string
+		ResolvedType types.Type
+		castable
 	}
 
 	PrefixExpr struct {
 		Token    token.Token
 		Operator string
 		Right    Expr
+		noCast
 	}
 
 	InfixExpr struct {
@@ -174,6 +212,7 @@ type (
 		Left     Expr
 		Operator string
 		Right    Expr
+		noCast
 	}
 
 	IfExpr struct {
@@ -181,18 +220,24 @@ type (
 		Condition   Expr
 		Consequence *BlockStmt
 		Alternative *BlockStmt
+		castable
 	}
 
 	CallExpr struct {
-		Token     token.Token
-		Function  Expr
-		Arguments []Expr
+		Token        token.Token
+		Function     Expr
+		Arguments    []Expr
+		MangledName  string
+		ResolvedType types.Type
+		castable
 	}
 
 	IndexExpr struct {
-		Token token.Token
-		Left  Expr
-		Index Expr
+		Token        token.Token
+		Left         Expr
+		Index        Expr
+		ResolvedType types.Type
+		castable
 	}
 
 	SelectorExpr struct {
@@ -200,6 +245,7 @@ type (
 		Left         Expr
 		Value        Expr
 		ResolvedType types.StructType
+		castable
 	}
 )
 
@@ -318,6 +364,14 @@ func (s *SelectorExpr) TokenLiteral() string {
 
 func (s *SelectorAssignmentStmt) TokenLiteral() string {
 	return s.Token.Literal
+}
+
+func (i *InterfaceDefinitionStmt) TokenLiteral() string {
+	return i.Token.Literal
+}
+
+func (i *InterfaceImplementationStmt) TokenLiteral() string {
+	return i.Token.Literal
 }
 
 // Statements
@@ -442,6 +496,37 @@ func (s *SelectorAssignmentStmt) String() string {
 	out.WriteString(s.Left.String())
 	out.WriteString(" = ")
 	out.WriteString(s.Value.String())
+
+	return out.String()
+}
+
+func (i *InterfaceDefinitionStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("define interface")
+	out.WriteString(i.Type.Signature())
+
+	return out.String()
+}
+
+func (i *InterfaceImplementationStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("define implementation ")
+	out.WriteString(i.StructName.String())
+	out.WriteString(" -> ")
+	if len(i.InterfaceNames) > 1 {
+		out.WriteString("(")
+	}
+
+	for idx, n := range i.InterfaceNames {
+		out.WriteString(n.String())
+		if idx < len(i.InterfaceNames)-1 {
+			out.WriteString(", ")
+		}
+	}
+
+	if len(i.InterfaceNames) > 1 {
+		out.WriteString(")")
+	}
 
 	return out.String()
 }
@@ -642,16 +727,18 @@ func (s *StructLiteral) String() string {
 }
 
 // Statements
-func (v *VarDeclarationStmt) statementNode()      {}
-func (r *ReturnStmt) statementNode()              {}
-func (e *ExpressionStmt) statementNode()          {}
-func (b *BlockStmt) statementNode()               {}
-func (v *VarAssignmentStmt) statementNode()       {}
-func (f *ForStmt) statementNode()                 {}
-func (i *IndexAssignmentStmt) statementNode()     {}
-func (f *FunctionDeclarationStmt) statementNode() {}
-func (s *StructDefinitionStmt) statementNode()    {}
-func (s *SelectorAssignmentStmt) statementNode()  {}
+func (v *VarDeclarationStmt) statementNode()          {}
+func (r *ReturnStmt) statementNode()                  {}
+func (e *ExpressionStmt) statementNode()              {}
+func (b *BlockStmt) statementNode()                   {}
+func (v *VarAssignmentStmt) statementNode()           {}
+func (f *ForStmt) statementNode()                     {}
+func (i *IndexAssignmentStmt) statementNode()         {}
+func (f *FunctionDeclarationStmt) statementNode()     {}
+func (s *StructDefinitionStmt) statementNode()        {}
+func (s *SelectorAssignmentStmt) statementNode()      {}
+func (i *InterfaceDefinitionStmt) statementNode()     {}
+func (i *InterfaceImplementationStmt) statementNode() {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

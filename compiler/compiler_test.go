@@ -1450,13 +1450,143 @@ func TestStructs(t *testing.T) {
 				code.Make(code.OpConstant, 1),
 				code.Make(code.OpStruct, 2, 2),
 
-				code.Make(code.OpSetImmutableGlobal, 0),
-
-				code.Make(code.OpClosure, 3, 0),
 				code.Make(code.OpSetImmutableGlobal, 1),
 
-				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpClosure, 3, 0),
+				code.Make(code.OpSetImmutableGlobal, 0),
+
 				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpCall, 1),
+				code.Make(code.OpPop),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
+func TestInterfaces(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			source: `define struct Circle { radius float }
+					define interface Area { area() -> float }
+					define implementation Circle -> Area
+					const Circle c = Circle { radius: 2.0 };
+
+					func area(Circle c) -> float {
+						const pi = 3.14;
+						return c.radius * c.radius * pi;
+					}
+
+					c.area();`,
+			expectedConstants: []interface{}{
+				&object.Itab{
+					InterfaceName:  "Area",
+					ConcreteName:   "Circle",
+					MethodsIndices: []int{1},
+				},
+				2.0,
+				&object.TypeObject{
+					T: types.StructType{
+						Fields: []string{"radius"},
+						Types:  []types.Type{types.Float},
+						Name:   "Circle",
+					},
+				},
+				3.14,
+				[]code.Instructions{
+					code.Make(code.OpConstant, 3),
+					code.Make(code.OpSetImmutableLocal, 1),
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetField, 0),
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetField, 0),
+					code.Make(code.OpMul),
+					code.Make(code.OpGetLocal, 1),
+					code.Make(code.OpMul),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 1),
+				code.Make(code.OpStruct, 2, 1),
+				code.Make(code.OpSetImmutableGlobal, 1),
+				code.Make(code.OpClosure, 4),
+				code.Make(code.OpSetImmutableGlobal, 0),
+				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpCall, 1),
+				code.Make(code.OpPop),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
+func TestInterfacesAsArguments(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			source: `define struct Rect { w float, h float }
+			define interface Area { area() -> float }
+			define implementation Rect -> Area
+	
+			func area(Rect r) -> float {
+				return r.w * r.h;
+			}
+			
+			func getArea(Area a) -> float {
+				return a.area();
+			}
+			
+			const Rect r = Rect { w: 2.0, h: 2.0 };
+	
+			getArea(r);`,
+			expectedConstants: []interface{}{
+				&object.Itab{
+					InterfaceName:  "Area",
+					ConcreteName:   "Rect",
+					MethodsIndices: []int{1},
+				},
+				[]code.Instructions{
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetField, 0),
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetField, 1),
+					code.Make(code.OpMul),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+				[]code.Instructions{
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpCallInterface, 0, 0),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+				2.0,
+				2.0,
+				&object.TypeObject{
+					T: types.StructType{
+						Fields: []string{"w", "h"},
+						Types:  []types.Type{types.Float, types.Float},
+						Name:   "Rect",
+					},
+				},
+			},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpClosure, 1),
+				code.Make(code.OpSetImmutableGlobal, 0),
+				code.Make(code.OpClosure, 2),
+				code.Make(code.OpSetImmutableGlobal, 1),
+				code.Make(code.OpConstant, 3),
+				code.Make(code.OpConstant, 4),
+				code.Make(code.OpStruct, 5, 2),
+				code.Make(code.OpSetImmutableGlobal, 2),
+				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpGetGlobal, 2),
+				code.Make(code.OpBox, 0),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 			},

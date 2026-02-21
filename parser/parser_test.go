@@ -1338,6 +1338,81 @@ func TestParseEmbeddedStructs(t *testing.T) {
 	testStructLiteral(t, expr, expectedFields, "Circle")
 }
 
+func TestParseInterfaceDefinition(t *testing.T) {
+	source := "define interface Pointer { getX() -> int, setX(int x) }"
+	expectedType := types.InterfaceType{
+		Name:    "Pointer",
+		Methods: []string{"getX", "setX"},
+		Types: []types.Type{
+			types.FunctionType{
+				Params: []types.Type{},
+				Return: types.Int,
+			},
+			types.FunctionType{
+				Params: []types.Type{types.Int},
+				Return: types.Unit,
+			},
+		},
+	}
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Body does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.InterfaceDefinitionStmt)
+	if !ok {
+		t.Fatalf("expected program.Stmts to be *ast.InterfaceDefinitionStmt. got=%T", program.Stmts[0])
+	}
+
+	if stmt.Name.String() != "Pointer" {
+		t.Fatalf("stmt.Name.String() wrong. want %q, got=%q", "Pointer", stmt.Name.String())
+	}
+	tt := stmt.Type
+	if len(tt.Methods) != len(expectedType.Methods) {
+		t.Fatalf("wrong number of methods. want=%d, got=%d", len(expectedType.Methods), len(stmt.Type.Methods))
+	}
+
+	if len(tt.Types) != len(expectedType.Types) {
+		t.Fatalf("wrong number of types. want=%d, got=%d", len(expectedType.Types), len(tt.Types))
+	}
+
+	for i, m := range tt.Methods {
+		if m != expectedType.Methods[i] {
+			t.Fatalf("wrong method. want=%q, got=%q", m, expectedType.Methods[i])
+		}
+	}
+
+	for i, tt := range tt.Types {
+		if tt.Signature() != expectedType.Types[i].Signature() {
+			t.Fatalf("wrong signature. want=%q, got=%q", tt.Signature(), expectedType.Types[i].Signature())
+		}
+	}
+}
+
+func TestParseInterfaceImplementation(t *testing.T) {
+	source := "define implementation Circle -> Diameter, Area"
+	expected := []string{"Diameter", "Area"}
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Body does not contain %d statements. got=%d\n", 1, len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.InterfaceImplementationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.InterfaceImplementationStmt. got=%T", program.Stmts[0])
+	}
+
+	testIdentifier(t, stmt.StructName, "Circle")
+	for i, e := range expected {
+		testIdentifier(t, stmt.InterfaceNames[i], e)
+	}
+}
+
 func testStructLiteral(t *testing.T, expr *ast.StructLiteral, expectedFields []ExpectedStructField, expectedName string) {
 	if expr.Name != expectedName {
 		t.Fatalf("expr.Name wrong. want %q, got=%q", "Person", expr.Name)
