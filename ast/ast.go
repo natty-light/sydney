@@ -78,11 +78,12 @@ type (
 	}
 
 	FunctionDeclarationStmt struct {
-		Token  token.Token
-		Name   *Identifier
-		Params []*Identifier
-		Body   *BlockStmt
-		Type   types.Type
+		Token       token.Token
+		Name        *Identifier
+		Params      []*Identifier
+		Body        *BlockStmt
+		Type        types.Type
+		MangledName string
 	}
 
 	StructDefinitionStmt struct {
@@ -196,9 +197,10 @@ type (
 	}
 
 	CallExpr struct {
-		Token     token.Token
-		Function  Expr
-		Arguments []Expr
+		Token       token.Token
+		Function    Expr
+		Arguments   []Expr
+		MangledName string
 	}
 
 	IndexExpr struct {

@@ -1450,13 +1450,13 @@ func TestStructs(t *testing.T) {
 				code.Make(code.OpConstant, 1),
 				code.Make(code.OpStruct, 2, 2),
 
-				code.Make(code.OpSetImmutableGlobal, 0),
-
-				code.Make(code.OpClosure, 3, 0),
 				code.Make(code.OpSetImmutableGlobal, 1),
 
-				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpClosure, 3, 0),
+				code.Make(code.OpSetImmutableGlobal, 0),
+
 				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetGlobal, 1),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 			},

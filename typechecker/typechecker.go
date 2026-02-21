@@ -159,6 +159,8 @@ func (c *Checker) check(n ast.Node) types.Type {
 			receiverType := fTypeRaw.Params[0]
 			if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
 				name = fmt.Sprintf("%s.%s", sn, name)
+				node.MangledName = name
+				n = node
 			}
 		}
 
@@ -249,6 +251,8 @@ func (c *Checker) hoist(n ast.Node) types.Type {
 			receiverType := fType.Params[0]
 			if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
 				name = fmt.Sprintf("%s.%s", sn, name)
+				node.MangledName = name
+				n = node
 			}
 		}
 		c.env.Set(name, node.Type)
@@ -622,6 +626,17 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr) types.Type {
 			if t, _, ok := c.env.Get(mangled); ok {
 				return c.validateFunctionCall(expr, t)
 			}
+		}
+	}
+
+	if selector, ok := expr.Function.(*ast.SelectorExpr); ok {
+		receiverType := c.typeOf(selector.Left)
+		methodName := selector.Value.(*ast.Identifier)
+		mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), methodName.Value)
+		if t, _, ok := c.env.Get(mangled); ok {
+			expr.Arguments = append([]ast.Expr{selector.Left}, expr.Arguments...)
+			expr.MangledName = mangled
+			return c.validateFunctionCall(expr, t)
 		}
 	}
 

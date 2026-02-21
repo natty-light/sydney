@@ -92,27 +92,7 @@ func (m MapType) Signature() string {
 }
 
 func (s StructType) Signature() string {
-	var out bytes.Buffer
-	out.WriteString(s.Name)
-	out.WriteString(" { ")
-	for i, field := range s.Fields {
-		out.WriteString(field)
-		out.WriteString(" ")
-		out.WriteString(s.Types[i].Signature())
-		if i < len(s.Fields)-1 {
-			out.WriteString(", ")
-		}
-	}
-	out.WriteString(" } impl ")
-
-	for i, field := range s.Interfaces {
-		out.WriteString(field.(InterfaceType).Name)
-		if i < len(s.Interfaces)-1 {
-			out.WriteString(", ")
-		}
-	}
-
-	return out.String()
+	return s.Name
 }
 
 func (s InterfaceType) Signature() string {

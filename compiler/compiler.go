@@ -68,6 +68,16 @@ func NewWithState(symbolTable *SymbolTable, constants []object.Object) *Compiler
 func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
+		for _, stmt := range node.Stmts {
+			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok {
+				name := fn.Name.Value
+				if fn.MangledName != "" {
+					name = fn.MangledName
+				}
+				c.symbolTable.DefineImmutable(name)
+			}
+		}
+
 		for _, s := range node.Stmts {
 			err := c.Compile(s)
 			if err != nil {
@@ -322,9 +332,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.loadSymbol(symbol)
 
 	case *ast.CallExpr:
-		err := c.Compile(node.Function)
-		if err != nil {
-			return err
+		if node.MangledName != "" {
+			symbol, _, ok := c.symbolTable.Resolve(node.MangledName)
+			if !ok {
+				return fmt.Errorf("undefined variable %s", node.MangledName)
+			}
+			c.loadSymbol(symbol)
+		} else {
+			err := c.Compile(node.Function)
+			if err != nil {
+				return err
+			}
 		}
 
 		// push arguments on to stack
@@ -386,7 +404,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpHash, len(node.Pairs)*2)
 	case *ast.FunctionDeclarationStmt:
-		symbol := c.symbolTable.DefineImmutable(node.Name.Value)
+		name := node.Name.Value
+		if node.MangledName != "" {
+			name = node.MangledName
+		}
+
+		symbol, _, _ := c.symbolTable.Resolve(name) // this was set in the first pass
 		c.enterScope()
 
 		c.symbolTable.DefineFunctionName(node.Name.Value)
