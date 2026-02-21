@@ -626,6 +626,32 @@ func TestInterfaces(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestInterfacesAsParams(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `define struct Rect { w float, h float }
+		define interface Area { area() -> float }
+		define implementation Rect -> Area
+
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}
+		
+		func getArea(Area a) -> float {
+			return a.area();
+		}
+		
+		const Rect r = Rect { w: 2.0, h: 2.0 };
+
+		getArea(r);
+`,
+			expected: 4.0,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 
