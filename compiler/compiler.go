@@ -92,6 +92,16 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpPop)
 	case *ast.BlockStmt:
 		for _, s := range node.Stmts {
+			if fn, ok := s.(*ast.FunctionDeclarationStmt); ok {
+				name := fn.Name.Value
+				if fn.MangledName != "" {
+					name = fn.MangledName
+				}
+				c.symbolTable.DefineImmutable(name)
+			}
+		}
+
+		for _, s := range node.Stmts {
 			err := c.Compile(s)
 			if err != nil {
 				return err
@@ -409,7 +419,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 			name = node.MangledName
 		}
 
-		symbol, _, _ := c.symbolTable.Resolve(name) // this was set in the first pass
+		symbol, _, ok := c.symbolTable.Resolve(name)
+		if !ok {
+			return fmt.Errorf("undefined function %s", name)
+		}
 		c.enterScope()
 
 		c.symbolTable.DefineFunctionName(node.Name.Value)
