@@ -147,9 +147,9 @@ type (
 	}
 
 	Itab struct {
-		InterfaceName string
-		ConcreteName  string
-		Methods       map[string]*Closure
+		InterfaceName  string
+		ConcreteName   string
+		MethodsIndices []int // indices into constant pool
 	}
 )
 
@@ -382,15 +382,8 @@ func (i *Itab) Inspect() string {
 	var out bytes.Buffer
 	out.WriteString("itab ")
 	out.WriteString(i.InterfaceName)
-	out.WriteString(" -> {")
+	out.WriteString(" -> ")
 	out.WriteString(i.ConcreteName)
-	for k, v := range i.Methods {
-		out.WriteString(k)
-		out.WriteString(": ")
-		out.WriteString(v.Inspect())
-		out.WriteString("\n")
-	}
-	out.WriteString("}")
 
 	return out.String()
 }

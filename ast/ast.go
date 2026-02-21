@@ -24,7 +24,8 @@ type (
 	Expr interface {
 		Node
 		expressionNode()
-		SetCastTo(it types.InterfaceType)
+		SetCastTo(it *types.InterfaceType)
+		GetCastTo() *types.InterfaceType
 	}
 )
 
@@ -35,13 +36,15 @@ type (
 	}
 )
 
-type castable struct{ CastTo types.InterfaceType }
+type castable struct{ CastTo *types.InterfaceType }
 
-func (c *castable) SetCastTo(it types.InterfaceType) { c.CastTo = it }
+func (c *castable) SetCastTo(it *types.InterfaceType) { c.CastTo = it }
+func (c *castable) GetCastTo() *types.InterfaceType   { return c.CastTo }
 
 type noCast struct{}
 
-func (n *noCast) SetCastTo(it types.InterfaceType) {}
+func (n *noCast) SetCastTo(_ *types.InterfaceType) {}
+func (n *noCast) GetCastTo() *types.InterfaceType  { return nil }
 
 // Statements
 type (
@@ -191,8 +194,9 @@ type (
 
 	// Expressions
 	Identifier struct {
-		Token token.Token // token.Ident
-		Value string
+		Token        token.Token // token.Ident
+		Value        string
+		ResolvedType types.Type
 		castable
 	}
 
@@ -220,17 +224,19 @@ type (
 	}
 
 	CallExpr struct {
-		Token       token.Token
-		Function    Expr
-		Arguments   []Expr
-		MangledName string
+		Token        token.Token
+		Function     Expr
+		Arguments    []Expr
+		MangledName  string
+		ResolvedType types.Type
 		castable
 	}
 
 	IndexExpr struct {
-		Token token.Token
-		Left  Expr
-		Index Expr
+		Token        token.Token
+		Left         Expr
+		Index        Expr
+		ResolvedType types.Type
 		castable
 	}
 

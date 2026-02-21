@@ -10,6 +10,9 @@ import (
 	"sydney/types"
 )
 
+// sn:in
+type ItabKey string
+
 type Compiler struct {
 	constants []object.Object
 
@@ -18,7 +21,9 @@ type Compiler struct {
 	scopes     []CompilationScope
 	scopeIndex int
 
-	structTypes map[string]types.StructType
+	structTypes    map[string]types.StructType
+	interfaceTypes map[string]types.InterfaceType
+	itabMapping    map[ItabKey]int
 }
 
 type Bytecode struct {
@@ -54,7 +59,11 @@ func New() *Compiler {
 		symbolTable: symbolTable,
 		scopes:      []CompilationScope{mainScope},
 		scopeIndex:  0,
-		structTypes: make(map[string]types.StructType),
+
+		structTypes:    make(map[string]types.StructType),
+		interfaceTypes: make(map[string]types.InterfaceType),
+
+		itabMapping: make(map[ItabKey]int),
 	}
 }
 
@@ -68,8 +77,12 @@ func NewWithState(symbolTable *SymbolTable, constants []object.Object) *Compiler
 func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
-		for _, stmt := range node.Stmts {
-			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok {
+		for _, stmt := range node.Stmts { // set interface types and populate method indices map
+			if def, ok := stmt.(*ast.InterfaceDefinitionStmt); ok {
+				c.setInterface(def.Name.Value, def.Type)
+			}
+
+			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok { // hoist functions for interfaces
 				name := fn.Name.Value
 				if fn.MangledName != "" {
 					name = fn.MangledName
@@ -78,7 +91,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		for _, s := range node.Stmts {
+		for _, stmt := range node.Stmts { // create itabs
+			if impl, ok := stmt.(*ast.InterfaceImplementationStmt); ok {
+				c.compileInterfaceImplementation(impl)
+			}
+		}
+
+		for _, s := range node.Stmts { // compile program
 			err := c.Compile(s)
 			if err != nil {
 				return err
@@ -342,6 +361,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.loadSymbol(symbol)
 
 	case *ast.CallExpr:
+		if s, ok := node.Function.(*ast.SelectorExpr); ok {
+			if _, ok := c.isInterfaceType(s.Left); ok {
+				return c.compileInterfaceMethodCall(node)
+			}
+		}
+
 		if node.MangledName != "" {
 			symbol, _, ok := c.symbolTable.Resolve(node.MangledName)
 			if !ok {
@@ -550,6 +575,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpSetField, idx)
 	}
+
+	if expr, ok := node.(ast.Expr); ok {
+		if castTo := expr.GetCastTo(); castTo != nil {
+			concreteName := getConcreteType(expr)
+
+			itabKey := getItabKey(concreteName, castTo.Name)
+			if itabIdx, ok := c.itabMapping[itabKey]; ok {
+				c.emit(code.OpBox, itabIdx)
+			} else {
+				return fmt.Errorf("struct %s does not implement %s", concreteName, castTo.Name)
+			}
+		}
+	}
 	return nil
 }
 
@@ -605,9 +643,9 @@ func (c *Compiler) removeLastPop() {
 	previous := c.scopes[c.scopeIndex].previousInstruction
 
 	old := c.currentInstructions()
-	new := old[:last.Position]
+	n := old[:last.Position]
 
-	c.scopes[c.scopeIndex].instructions = new
+	c.scopes[c.scopeIndex].instructions = n
 	c.scopes[c.scopeIndex].lastInstruction = previous
 }
 
@@ -705,4 +743,143 @@ func (c *Compiler) lookUpStruct(name string) (types.StructType, bool) {
 
 func (c *Compiler) setStruct(name string, t types.StructType) {
 	c.structTypes[name] = t
+}
+
+func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementationStmt) {
+	sn := impl.StructName.Value
+	for _, ident := range impl.InterfaceNames {
+		in := ident.Value
+		it, ok := c.fetchInterfaceType(in)
+		if !ok {
+			panic(fmt.Errorf("interface type %s not found", in))
+		}
+
+		itab := &object.Itab{
+			InterfaceName:  in,
+			ConcreteName:   sn,
+			MethodsIndices: make([]int, len(it.Methods)),
+		}
+
+		for mn, idx := range it.MethodIndices {
+			mangled := mangle(sn, mn)
+			sym, _, ok := c.symbolTable.Resolve(mangled)
+			if !ok {
+				panic(fmt.Errorf("symbol %s not found", mangled))
+			}
+			itab.MethodsIndices[idx] = sym.Index
+		}
+		itabIdx := c.addConstant(itab)
+		itabKey := getItabKey(sn, in)
+		c.itabMapping[itabKey] = itabIdx
+	}
+}
+
+func (c *Compiler) setInterface(name string, t types.InterfaceType) {
+	if t.MethodIndices == nil {
+		t.MethodIndices = make(map[string]int)
+		for i, mn := range t.Methods {
+			t.MethodIndices[mn] = i
+		}
+	}
+
+	c.interfaceTypes[name] = t
+}
+
+func (c *Compiler) fetchInterfaceType(name string) (types.InterfaceType, bool) {
+	it, ok := c.interfaceTypes[name]
+	return it, ok
+}
+
+func mangle(sn string, mn string) string {
+	return fmt.Sprintf("%s.%s", sn, mn)
+}
+
+func getItabKey(sn string, in string) ItabKey {
+	asStr := fmt.Sprintf("%s:%s", sn, in)
+	return ItabKey(asStr)
+}
+
+func getConcreteType(expr ast.Expr) string {
+	switch node := expr.(type) {
+	case *ast.StructLiteral:
+		return node.ResolvedType.Signature()
+	case *ast.Identifier:
+		return node.ResolvedType.Signature()
+	case *ast.CallExpr:
+		return node.ResolvedType.Signature()
+	}
+
+	return ""
+}
+
+func (c *Compiler) isInterfaceType(expr ast.Expr) (*types.InterfaceType, bool) {
+	var t types.Type
+	switch node := expr.(type) {
+	case *ast.Identifier:
+		t = node.ResolvedType
+	case *ast.CallExpr:
+		t = node.ResolvedType
+	case *ast.SelectorExpr:
+		t = node.ResolvedType
+	case *ast.IndexExpr:
+		t = node.ResolvedType
+	}
+
+	if t == nil {
+		return nil, false
+	}
+	it, ok := t.(types.InterfaceType)
+	return &it, ok
+}
+
+func (c *Compiler) compileInterfaceMethodCall(node *ast.CallExpr) error {
+	s := node.Function.(*ast.SelectorExpr) // prereq to being in this fn
+	if it, ok := c.isInterfaceType(s.Left); ok {
+		authIt, exists := c.fetchInterfaceType(it.Name)
+		if exists {
+			it = &authIt
+		}
+		// compile interface object
+		err := c.Compile(s.Left)
+		if err != nil {
+			return err
+		}
+
+		// push args onto stack
+		for _, arg := range node.Arguments {
+			err := c.Compile(arg)
+			if err != nil {
+				return err
+			}
+		}
+
+		methodIdx, ok := it.MethodIndices[s.Value.String()]
+		if !ok {
+			return nil
+		}
+
+		c.emit(code.OpCallInterface, methodIdx, len(node.Arguments))
+	} else if it := s.Left.GetCastTo(); it != nil {
+		// compile interface object
+		err := c.Compile(s.Left)
+		if err != nil {
+			return err
+		}
+
+		// push args onto stack
+		for _, arg := range node.Arguments {
+			err := c.Compile(arg)
+			if err != nil {
+				return err
+			}
+		}
+
+		// get method from indices for dynamic dispatch
+		methodName := s.Value.(*ast.Identifier).Value
+		methodIdx := it.MethodIndices[methodName]
+
+		c.emit(code.OpCallInterface, methodIdx, len(node.Arguments))
+	}
+
+	return nil
 }

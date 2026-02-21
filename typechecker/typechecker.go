@@ -81,8 +81,9 @@ func (c *Checker) check(n ast.Node) types.Type {
 
 		if !c.typesMatch(c.currentReturnType, valType) {
 			c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
+		} else {
+			c.boxIfNecessary(node.ReturnValue, valType, c.currentReturnType)
 		}
-
 		return valType
 	case *ast.ForStmt:
 		conditionType := c.typeOf(node.Condition)
@@ -99,9 +100,9 @@ func (c *Checker) check(n ast.Node) types.Type {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()))
 			}
 		} else {
+			c.boxIfNecessary(node.Value, valType, varType)
 			c.env.Set(node.Name.Value, valType)
 		}
-
 	case *ast.VarAssignmentStmt:
 		valType := c.typeOf(node.Value)
 		varType, _, ok := c.env.Get(node.Identifier.Value)
@@ -112,6 +113,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 		if !c.typesMatch(varType, valType) {
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Identifier.Value, varType.Signature()))
 		}
+		c.boxIfNecessary(node.Value, valType, varType)
 
 		return types.Unit
 	case *ast.IndexAssignmentStmt:
@@ -380,7 +382,8 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 			c.errors = append(c.errors, fmt.Sprintf("undefined identifier: %s", expr.Value))
 			return types.Unit
 		}
-
+		expr.ResolvedType = t
+		e = expr
 		return t
 	case *ast.InfixExpr:
 		lt := c.typeOf(expr.Left)
@@ -408,7 +411,9 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 
 		return cType
 	case *ast.CallExpr:
-		return c.typeOfCallExpr(expr)
+		t := c.typeOfCallExpr(expr)
+		e = expr
+		return t
 	case *ast.IndexExpr:
 		lt := c.typeOf(expr.Left)
 		idxT := c.typeOf(expr.Index)
@@ -420,7 +425,8 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 				c.errors = append(c.errors, fmt.Sprintf("index type for array must be int, got %s", idxT.Signature()))
 				return nil
 			}
-
+			expr.ResolvedType = at.ElemType
+			e = expr
 			return at.ElemType
 		} else if mok {
 			if idxT != mt.KeyType {
@@ -428,6 +434,8 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 				return nil
 			}
 
+			expr.ResolvedType = mt.ValueType
+			e = expr
 			return mt.ValueType
 		}
 		c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
@@ -449,7 +457,8 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 			return types.Unit
 		}
 
-		e.(*ast.SelectorExpr).ResolvedType = structType
+		expr.ResolvedType = structType
+		e = expr
 		return structType.Types[i]
 	case *ast.StructLiteral:
 		structType, ok := c.definedStructs[expr.Name]
@@ -480,6 +489,8 @@ func (c *Checker) typeOf(e ast.Expr) types.Type {
 			actualType := c.typeOf(expr.Values[i])
 			if !c.typesMatch(actualType, expectedType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
+			} else {
+				c.boxIfNecessary(expr.Values[i], actualType, expectedType)
 			}
 		}
 		e.(*ast.StructLiteral).ResolvedType = structType
@@ -647,12 +658,20 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr) types.Type {
 
 	if selector, ok := expr.Function.(*ast.SelectorExpr); ok {
 		receiverType := c.typeOf(selector.Left)
-		methodName := selector.Value.(*ast.Identifier)
-		mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), methodName.Value)
+		methodName := selector.Value.(*ast.Identifier).Value
+		mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), methodName)
 		if t, _, ok := c.env.Get(mangled); ok {
 			expr.Arguments = append([]ast.Expr{selector.Left}, expr.Arguments...)
 			expr.MangledName = mangled
 			return c.validateFunctionCall(expr, t)
+		}
+
+		if it, ok := toInterface(receiverType); ok {
+			for i, m := range it.Methods {
+				if m == methodName {
+					return c.validateFunctionCall(expr, it.Types[i])
+				}
+			}
 		}
 	}
 
@@ -906,13 +925,9 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", aType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()))
 			return nil
 		}
-		_, sok := toStruct(aType)
-		it, iok := toInterface(pType)
-
-		if sok && iok {
-			expr.Arguments[i].SetCastTo(it)
-		}
+		c.boxIfNecessary(expr.Arguments[i], aType, pType)
 	}
+	expr.ResolvedType = fnType.Return
 	return fnType.Return
 }
 
@@ -987,6 +1002,18 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 	}
 
 	return actual.Signature() == expected.Signature()
+}
+
+func (c *Checker) boxIfNecessary(expr ast.Expr, actual types.Type, expected types.Type) {
+	if expr == nil || actual == nil || expected == nil {
+		return
+	}
+
+	_, isStruct := toStruct(actual)
+	it, isInterface := toInterface(expected)
+	if isStruct && isInterface {
+		expr.SetCastTo(&it)
+	}
 }
 
 func isString(t types.Type) bool {

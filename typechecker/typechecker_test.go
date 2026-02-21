@@ -13,35 +13,52 @@ type TypeErrorTest struct {
 
 func TestValidTypeChecking(t *testing.T) {
 	source := []string{
-		//"const int x = 5; x;",
-		//"define interface Area { area() -> float }",
-		//`define struct Point { x int, y int }
-		//define struct Circle { p Point, radius float }
-		//
-		//define interface Area { area() -> float }
-		//define implementation Circle -> Area
-		//func area(Circle c) -> float {
-		//	const pi = 3.14;
-		//	return c.radius * c.radius * pi;
-		//};`,
+		"const int x = 5; x;",
+		"define interface Area { area() -> float }",
+		`define struct Point { x int, y int }
+		define struct Circle { p Point, radius float }
+		
+		define interface Area { area() -> float }
+		define implementation Circle -> Area
+		func area(Circle c) -> float {
+			const pi = 3.14;
+			return c.radius * c.radius * pi;
+		};`,
 
 		`define struct Rect { w float, h float }
-         define struct Point { x float, y float }
-		 define struct Circle { p Point, r float }
-
+		define struct Point { x float, y float }
+		define struct Circle { p Point, r float }
+		
 		define interface Area { area() -> float }
-
+		
 		define implementation Circle -> Area
 		define implementation Rect -> Area
-
+		
 		func area(Circle c) -> float {
 			const pi = 3.14;
 			return c.r * c.r * pi;
 		}
-
+		
 		func area(Rect r) -> float {
 			return r.w * r.h;
 		}`,
+		`define struct Rect { w float, h float }
+
+		define interface Area { area() -> float }
+
+		define implementation Rect -> Area
+
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}
+		
+		func getArea(Area a) -> float {
+			return a.area();
+		}
+		
+		const Rect r = Rect { w: 2.0, h: 2.0 };
+
+		getArea(r);`,
 	}
 
 	for _, s := range source {
