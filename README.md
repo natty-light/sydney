@@ -170,36 +170,58 @@ ifelse(10 > 5, print("true"), print("false"));
 The `quote` and `unquote` functions are used within macros to manipulate AST nodes. `quote` returns the AST of its argument, and `unquote` evaluates an expression and inserts the resulting AST into a quoted block.
 
 ## Interfaces and Implementations
-Sydney provides a way to define interfaces and explicitly declare that a struct implements an interface.
+Sydney supports interfaces, which allow for polymorphism and dynamic dispatch. An interface defines a set of method signatures that a struct can implement.
 
-### Interfaces
+### Defining an Interface
 An interface defines a set of method signatures. It is defined using the `define interface` keywords.
 
-```
-define interface Pointer {
-    getX() -> int,
-    setX(int val)
+```sydney
+define interface Area {
+    area() -> float
 }
 ```
 
-### Implementations
-A struct can be declared to implement an interface using the `define implementation` statement. This serves as a contract that the type checker will verify.
+### Implementing an Interface
+A struct can be declared to implement an interface using the `define implementation` statement. To satisfy an interface, a struct must have functions defined where the first argument is the struct itself, matching the interface's method names and signatures.
 
+```sydney
+define struct Circle {
+    radius float
+}
+
+define struct Rect {
+    w float,
+    h float
+}
+
+func area(Circle c) -> float {
+    const pi = 3.14;
+    return c.radius * c.radius * pi;
+}
+
+func area(Rect r) -> float {
+    return r.w * r.h;
+}
+
+define implementation Circle -> Area;
+define implementation Rect -> Area;
 ```
-define struct Point {
-    x int,
-    y int
+
+### Polymorphism and Dynamic Dispatch
+Interfaces can be used as parameter types in functions. This allows for polymorphism, where the same function can operate on different types that implement the same interface.
+
+```sydney
+func printArea(Area a) {
+    print(a.area());
 }
 
-func getX(Point p) -> int {
-    return p.x;
-}
+const c = Circle { radius: 5.0 };
+const r = Rect { w: 10.0, h: 2.0 };
 
-func setX(Point p, int val) {
-    p.x = val;
-}
-
-define implementation Point -> Pointer;
+printArea(c); // Works with Circle
+printArea(r); // Works with Rect
 ```
 
-The type checker will ensure that all methods defined in the interface are implemented as functions that take the struct as their first argument and match the required signatures.
+When a concrete struct is passed to a function expecting an interface, Sydney "boxes" the struct into an interface object. This object contains the original struct value and a method table (itab) that allows the VM to perform dynamic dispatch—finding and calling the correct method at runtime even when the concrete type is hidden behind the interface.
+
+The type checker verifies that all required methods are implemented with matching signatures before allowing an implementation to be defined.
