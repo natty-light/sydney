@@ -1528,66 +1528,203 @@ func TestInterfaces(t *testing.T) {
 
 func TestInterfacesAsArguments(t *testing.T) {
 	tests := []compilerTestCase{
+		//{
+		//	source: `define struct Rect { w float, h float }
+		//	define interface Area { area() -> float }
+		//	define implementation Rect -> Area
+		//
+		//	func area(Rect r) -> float {
+		//		return r.w * r.h;
+		//	}
+		//
+		//	func getArea(Area a) -> float {
+		//		return a.area();
+		//	}
+		//
+		//	const Rect r = Rect { w: 2.0, h: 2.0 };
+		//
+		//	getArea(r);`,
+		//	expectedConstants: []interface{}{
+		//		&object.Itab{
+		//			InterfaceName:  "Area",
+		//			ConcreteName:   "Rect",
+		//			MethodsIndices: []int{1},
+		//		},
+		//		[]code.Instructions{
+		//			code.Make(code.OpGetLocal, 0),
+		//			code.Make(code.OpGetField, 0),
+		//			code.Make(code.OpGetLocal, 0),
+		//			code.Make(code.OpGetField, 1),
+		//			code.Make(code.OpMul),
+		//			code.Make(code.OpReturnValue),
+		//			code.Make(code.OpReturn),
+		//		},
+		//		[]code.Instructions{
+		//			code.Make(code.OpGetLocal, 0),
+		//			code.Make(code.OpCallInterface, 0, 0),
+		//			code.Make(code.OpReturnValue),
+		//			code.Make(code.OpReturn),
+		//		},
+		//		2.0,
+		//		2.0,
+		//		&object.TypeObject{
+		//			T: types.StructType{
+		//				Fields: []string{"w", "h"},
+		//				Types:  []types.Type{types.Float, types.Float},
+		//				Name:   "Rect",
+		//			},
+		//		},
+		//	},
+		//	expectedInstructions: []code.Instructions{
+		//		code.Make(code.OpClosure, 1),
+		//		code.Make(code.OpSetImmutableGlobal, 0),
+		//		code.Make(code.OpClosure, 2),
+		//		code.Make(code.OpSetImmutableGlobal, 1),
+		//		code.Make(code.OpConstant, 3),
+		//		code.Make(code.OpConstant, 4),
+		//		code.Make(code.OpStruct, 5, 2),
+		//		code.Make(code.OpSetImmutableGlobal, 2),
+		//		code.Make(code.OpGetGlobal, 1),
+		//		code.Make(code.OpGetGlobal, 2),
+		//		code.Make(code.OpBox, 0),
+		//		code.Make(code.OpCall, 1),
+		//		code.Make(code.OpPop),
+		//	},
+		//},
 		{
-			source: `define struct Rect { w float, h float }
-			define interface Area { area() -> float }
-			define implementation Rect -> Area
-	
-			func area(Rect r) -> float {
-				return r.w * r.h;
-			}
-			
-			func getArea(Area a) -> float {
-				return a.area();
-			}
-			
-			const Rect r = Rect { w: 2.0, h: 2.0 };
-	
-			getArea(r);`,
+			source: `define struct Dog { name string, bark string }
+					define struct Cat { name string, purr string }
+					
+					define interface Pet {
+						speak() -> string
+					}
+					
+					func speak(Dog d) -> string {
+						return d.bark;
+					}
+					
+					func speak(Cat c) -> string {
+						return c.purr;
+					}
+					
+					define implementation Dog -> Pet
+					define implementation Cat -> Pet
+					
+					func makePetSpeak(Pet p) {
+						print(p.speak());
+					}
+					
+					const Dog fido = Dog { name: "Fido", bark: "Woof" };
+					const Cat mittens = Cat { name: "Mittens", purr: "Meow" };
+					
+					func isSamePet(Pet pA, Pet pB) -> bool {
+						return pA.speak() == pB.speak();
+					}
+
+					makePetSpeak(fido);
+					makePetSpeak(mittens);
+
+					isSamePet(fido, mittens);`,
 			expectedConstants: []interface{}{
 				&object.Itab{
-					InterfaceName:  "Area",
-					ConcreteName:   "Rect",
-					MethodsIndices: []int{1},
+					InterfaceName:  "Pet",
+					ConcreteName:   "Dog",
+					MethodsIndices: []int{},
 				},
-				[]code.Instructions{
-					code.Make(code.OpGetLocal, 0),
-					code.Make(code.OpGetField, 0),
+				&object.Itab{
+					InterfaceName:  "Pet",
+					ConcreteName:   "Cat",
+					MethodsIndices: []int{},
+				},
+				[]code.Instructions{ // dog speak
 					code.Make(code.OpGetLocal, 0),
 					code.Make(code.OpGetField, 1),
-					code.Make(code.OpMul),
 					code.Make(code.OpReturnValue),
 					code.Make(code.OpReturn),
+				},
+				[]code.Instructions{ // cat speak
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetField, 1),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+				[]code.Instructions{ // make pet speak
+					code.Make(code.OpGetBuiltIn, 1),
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpCallInterface, 0, 0),
+					code.Make(code.OpCall, 1),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+				"Fido",
+				"Woof",
+				&object.TypeObject{
+					T: types.StructType{
+						Name:   "Dog",
+						Fields: []string{"name", "bark"},
+						Types:  []types.Type{types.String, types.String},
+					},
+				},
+				"Mittens",
+				"Meow",
+				&object.TypeObject{
+					T: types.StructType{
+						Name:   "Cat",
+						Fields: []string{"name", "purr"},
+						Types:  []types.Type{types.String, types.String},
+					},
 				},
 				[]code.Instructions{
 					code.Make(code.OpGetLocal, 0),
 					code.Make(code.OpCallInterface, 0, 0),
+					code.Make(code.OpGetLocal, 1),
+					code.Make(code.OpCallInterface, 0, 0),
+					code.Make(code.OpEqual),
 					code.Make(code.OpReturnValue),
 					code.Make(code.OpReturn),
 				},
-				2.0,
-				2.0,
-				&object.TypeObject{
-					T: types.StructType{
-						Fields: []string{"w", "h"},
-						Types:  []types.Type{types.Float, types.Float},
-						Name:   "Rect",
-					},
-				},
 			},
 			expectedInstructions: []code.Instructions{
-				code.Make(code.OpClosure, 1),
+				code.Make(code.OpClosure, 2, 0),
 				code.Make(code.OpSetImmutableGlobal, 0),
-				code.Make(code.OpClosure, 2),
+
+				code.Make(code.OpClosure, 3, 0),
 				code.Make(code.OpSetImmutableGlobal, 1),
-				code.Make(code.OpConstant, 3),
-				code.Make(code.OpConstant, 4),
-				code.Make(code.OpStruct, 5, 2),
+
+				code.Make(code.OpClosure, 4, 0),
 				code.Make(code.OpSetImmutableGlobal, 2),
-				code.Make(code.OpGetGlobal, 1),
+
+				code.Make(code.OpConstant, 5),
+				code.Make(code.OpConstant, 6),
+				code.Make(code.OpStruct, 7, 2),
+				code.Make(code.OpSetImmutableGlobal, 4),
+
+				code.Make(code.OpConstant, 8),
+				code.Make(code.OpConstant, 9),
+				code.Make(code.OpStruct, 10, 2),
+				code.Make(code.OpSetImmutableGlobal, 5),
+
+				code.Make(code.OpClosure, 11, 0),
+				code.Make(code.OpSetImmutableGlobal, 3),
+
 				code.Make(code.OpGetGlobal, 2),
+				code.Make(code.OpGetGlobal, 4),
 				code.Make(code.OpBox, 0),
 				code.Make(code.OpCall, 1),
+				code.Make(code.OpPop),
+
+				code.Make(code.OpGetGlobal, 2),
+				code.Make(code.OpGetGlobal, 5),
+				code.Make(code.OpBox, 1),
+				code.Make(code.OpCall, 1),
+				code.Make(code.OpPop),
+
+				code.Make(code.OpGetGlobal, 3),
+				code.Make(code.OpGetGlobal, 4),
+				code.Make(code.OpBox, 0),
+				code.Make(code.OpGetGlobal, 5),
+				code.Make(code.OpBox, 1),
+				code.Make(code.OpCall, 2),
 				code.Make(code.OpPop),
 			},
 		},
