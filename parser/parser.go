@@ -998,6 +998,9 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 	name := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 	stmt.Name = name
 
+	t := types.InterfaceType{Methods: make([]string, 0), Types: make([]types.Type, 0), Name: stmt.Name.Value}
+	p.definedInterfaces[stmt.Name.Value] = t
+
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
 		return nil
@@ -1025,10 +1028,11 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
 		return nil
 	}
-	t := types.InterfaceType{Methods: methods, Types: tt, Name: stmt.Name.Value}
+	t.Methods = methods
+	t.Types = tt
+	p.definedInterfaces[stmt.Name.Value] = t
 
 	stmt.Type = t
-	p.definedInterfaces[stmt.Name.Value] = t
 
 	return stmt
 }
