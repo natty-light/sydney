@@ -267,6 +267,12 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 				n = node
 			}
 		}
+		_, fromOuter, exists := c.env.Get(node.Name.Value)
+		if exists && !fromOuter {
+			c.errors = append(c.errors, fmt.Sprintf("function %s already declared", node.Name.Value))
+			return
+		}
+
 		c.env.Set(name, node.Type)
 	}
 }
