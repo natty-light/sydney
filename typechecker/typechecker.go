@@ -973,6 +973,10 @@ func (c *Checker) structSatisfiesInterface(s types.StructType, i types.Interface
 
 func (c *Checker) compareMethodSignature(mt types.FunctionType, et types.FunctionType) bool {
 	withoutReceiver := mt.Params[1:]
+	if len(withoutReceiver) != len(et.Params) {
+		return false
+	}
+
 	for i, param := range withoutReceiver {
 		if !c.typesMatch(param, et.Params[i]) {
 			return false
