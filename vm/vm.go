@@ -348,7 +348,7 @@ func (vm *VM) Run() error {
 				return err
 			}
 		case code.OpCallInterface:
-			// stack looks like [ ... iface obj, arg1, ... argN]
+			// stack looks like [ ... arg1, ... argN, iface obj]
 			method := code.ReadUint16(ins[ip+1:])
 			numArgs := int(code.ReadUint8(ins[ip+3:]))
 			vm.currentFrame().ip += 3
