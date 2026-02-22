@@ -382,7 +382,7 @@ func (vm *VM) Run() error {
 			}
 
 			// account for receiver we pushed on to stack before args
-			err = vm.callClosure(closure, numArgs+1)
+			err = vm.executeCall(numArgs + 1)
 			if err != nil {
 				return err
 			}
