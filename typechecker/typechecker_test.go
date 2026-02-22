@@ -59,6 +59,7 @@ func TestValidTypeChecking(t *testing.T) {
 		const Rect r = Rect { w: 2.0, h: 2.0 };
 
 		getArea(r);`,
+		`func f() -> int { func f() -> int { return 0 }; return f(); }`,
 	}
 
 	for _, s := range source {
@@ -219,14 +220,14 @@ func TestArrayTypeErrorChecking(t *testing.T) {
 			"mut array<int> a = [false];",
 			"type mismatch: array element got bool, expected int",
 		},
-		//{
-		//	"mut array<int> a = [1, false, \"hello\"];",
-		//	"type mismatch: array element got bool, expected int",
-		//},
-		//{
-		//	"const array<array<int>> a = [[null]]",
-		//	"type mismatch: cannot assign array<array<null>> to variable a of type array<array<int>>",
-		//},
+		{
+			"mut array<int> a = [1, false, \"hello\"];",
+			"type mismatch: array element got bool, expected int",
+		},
+		{
+			"const array<array<int>> a = [[null]]",
+			"type mismatch: array element got null, expected int",
+		},
 	}
 
 	testTypeErrors(t, tests)
@@ -287,6 +288,10 @@ func TestFunctionDeclarationErrorChecking(t *testing.T) {
 		{
 			input:         "func f() -> int { if (x == 0) { return x; } else { return false; };",
 			expectedError: "undefined identifier: x",
+		},
+		{
+			input:         `func f() {}; func f() {};`,
+			expectedError: "function f already declared",
 		},
 	}
 
