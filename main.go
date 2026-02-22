@@ -85,9 +85,6 @@ func Run(filename string) {
 		fmt.Printf("Runtime error: %s\n", err)
 		return
 	}
-
-	stackTop := machine.LastPoppedStackElem()
-	fmt.Println(stackTop.Inspect())
 }
 
 func Compile(filename string) {
