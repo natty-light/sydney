@@ -962,7 +962,7 @@ func (c *Checker) structSatisfiesInterface(s types.StructType, i types.Interface
 
 		mt := mtr.(types.FunctionType)
 		if !c.compareMethodSignature(mt, emt) {
-			c.errors = append(c.errors, "wrong signature for method %s of struct %s", method, s.Name)
+			c.errors = append(c.errors, fmt.Sprintf("wrong signature for method %s of struct %s", method, s.Name))
 			satisfies = false
 			continue
 		}
@@ -1039,6 +1039,12 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 
 				return ei.Name == ai.Name
 			}
+		}
+	}
+
+	if ei, ok := toInterface(expected); ok {
+		if ai, ok := toInterface(actual); ok {
+			return ei.Name == ai.Name
 		}
 	}
 
