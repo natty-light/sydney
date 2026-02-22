@@ -349,14 +349,9 @@ func (vm *VM) Run() error {
 			}
 		case code.OpCallInterface:
 			// stack looks like [ ... iface obj, arg1, ... argN]
-
 			method := code.ReadUint16(ins[ip+1:])
 			numArgs := int(code.ReadUint8(ins[ip+3:]))
 			vm.currentFrame().ip += 3
-			args := make([]object.Object, numArgs)
-			for i := numArgs - 1; i >= 0; i-- {
-				args[i] = vm.pop()
-			}
 
 			iObj := vm.pop()
 			i, ok := iObj.(*object.Interface)
@@ -364,13 +359,29 @@ func (vm *VM) Run() error {
 				return fmt.Errorf("expected interface, got %T", iObj)
 			}
 
+			// look up closure using itab
 			globalIdx := i.Itab.MethodsIndices[method]
 			closure := vm.globals[globalIdx].(*object.Closure)
-			err := vm.push(i.Value)
+
+			args := make([]object.Object, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				args[i] = vm.pop() // pop args off stack
+			}
+
+			err := vm.push(closure)
 			if err != nil {
 				return err
 			}
 
+			err = vm.push(i.Value) // push receiver
+			if err != nil {
+				return err
+			}
+			for _, arg := range args { // push args
+				vm.push(arg)
+			}
+
+			// account for receiver we pushed on to stack before args
 			err = vm.callClosure(closure, numArgs+1)
 			if err != nil {
 				return err
