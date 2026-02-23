@@ -19,10 +19,7 @@ type Checker struct {
 func New(globalEnv *TypeEnv) *Checker {
 	env := globalEnv
 	if env == nil {
-		env = &TypeEnv{
-			store: make(map[string]types.Type),
-			outer: nil,
-		}
+		env = NewTypeEnv(nil)
 	}
 	for _, v := range object.Builtins {
 		env.Set(v.Name, v.BuiltIn.T)
@@ -92,7 +89,8 @@ func (c *Checker) check(n ast.Node) types.Type {
 		}
 		return c.check(node.Body)
 	case *ast.VarDeclarationStmt:
-		varType, outer, ok := c.env.Get(node.Name.Value)
+		name := node.Name.Value
+		varType, outer, ok := c.env.Get(name)
 		valType := c.typeOf(node.Value, varType)
 
 		if ok && !outer {
@@ -101,17 +99,25 @@ func (c *Checker) check(n ast.Node) types.Type {
 			}
 		} else {
 			c.boxIfNecessary(node.Value, valType, varType)
-			c.env.Set(node.Name.Value, valType)
+			c.env.Set(name, valType)
+			if node.Constant {
+				c.env.SetConst(name)
+			}
 		}
 	case *ast.VarAssignmentStmt:
-		varType, _, ok := c.env.Get(node.Identifier.Value)
+		name := node.Identifier.Value
+		varType, _, ok := c.env.Get(name)
 		valType := c.typeOf(node.Value, varType)
+		isConst := c.env.IsConst(name)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", node.Identifier.Value))
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", name))
+		}
+		if isConst {
+			c.errors = append(c.errors, fmt.Sprintf("cannot assign to constant variable %s", name))
 		}
 
 		if !c.typesMatch(varType, valType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Identifier.Value, varType.Signature()))
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), name, varType.Signature()))
 		}
 		c.boxIfNecessary(node.Value, valType, varType)
 
@@ -244,12 +250,16 @@ func (c *Checker) hoistBase(n ast.Node) {
 		c.env.Set(node.Name.Value, node.Type)
 		n = node
 	case *ast.VarDeclarationStmt:
+		name := node.Name.Value
 		if node.Type != nil {
 			// Only check the current scope's store to allow shadowing
-			if _, exists := c.env.store[node.Name.Value]; !exists {
-				c.env.Set(node.Name.Value, node.Type)
+			if _, exists := c.env.store[name]; !exists {
+				c.env.Set(name, node.Type)
+				if node.Constant {
+					c.env.SetConst(name)
+				}
 			} else {
-				c.errors = append(c.errors, fmt.Sprintf("variable %s already declared", node.Name.Value))
+				c.errors = append(c.errors, fmt.Sprintf("variable %s already declared", name))
 			}
 		}
 	}

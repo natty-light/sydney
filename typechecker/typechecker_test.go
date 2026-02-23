@@ -458,6 +458,17 @@ define implementation Box -> Sized`,
 	testTypeErrors(t, tests)
 }
 
+func TestConstantReassingTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         "const x = 0; x = 1;",
+			expectedError: "cannot assign to constant variable x",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 	for _, tt := range tests {
 		l := lexer.New(tt.input)
