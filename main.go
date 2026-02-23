@@ -1,11 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sydney/compiler"
+	"sydney/irgen"
 	"sydney/lexer"
 	"sydney/object"
 	"sydney/parser"
@@ -26,14 +27,9 @@ func main() {
 		if args[1] == "run" {
 			Run(args[2])
 		} else if args[1] == "compile" {
-			// TODO: implement writing intermediate bytecode file
 			Compile(args[2])
-			fmt.Println("Honk! Compile not implemented yet")
-		} else if args[1] == "exec" {
-			// TODO: implement reading intermediate bytecode file
-			fmt.Println("Honk! Exec not implemented yet")
 		} else if args[1] == "help" {
-			fmt.Println("Usage: quonk [run|compile|exec|help] [filename]")
+			fmt.Println("Usage: quonk [run|compile|help] [filename]")
 		}
 	}
 
@@ -99,73 +95,26 @@ func Compile(filename string) {
 	l := lexer.New(src)
 	p := parser.New(l)
 	program := p.ParseProgram()
+
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
 		return
 	}
 
-	comp := compiler.New()
-	err = comp.Compile(program)
+	c := typechecker.New(nil)
+	errs := c.Check(program)
+	if len(errs) != 0 {
+		printParserErrors(os.Stdout, errs)
+	}
+
+	i := irgen.New()
+	err = i.Emit(program)
+
 	if err != nil {
-		fmt.Printf("Honk! Compiler error: %s\n", err)
+		fmt.Printf("Compiler error: %s\n", err)
 		return
 	}
-
-	bytecode := comp.Bytecode()
-	var out bytes.Buffer
-	out.Write(bytecode.Instructions)
-	out.Write([]byte("\n"))
-	// TODO: come up with way of encoding constants as bytes
-
-	fi, err := os.Create("instructions.txt")
-	if err != nil {
-		panic(err)
-	}
-
-	defer func() {
-		if err := fi.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	if _, err = fi.WriteString(bytecode.Instructions.String()); err != nil {
-		panic(err)
-	}
-
-	fi.WriteString("\n")
-
-	for _, c := range bytecode.Constants {
-		switch c := c.(type) {
-		case *object.CompiledFunction:
-			fi.WriteString(c.Instructions.String())
-		default:
-			fi.WriteString(c.Inspect())
-		}
-		fi.WriteString("\n")
-	}
-}
-
-func Exec(filename string) {
-	file, err := os.ReadFile(filename)
-	if err != nil {
-		fmt.Printf("Honk! Cannot read file %s\n", filename)
-		return
-	}
-
-	bytecode := parseFileIntoBytecode(file)
-	machine := vm.New(bytecode)
-	err = machine.Run()
-	if err != nil {
-		fmt.Printf("Honk! Runtime error: %s\n", err)
-		return
-	}
-
-	stackTop := machine.StackTop()
-	fmt.Println(stackTop.Inspect())
-}
-
-func parseFileIntoBytecode(file []byte) *compiler.Bytecode {
-	return &compiler.Bytecode{}
+	i.Write(strings.Replace(filename, ".sy", ".ll", -1))
 }
 
 func printParserErrors(out io.Writer, errors []string) {
