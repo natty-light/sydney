@@ -6,3 +6,5 @@ quonk
 **/coverage
 .developer-docs
 .llvm
+**/*.ll
+sydney_rt/target
