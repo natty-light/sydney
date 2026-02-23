@@ -6,5 +6,6 @@ quonk
 **/coverage
 .developer-docs
 .llvm
-**/*.ll
+**/smoke*
 sydney_rt/target
+CLAUDE.md
