@@ -4,5 +4,5 @@ QuonkScript
 quonk
 .idea
 **/coverage
-syd*
 .developer-docs
+.llvm
