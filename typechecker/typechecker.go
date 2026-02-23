@@ -79,7 +79,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 
 		valType := c.typeOf(node.ReturnValue, c.currentReturnType)
 
-		if !c.typesMatch(c.currentReturnType, valType) {
+		if !c.typesMatch(valType, c.currentReturnType) {
 			c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
 		} else {
 			c.boxIfNecessary(node.ReturnValue, valType, c.currentReturnType)
@@ -962,7 +962,7 @@ func (c *Checker) structSatisfiesInterface(s types.StructType, i types.Interface
 
 		mt := mtr.(types.FunctionType)
 		if !c.compareMethodSignature(mt, emt) {
-			c.errors = append(c.errors, fmt.Sprintf("wrong signature for method %s of struct %s", method, s.Name))
+			c.errors = append(c.errors, fmt.Sprintf("struct %s does not satisfy interface %s, wrong signature for method %s. got %s, want %s", s.Name, i.Name, method, mt.Signature(), emt.Signature()))
 			satisfies = false
 			continue
 		}
