@@ -1484,7 +1484,7 @@ func TestInterfaces(t *testing.T) {
 				&object.Itab{
 					InterfaceName:  "Area",
 					ConcreteName:   "Circle",
-					MethodsIndices: []int{1},
+					MethodsIndices: []int{0},
 				},
 				2.0,
 				&object.TypeObject{
@@ -1548,7 +1548,7 @@ func TestInterfacesAsArguments(t *testing.T) {
 				&object.Itab{
 					InterfaceName:  "Area",
 					ConcreteName:   "Rect",
-					MethodsIndices: []int{1},
+					MethodsIndices: []int{0},
 				},
 				[]code.Instructions{
 					code.Make(code.OpGetLocal, 0),
@@ -1629,12 +1629,12 @@ func TestInterfacesAsArguments(t *testing.T) {
 				&object.Itab{
 					InterfaceName:  "Pet",
 					ConcreteName:   "Dog",
-					MethodsIndices: []int{},
+					MethodsIndices: []int{0},
 				},
 				&object.Itab{
 					InterfaceName:  "Pet",
 					ConcreteName:   "Cat",
-					MethodsIndices: []int{},
+					MethodsIndices: []int{1},
 				},
 				[]code.Instructions{ // dog speak
 					code.Make(code.OpGetLocal, 0),
@@ -1733,6 +1733,98 @@ func TestInterfacesAsArguments(t *testing.T) {
 	runCompilerTests(t, tests)
 }
 
+func TestInterfaceMethodsWithArgs(t *testing.T) {
+	tests := []compilerTestCase{
+		{
+			source: `
+define interface Pet {
+    isSame(Pet p) -> bool
+}
+
+define struct Dog { name string }
+
+define implementation Dog -> Pet
+
+func test(Pet a, Pet b) -> bool {
+    return a.isSame(b);
+}
+
+const f = Dog { name: "fido" };
+const d = Dog { name: "rover" };
+
+func isSame(Dog a, Dog b) -> bool {
+	return a.name == b.name
+}
+
+test(f, d);`,
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpClosure, 1, 0),
+				code.Make(code.OpSetImmutableGlobal, 0),
+
+				code.Make(code.OpConstant, 2),
+				code.Make(code.OpStruct, 3, 1),
+				code.Make(code.OpSetImmutableGlobal, 2),
+
+				code.Make(code.OpConstant, 4),
+				code.Make(code.OpStruct, 5, 1),
+				code.Make(code.OpSetImmutableGlobal, 3),
+
+				code.Make(code.OpClosure, 6, 0),
+				code.Make(code.OpSetImmutableGlobal, 1),
+
+				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetGlobal, 2),
+				code.Make(code.OpBox, 0),
+				code.Make(code.OpGetGlobal, 3),
+				code.Make(code.OpBox, 0),
+				code.Make(code.OpCall, 2),
+				code.Make(code.OpPop),
+			},
+			expectedConstants: []interface{}{
+				&object.Itab{
+					InterfaceName:  "Pet",
+					ConcreteName:   "Dog",
+					MethodsIndices: []int{1},
+				},
+				[]code.Instructions{ // test
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetLocal, 1),
+					code.Make(code.OpCallInterface, 0, 1),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+				"fido",
+				&object.TypeObject{
+					T: types.StructType{
+						Name:   "Dog",
+						Fields: []string{"name"},
+						Types:  []types.Type{types.String},
+					},
+				},
+				"rover",
+				&object.TypeObject{
+					T: types.StructType{
+						Name:   "Dog",
+						Fields: []string{"name"},
+						Types:  []types.Type{types.String},
+					},
+				},
+				[]code.Instructions{ // isSame
+					code.Make(code.OpGetLocal, 0),
+					code.Make(code.OpGetField, 0),
+					code.Make(code.OpGetLocal, 1),
+					code.Make(code.OpGetField, 0),
+					code.Make(code.OpEqual),
+					code.Make(code.OpReturnValue),
+					code.Make(code.OpReturn),
+				},
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
 func runCompilerTests(t *testing.T, tests []compilerTestCase) {
 	t.Helper()
 
@@ -1809,7 +1901,12 @@ func testConstants(expected []interface{}, actual []object.Object) error {
 			if err != nil {
 				return fmt.Errorf("constant %d - testStringObject failed: %s", i, err)
 			}
-		case object.TypeObject:
+		case float64:
+			err := testFloatObject(constant, actual[i])
+			if err != nil {
+				return fmt.Errorf("constant %d - testFloatObject failed: %s", i, err)
+			}
+		case *object.TypeObject:
 			err := testTypeObject(constant, actual[i])
 			if err != nil {
 				return fmt.Errorf("constant %d - testTypeObject failed: %s", i, err)
@@ -1823,6 +1920,11 @@ func testConstants(expected []interface{}, actual []object.Object) error {
 			err := testInstructions(constant, fn.Instructions)
 			if err != nil {
 				return fmt.Errorf("constant %d - testInstructions failed: %s", i, err)
+			}
+		case *object.Itab:
+			err := testItab(constant, actual[i])
+			if err != nil {
+				return fmt.Errorf("constant %d - testItab failed: %s", i, err)
 			}
 		}
 	}
@@ -1856,16 +1958,16 @@ func testStringObject(expected string, actual object.Object) error {
 	return nil
 }
 
-func testTypeObject(expected object.TypeObject, actual object.Object) error {
+func testTypeObject(expected *object.TypeObject, actual object.Object) error {
 	result, ok := actual.(*object.TypeObject)
 	if !ok {
 		return fmt.Errorf("object is not TypeObject. got=%T (%+v)", actual, actual)
 	}
 	switch t := expected.T.(type) {
 	case types.StructType:
-		at, ok := result.T.(*types.StructType)
+		at, ok := result.T.(types.StructType)
 		if !ok {
-			return fmt.Errorf("object is not TypeObject. got=%T (%+v)", actual, actual)
+			return fmt.Errorf("object is not StructType. got=%T (%+v)", actual, actual)
 		}
 		if at.Name != t.Name {
 			return fmt.Errorf("object has wrong name. got=%s, want=%s", t.Name, at.Name)
@@ -1883,5 +1985,42 @@ func testTypeObject(expected object.TypeObject, actual object.Object) error {
 		}
 	}
 
+	return nil
+}
+
+func testItab(expected *object.Itab, actual object.Object) error {
+	result, ok := actual.(*object.Itab)
+	if !ok {
+		return fmt.Errorf("object is not Itab. got=%T (%+v)", actual, actual)
+	}
+
+	if result.ConcreteName != expected.ConcreteName {
+		return fmt.Errorf("result.ConcreteName is not %s. got=%s", expected.ConcreteName, result.ConcreteName)
+	}
+
+	if result.InterfaceName != expected.InterfaceName {
+		return fmt.Errorf("result.InterfaceName is not %s. got=%s", expected.InterfaceName, result.InterfaceName)
+	}
+	if len(result.MethodsIndices) != len(expected.MethodsIndices) {
+		return fmt.Errorf("result.MethodIndices wrong size, want %d, got %d", len(expected.MethodsIndices), len(result.MethodsIndices))
+	}
+
+	for i, idx := range expected.MethodsIndices {
+		if result.MethodsIndices[i] != idx {
+			return fmt.Errorf("wrong method index at %d. got=%d, want=%d", i, result.MethodsIndices[i], idx)
+		}
+	}
+
+	return nil
+}
+
+func testFloatObject(expected float64, actual object.Object) error {
+	result, ok := actual.(*object.Float)
+	if !ok {
+		return fmt.Errorf("object is not Float. got=%T (%+v)", actual, actual)
+	}
+	if result.Value != expected {
+		return fmt.Errorf("object has wrong value. got=%f, want=%f", result.Value, expected)
+	}
 	return nil
 }
