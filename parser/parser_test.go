@@ -1365,30 +1365,7 @@ func TestParseInterfaceDefinition(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected program.Stmts to be *ast.InterfaceDefinitionStmt. got=%T", program.Stmts[0])
 	}
-
-	if stmt.Name.String() != "Pointer" {
-		t.Fatalf("stmt.Name.String() wrong. want %q, got=%q", "Pointer", stmt.Name.String())
-	}
-	tt := stmt.Type
-	if len(tt.Methods) != len(expectedType.Methods) {
-		t.Fatalf("wrong number of methods. want=%d, got=%d", len(expectedType.Methods), len(stmt.Type.Methods))
-	}
-
-	if len(tt.Types) != len(expectedType.Types) {
-		t.Fatalf("wrong number of types. want=%d, got=%d", len(expectedType.Types), len(tt.Types))
-	}
-
-	for i, m := range tt.Methods {
-		if m != expectedType.Methods[i] {
-			t.Fatalf("wrong method. want=%q, got=%q", m, expectedType.Methods[i])
-		}
-	}
-
-	for i, tt := range tt.Types {
-		if tt.Signature() != expectedType.Types[i].Signature() {
-			t.Fatalf("wrong signature. want=%q, got=%q", tt.Signature(), expectedType.Types[i].Signature())
-		}
-	}
+	testInterfaceDefinition(t, stmt, expectedType)
 }
 
 func TestParseInterfaceImplementation(t *testing.T) {
@@ -1469,15 +1446,292 @@ func TestSelectorExpr(t *testing.T) {
 	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
 	expr, ok := stmt.Expr.(*ast.SelectorExpr)
 	if !ok {
-		t.Fatalf("expr not *ast.IndexExpr. got=%T", stmt.Expr)
+		t.Fatalf("expr not *ast.SelectorExpr. got=%T", stmt.Expr)
 	}
 
-	if !testIdentifier(t, expr.Left, "p") {
-		return
+	testSelectorExpr(t, expr, "p", "x")
+}
+
+func TestMultiParamInterfaceMethods(t *testing.T) {
+	source := "define interface Comparable { compare(Comparable other, int mode) -> int }"
+	expectedType := types.InterfaceType{
+		Name:    "Comparable",
+		Methods: []string{"compare"},
+		Types: []types.Type{
+			types.FunctionType{
+				Params: []types.Type{
+					types.InterfaceType{Name: "Comparable"},
+					types.Int,
+				},
+				Return: types.Int,
+			},
+		},
 	}
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	stmt, ok := program.Stmts[0].(*ast.InterfaceDefinitionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.InterfaceDefinitionStmt. got=%T", program.Stmts[0])
+	}
+
+	testInterfaceDefinition(t, stmt, expectedType)
+}
+
+func testInterfaceDefinition(t *testing.T, stmt *ast.InterfaceDefinitionStmt, expectedType types.InterfaceType) {
+	if stmt.Name.String() != expectedType.Name {
+		t.Fatalf("stmt.Name.String() wrong. want %q, got=%q", "Pointer", stmt.Name.String())
+	}
+	tt := stmt.Type
+	if len(tt.Methods) != len(expectedType.Methods) {
+		t.Fatalf("wrong number of methods. want=%d, got=%d", len(expectedType.Methods), len(stmt.Type.Methods))
+	}
+
+	if len(tt.Types) != len(expectedType.Types) {
+		t.Fatalf("wrong number of types. want=%d, got=%d", len(expectedType.Types), len(tt.Types))
+	}
+
+	for i, m := range tt.Methods {
+		if m != expectedType.Methods[i] {
+			t.Fatalf("wrong method. want=%q, got=%q", m, expectedType.Methods[i])
+		}
+	}
+
+	for i, tt := range tt.Types {
+		if tt.Signature() != expectedType.Types[i].Signature() {
+			t.Fatalf("wrong signature. want=%q, got=%q", tt.Signature(), expectedType.Types[i].Signature())
+		}
+	}
+}
+
+func TestChainedSelectorExpr(t *testing.T) {
+	source := "c.center.x"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.SelectorExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.SelectorExpr. got=%T", stmt.Expr)
+	}
+
+	left, ok := expr.Left.(*ast.SelectorExpr)
+	if !ok {
+		t.Fatalf("expr.Left is not *ast.SelectorExpr. got=%T", expr.Left)
+	}
+	testSelectorExpr(t, left, "c", "center")
+
 	if !testIdentifier(t, expr.Value, "x") {
-		return
+		t.Fatalf("expr.Value wrong, wanted ident x, got %q", expr.Value)
 	}
+}
+
+func TestSelectorCallReceiver(t *testing.T) {
+	source := "c.center.distance(origin)"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.CallExpr. got=%T", stmt.Expr)
+	}
+	callee, ok := expr.Function.(*ast.SelectorExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.SelectorExpr. got=%T", stmt.Expr)
+	}
+	left, ok := callee.Left.(*ast.SelectorExpr)
+	if !ok {
+		t.Fatalf("left is not *ast.SelectorExpr. got=%T", callee.Left)
+	}
+	testSelectorExpr(t, left, "c", "center")
+
+	if !testIdentifier(t, callee.Value, "distance") {
+		t.Fatalf("callee.Value wrong, wanted ident x, got %q", callee.Value)
+	}
+	if len(expr.Arguments) != 1 {
+		t.Fatalf("len(expr.Arguments) wrong, wanted 1, got %d", len(expr.Arguments))
+	}
+
+	testIdentifier(t, expr.Arguments[0], "origin")
+}
+
+func testSelectorExpr(t *testing.T, expr *ast.SelectorExpr, expectedIdent string, expectedValue string) {
+	if !testIdentifier(t, expr.Left, expectedIdent) {
+		t.Fatal("SelectorExpr expr.Left wrong")
+	}
+	if !testIdentifier(t, expr.Value, expectedValue) {
+		t.Fatal("SelectorExpr expr.Value wrong")
+	}
+}
+
+func TestCollectionTypeParsing(t *testing.T) {
+	tests := []struct {
+		source       string
+		expectedType types.Type
+		expectedName string
+	}{
+		{
+			source: "mut map<int, int> m;",
+			expectedType: types.MapType{
+				KeyType:   types.Int,
+				ValueType: types.Int,
+			},
+			expectedName: "m",
+		},
+		{
+			source: "mut array<int> a;",
+			expectedType: types.ArrayType{
+				ElemType: types.Int,
+			},
+			expectedName: "a",
+		},
+		{
+			source: "mut map<string, array<int>> a;",
+			expectedType: types.MapType{
+				KeyType: types.String,
+				ValueType: types.ArrayType{
+					ElemType: types.Int,
+				},
+			},
+			expectedName: "a",
+		},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.source)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		stmt, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+		if !ok {
+			t.Fatalf("")
+		}
+
+		ident := stmt.Name
+		if !testIdentifier(t, ident, tt.expectedName) {
+			t.Fatalf("stmt.Name wrong. want %q, got=%q", tt.expectedName, ident)
+		}
+
+		typ := stmt.Type
+		testType(t, typ, tt.expectedType)
+	}
+}
+
+func testType(t *testing.T, actual types.Type, expected types.Type) {
+	if actual.Signature() != expected.Signature() {
+		t.Fatalf("Signature wrong. want=%q, got=%q", expected.Signature(), actual.Signature())
+	}
+}
+
+func TestStructLiteralsAsArguments(t *testing.T) {
+	source := `define struct Point { x int, y int } printPoint(Point { x: 0, y: 0 });`
+	expectedFields := []ExpectedStructField{
+		{
+			name:  "x",
+			value: 0,
+		},
+		{
+			name:  "y",
+			value: 0,
+		},
+	}
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 2 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 2, got %d", len(program.Stmts))
+	}
+
+	_, ok := program.Stmts[0].(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.StructDefinitionStmt. got=%T", program.Stmts[0])
+	}
+
+	stmt, ok := program.Stmts[1].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[1] is not *ast.ExpressionStmt. got=%T", stmt.Expr)
+	}
+
+	expr, ok := stmt.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.CallExpr. got=%T", stmt.Expr)
+	}
+
+	if len(expr.Arguments) != 1 {
+		t.Fatalf("len(expr.Arguments) wrong, wanted 1, got %d", len(expr.Arguments))
+	}
+	st, ok := expr.Arguments[0].(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("expr.Arguments[0] is not *ast.StructLiteral. got=%T", stmt.Expr)
+	}
+
+	testStructLiteral(t, st, expectedFields, "Point")
+}
+
+func TestStructFieldOrder(t *testing.T) {
+	source := `define struct Rect { x int, y int, w int, h int }
+const r = Rect { w: 10, h: 20, x: 0, y: 0 };`
+	expectedFields := []ExpectedStructField{
+		{
+			name:  "w",
+			value: 10,
+		},
+		{
+			name:  "h",
+			value: 20,
+		},
+		{
+			name:  "x",
+			value: 0,
+		},
+		{
+			name:  "y",
+			value: 0,
+		},
+	}
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 2 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 2, got %d", len(program.Stmts))
+	}
+	_, ok := program.Stmts[0].(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.StructDefinitionStmt. got=%T", program.Stmts[0])
+	}
+	stmt, ok := program.Stmts[1].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[1] is not *ast.VarDeclarationStmt. got=%T", program.Stmts[1])
+	}
+	ident := stmt.Name
+	if !testIdentifier(t, ident, "r") {
+		t.Fatalf("stmt.Name wrong. want %q, got=%q", ident, "r")
+	}
+
+	lit := stmt.Value
+	stLit, ok := lit.(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("lit is not *ast.StructLiteral. got=%T", lit)
+	}
+
+	testStructLiteral(t, stLit, expectedFields, "Rect")
 }
 
 // Utilities
