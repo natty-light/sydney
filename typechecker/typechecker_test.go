@@ -88,6 +88,28 @@ func TestValidTypeChecking(t *testing.T) {
 		print(fido.name + " and " + rover.name)
 		print(fido.isSame(rover));
 		`,
+		`define struct Dog { name string, bark string }
+		define interface Pet { name() -> string }
+		define implementation Dog -> Pet
+		func name(Dog d) -> string { return d.name }
+		func getPet() -> Pet {
+    			return Dog { name: "Fido", bark: "Woof" };
+		}`,
+		`define struct Dog { name string, bark string }
+		define struct Cat { name string, purr string }
+		define interface Pet { name() -> string }
+		define implementation Dog -> Pet
+		define implementation Cat -> Pet
+		
+		func name(Cat c) -> string {
+			return c.name;
+		}
+		
+		func name(Dog d) -> string {
+			return d.name;
+		}
+		
+		const array<Pet> pets = [Dog { name: "A", bark: "B" }, Cat { name: "C", purr: "D" }];`,
 	}
 
 	for _, s := range source {
@@ -361,6 +383,23 @@ func TestSelectorExpressionTypeErrorChecking(t *testing.T) {
 					p.z;`,
 			expectedError: "field z of struct type p not found",
 		},
+		{
+			input:         "const x = 5; x.foo();",
+			expectedError: "cannot access field of non-struct value x of type int",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestNestedStructFieldTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define struct Point { x int, y int }
+define struct Circle { center Point, radius int }
+const c = Circle { center: Point { x: "bad", y: 0 }, radius: 5 };`,
+			expectedError: "type mismatch for field x in struct Point: expected int, got string",
+		},
 	}
 
 	testTypeErrors(t, tests)
@@ -383,6 +422,36 @@ func TestBuiltinFunctionTypeErrorChecking(t *testing.T) {
 		{
 			input:         "append([false], 1)",
 			expectedError: "type mismatch: got int for append() value",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestInterfaceMethodArgumentTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `
+define interface Pet { greet(string name) -> string }
+func greet(Dog d, string name) -> string { return "" }
+func test(Pet p) {
+	p.greet(123);
+}`,
+			expectedError: "type mismatch: got int for arg 1 in function p.greet call, expected string",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestInterfaceImplementationTypeErrorChecking(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define interface Sized { size(int unit) -> int }
+define struct Box { w int }
+func size(Box b, string unit) -> int { b.w }
+define implementation Box -> Sized`,
+			expectedError: "struct Box does not satisfy interface Sized, wrong signature for method size. got func<(Box, string) -> int>, want func<(int) -> int>",
 		},
 	}
 
