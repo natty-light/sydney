@@ -21,11 +21,12 @@ type funcSig struct {
 }
 
 type Emitter struct {
-	buf    bytes.Buffer
-	tmpIdx int
-	lblIdx int
-	locals map[string]string
-	inFunc bool
+	buf       bytes.Buffer
+	tmpIdx    int
+	lblIdx    int
+	locals    map[string]irLocal
+	inFunc    bool
+	funcDepth int
 
 	// Collected metadata
 	structTypes    map[string]types.StructType
@@ -47,7 +48,7 @@ func New() *Emitter {
 		stringConsts:   make(map[string]int),
 		stringIdx:      0,
 		vtables:        make(map[string]map[string][]string),
-		locals:         make(map[string]string),
+		locals:         make(map[string]irLocal),
 		topLevelFuncs:  make(map[string]bool),
 		globals:        make(map[string]irLocal),
 		funcSigs:       make(map[string]funcSig),
@@ -65,7 +66,7 @@ func (e *Emitter) Emit(n ast.Node) error {
 
 	e.preamble()
 
-	err = e.main(n)
+	err = e.mainWrapper(n)
 	if err != nil {
 		return err
 	}
@@ -316,12 +317,49 @@ func (e *Emitter) functions(node ast.Node) error {
 	return nil
 }
 
-func (e *Emitter) main(node ast.Node) error {
+func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.emit("define i32 @main() {")
+	e.emit("entry: ")
+	e.funcDepth++
 	e.emit("call void @sydney_gc_init()")
 
+	err := e.main(node)
+	if err != nil {
+		return err
+	}
 	e.emit("ret i32 0")
+	e.funcDepth--
 	e.emit("}")
+
+	return nil
+}
+
+func (e *Emitter) main(node ast.Node) error {
+
+	switch node := node.(type) {
+	case *ast.Program:
+		for _, stmt := range node.Stmts {
+			err := e.main(stmt)
+			if err != nil {
+				return err
+			}
+		}
+	case *ast.ExpressionStmt:
+		e.emitExpr(node.Expr)
+	case *ast.BlockStmt:
+		for _, stmt := range node.Stmts {
+			err := e.main(stmt)
+			if err != nil {
+				return err
+			}
+		}
+	case *ast.VarDeclarationStmt:
+		e.emitVarDecl(node)
+
+	case *ast.CallExpr:
+
+	case *ast.Identifier:
+	}
 
 	return nil
 }
@@ -340,7 +378,8 @@ func (e *Emitter) addStr(s string) {
 }
 
 func (e *Emitter) emit(line string) {
-	e.buf.WriteString(line + "\n")
+	withIndent := strings.Repeat("  ", e.funcDepth) + line + "\n"
+	e.buf.WriteString(withIndent)
 }
 
 func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
@@ -353,6 +392,12 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		return e.emitInfixExpr(expr)
 	case *ast.CallExpr:
 		return e.emitCallExpr(expr)
+	case *ast.Identifier:
+		local := e.locals[expr.Value]
+		result := e.tmp()
+		line := fmt.Sprintf("%s = load %s, %s %s", result, local.typ, IrPtr, local.alloca)
+		e.emit(line)
+		return result, local.typ
 	}
 	return "", IrUnit
 }
@@ -470,5 +515,16 @@ func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 	}
 	methodsStr := fmt.Sprintf("[%s]", strings.Join(methodStrs, ", "))
 	line := fmt.Sprintf("@vtable.%s.%s = constant [%d x ptr] %s", sname, iname, numMethods, methodsStr)
+	e.emit(line)
+}
+
+func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) {
+	val, valType := e.emitExpr(stmt.Value)
+	name := stmt.Name.Value
+	allocaName := "%" + name + ".addr"
+	line := fmt.Sprintf("%s = alloca %s", allocaName, valType)
+	e.emit(line)
+	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
+	e.locals[name] = irLocal{alloca: allocaName, typ: valType}
 	e.emit(line)
 }
