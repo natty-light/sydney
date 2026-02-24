@@ -335,7 +335,6 @@ func (e *Emitter) mainWrapper(node ast.Node) error {
 }
 
 func (e *Emitter) main(node ast.Node) error {
-
 	switch node := node.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
@@ -345,7 +344,10 @@ func (e *Emitter) main(node ast.Node) error {
 			}
 		}
 	case *ast.ExpressionStmt:
-		e.emitExpr(node.Expr)
+		err := e.main(node.Expr)
+		if err != nil {
+			return err
+		}
 	case *ast.BlockStmt:
 		for _, stmt := range node.Stmts {
 			err := e.main(stmt)
@@ -355,10 +357,12 @@ func (e *Emitter) main(node ast.Node) error {
 		}
 	case *ast.VarDeclarationStmt:
 		e.emitVarDecl(node)
-
+	case *ast.VarAssignmentStmt:
+		e.emitVariableAssignment(node)
 	case *ast.CallExpr:
-
+		e.emitCallExpr(node)
 	case *ast.Identifier:
+		e.emitExpr(node)
 	}
 
 	return nil
@@ -526,5 +530,13 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) {
 	e.emit(line)
 	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
 	e.locals[name] = irLocal{alloca: allocaName, typ: valType}
+	e.emit(line)
+}
+
+func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) {
+	val, valType := e.emitExpr(stmt.Value)
+	name := stmt.Identifier.Value
+	allocaName := e.locals[name]
+	line := fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName.alloca)
 	e.emit(line)
 }
