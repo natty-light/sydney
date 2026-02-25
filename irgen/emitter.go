@@ -15,7 +15,7 @@ type irLocal struct {
 }
 
 type funcSig struct {
-	retType    string   // IR return type string
+	retType    IrType   // IR return type string
 	paramTypes []string // IR param type strings
 	name       string   // IR function name (e.g. "@add", "@Circle.area")
 }
@@ -59,14 +59,11 @@ func New() *Emitter {
 }
 
 func (e *Emitter) Emit(n ast.Node) error {
-	err := e.collect(n)
-	if err != nil {
-		return err
-	}
-
+	program := e.collect(n)
 	e.preamble()
+	e.functions(program)
 
-	err = e.mainWrapper(n)
+	err := e.mainWrapper(n)
 	if err != nil {
 		return err
 	}
@@ -89,15 +86,13 @@ func (e *Emitter) Write(name string) {
 	}
 }
 
-func (e *Emitter) collect(n ast.Node) error {
+func (e *Emitter) collect(n ast.Node) *ast.Program {
 	switch node := n.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
-			err := e.collect(stmt)
-			if err != nil {
-				return err
-			}
+			e.collect(stmt)
 		}
+		return node
 	case *ast.StructDefinitionStmt:
 		e.structTypes[node.Name.Value] = node.Type
 	case *ast.InterfaceDefinitionStmt:
@@ -122,10 +117,7 @@ func (e *Emitter) collect(n ast.Node) error {
 		e.topLevelFuncs[node.Name.Value] = true
 	}
 
-	err := e.collectStrings(n)
-	if err != nil {
-		return err
-	}
+	e.collectStrings(n)
 
 	for sname, ifaces := range e.vtables {
 		for iname := range ifaces {
@@ -141,146 +133,72 @@ func (e *Emitter) collect(n ast.Node) error {
 	return nil
 }
 
-func (e *Emitter) collectStrings(n ast.Node) error {
+func (e *Emitter) collectStrings(n ast.Node) {
 	switch node := n.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
-			err := e.collectStrings(stmt)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(stmt)
 		}
 	case *ast.ExpressionStmt:
-		err := e.collectStrings(node.Expr)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Expr)
 	case *ast.BlockStmt:
 		for _, stmt := range node.Stmts {
-			err := e.collectStrings(stmt)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(stmt)
 		}
 	case *ast.VarDeclarationStmt:
-		err := e.collectStrings(node.Value)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Value)
 	case *ast.VarAssignmentStmt:
-		err := e.collectStrings(node.Value)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Value)
 	case *ast.IndexAssignmentStmt:
-		err := e.collectStrings(node.Value)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Value)
 	case *ast.ReturnStmt:
-		err := e.collectStrings(node.ReturnValue)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.ReturnValue)
 	case *ast.ForStmt:
-		err := e.collectStrings(node.Condition)
-		if err != nil {
-			return err
-		}
-
-		err = e.collectStrings(node.Body)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Condition)
+		e.collectStrings(node.Body)
 	case *ast.FunctionDeclarationStmt:
-		err := e.collectStrings(node.Body)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Body)
 	case *ast.SelectorAssignmentStmt:
-		err := e.collectStrings(node.Value)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Value)
 
 	case *ast.InfixExpr:
-		err := e.collectStrings(node.Left)
-		if err != nil {
-			return err
-		}
-		err = e.collectStrings(node.Right)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Left)
+		e.collectStrings(node.Right)
 	case *ast.PrefixExpr:
-		err := e.collectStrings(node.Right)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Right)
 	case *ast.IfExpr:
-		err := e.collectStrings(node.Condition)
-		if err != nil {
-			return err
-		}
-
-		err = e.collectStrings(node.Consequence)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Condition)
+		e.collectStrings(node.Consequence)
 		if node.Alternative != nil {
-			err = e.collectStrings(node.Alternative)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(node.Alternative)
 		}
 	case *ast.IndexExpr:
-		err := e.collectStrings(node.Index)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Index)
+
 	case *ast.CallExpr:
 		for _, arg := range node.Arguments {
-			err := e.collectStrings(arg)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(arg)
 		}
 
 	case *ast.StringLiteral:
 		e.addStr(node.Value)
 	case *ast.ArrayLiteral:
 		for _, elem := range node.Elements {
-			err := e.collectStrings(elem)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(elem)
+
 		}
 	case *ast.HashLiteral:
 		for key, value := range node.Pairs {
-			err := e.collectStrings(key)
-			if err != nil {
-				return err
-			}
-			err = e.collectStrings(value)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(key)
+			e.collectStrings(value)
 		}
 	case *ast.FunctionLiteral:
-		err := e.collectStrings(node.Body)
-		if err != nil {
-			return err
-		}
+		e.collectStrings(node.Body)
 	case *ast.StructLiteral:
 		for _, val := range node.Values {
-			err := e.collectStrings(val)
-			if err != nil {
-				return err
-			}
+			e.collectStrings(val)
 		}
 	}
-
-	return nil
 }
 
 func (e *Emitter) preamble() {
@@ -313,8 +231,12 @@ func (e *Emitter) preamble() {
 	}
 }
 
-func (e *Emitter) functions(node ast.Node) error {
-	return nil
+func (e *Emitter) functions(node *ast.Program) {
+	for _, stmt := range node.Stmts {
+		if fdecl, ok := stmt.(*ast.FunctionDeclarationStmt); ok {
+			e.emitFunction(fdecl)
+		}
+	}
 }
 
 func (e *Emitter) mainWrapper(node ast.Node) error {
@@ -337,7 +259,7 @@ func (e *Emitter) main(node ast.Node) (string, IrType) {
 	switch node := node.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
-			val, valType = e.emitStmt(stmt)
+			val, valType, _ = e.emitStmt(stmt)
 		}
 	}
 
@@ -362,31 +284,36 @@ func (e *Emitter) emit(line string) {
 	e.buf.WriteString(withIndent)
 }
 
-func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType) {
+func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
+	hasReturn := false
+	var val string
+	var valType IrType = IrUnit
 	switch s := stmt.(type) {
 	case *ast.ExpressionStmt:
-		return e.emitExpr(s.Expr)
+		val, valType = e.emitExpr(s.Expr)
 	case *ast.VarDeclarationStmt:
-		return e.emitVarDecl(s)
+		val, valType = e.emitVarDecl(s)
 	case *ast.VarAssignmentStmt:
-		return e.emitVariableAssignment(s)
+		val, valType = e.emitVariableAssignment(s)
 	case *ast.ReturnStmt:
-		return e.emitReturnStmt(s)
+		val, valType = e.emitReturnStmt(s)
+		hasReturn = true
 	case *ast.ForStmt:
-		return e.emitForStmt(s)
+		val, valType = e.emitForStmt(s)
 	}
-	return "", IrUnit
+	return val, valType, hasReturn
 }
 
-func (e *Emitter) emitBlock(block *ast.BlockStmt) (string, IrType) {
+func (e *Emitter) emitBlock(block *ast.BlockStmt) (string, IrType, bool) {
 	e.depth++
 	var lastVal string
 	var lastType IrType = IrUnit
+	hasReturn := false
 	for _, stmt := range block.Stmts {
-		lastVal, lastType = e.emitStmt(stmt)
+		lastVal, lastType, hasReturn = e.emitStmt(stmt)
 	}
 	e.depth--
-	return lastVal, lastType
+	return lastVal, lastType, hasReturn
 }
 
 func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
@@ -563,17 +490,43 @@ func (e *Emitter) emitPrefixExpr(expr *ast.PrefixExpr) (string, IrType) {
 }
 
 func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
-	if ident, ok := expr.Function.(*ast.Identifier); ok && ident.Value == "print" {
-		arg, argType := e.emitExpr(expr.Arguments[0])
-		switch argType {
-		case IrInt:
-			e.emit(fmt.Sprintf("call void @sydney_print_int(i64 %s)", arg))
-		case IrFloat:
-			e.emit(fmt.Sprintf("call void @sydney_print_float(double %s)", arg))
-		case IrPtr:
-			e.emit(fmt.Sprintf("call void @sydney_print_string(ptr %s)", arg))
+	if ident, ok := expr.Function.(*ast.Identifier); ok {
+		if ident.Value == "print" {
+			for _, a := range expr.Arguments {
+				arg, argType := e.emitExpr(a)
+				switch argType {
+				case IrInt:
+					e.emit(fmt.Sprintf("call void @sydney_print_int(i64 %s)", arg))
+				case IrFloat:
+					e.emit(fmt.Sprintf("call void @sydney_print_float(double %s)", arg))
+				case IrPtr:
+					e.emit(fmt.Sprintf("call void @sydney_print_string(ptr %s)", arg))
+				case IrBool:
+					e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", arg))
+				}
+			}
+			e.emit("call void @sydney_print_newline()")
+			return "", IrUnit
 		}
-		e.emit("call void @sydney_print_newline()")
+		sig, exists := e.funcSigs[ident.Value]
+		if exists {
+			args := make([]string, len(expr.Arguments))
+			for i, arg := range expr.Arguments {
+				val, _ := e.emitExpr(arg)
+				args[i] = fmt.Sprintf("%s %s", sig.paramTypes[i], val)
+			}
+			argsStr := strings.Join(args, " ")
+			if sig.retType == IrUnit {
+				line := fmt.Sprintf("call void %s(%s)", sig.name, argsStr)
+				e.emit(line)
+				return "", IrUnit
+			}
+
+			result := e.tmp()
+			line := fmt.Sprintf("%s = call %s %s(%s)", result, sig.retType, sig.name, argsStr)
+			e.emit(line)
+			return result, sig.retType
+		}
 	}
 
 	return "", IrUnit
@@ -730,7 +683,7 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 
 	// consequence block
 	e.emitLabel(thenLabel)
-	thenVal, thenType := e.emitBlock(expr.Consequence)
+	thenVal, thenType, _ := e.emitBlock(expr.Consequence)
 	// controls whether result is stored
 	isExpr := hasElse && thenType != IrUnit
 	// if there is an else, then there's an expression -- typechecker needs to enforce this more cleanly
@@ -743,7 +696,7 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	// alternative block
 	if hasElse {
 		e.emitLabel(elseLabel)
-		elseVal, _ := e.emitBlock(expr.Alternative)
+		elseVal, _, _ := e.emitBlock(expr.Alternative)
 		if isExpr {
 			line := fmt.Sprintf("store %s %s, ptr %s", thenType, elseVal, resultAddr)
 			e.emit(line)
@@ -796,4 +749,73 @@ func (e *Emitter) emitBranch(cond, l1, l2 string) {
 func (e *Emitter) emitJmp(label string) {
 	line := fmt.Sprintf("br label %%%s", label)
 	e.emit(line)
+}
+
+func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrType) {
+	// construct signature struct
+	fType, _ := decl.Type.(types.FunctionType)
+	paramIrTypes := make([]string, len(decl.Params))
+	paramParts := make([]string, len(decl.Params))
+
+	for i, p := range fType.Params {
+		t := SydneyTypeToIrType(p)
+		paramIrTypes[i] = t.String()
+		paramParts[i] = fmt.Sprintf("%s %%%s", t, decl.Params[i].Value)
+	}
+
+	name := decl.Name.Value
+	if decl.MangledName != "" {
+		name = decl.MangledName
+	}
+
+	ret := SydneyTypeToIrType(fType.Return)
+
+	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
+
+	// save state
+	oldLocals := e.locals
+	oldTmpIdx := e.tmpIdx
+	oldLblIdx := e.lblIdx
+	e.locals = make(map[string]irLocal)
+	e.tmpIdx = 0
+	e.lblIdx = 0
+
+	argStr := strings.Join(paramParts, " ")
+	line := fmt.Sprintf("define %s @%s(%s) {", ret, name, argStr)
+	e.emit(line)
+	e.emitLabel("entry")
+
+	e.depth++
+	for i, paramName := range decl.Params {
+		pName := paramName.Value
+		allocaName := "%" + pName + ".addr"
+		line = fmt.Sprintf("%s = alloca %s", allocaName, paramIrTypes[i])
+		e.emit(line)
+		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
+		e.emit(line)
+		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(fType.Params[i])}
+	}
+
+	e.depth--
+
+	val, valType, hasReturn := e.emitBlock(decl.Body)
+	e.depth++
+	if !hasReturn {
+		if ret == IrUnit {
+			e.emit("ret void")
+		} else {
+			line = fmt.Sprintf("ret %s %s", valType, val)
+			e.emit(line)
+		}
+	}
+
+	e.depth--
+	e.emit("}")
+	e.emit("")
+	// restore state
+	e.lblIdx = oldLblIdx
+	e.tmpIdx = oldTmpIdx
+	e.locals = oldLocals
+
+	return val, valType
 }
