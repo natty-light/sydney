@@ -165,6 +165,47 @@ escape.2:
 	runEmitterTest(t, source, expected)
 }
 
+func TestNestedBlocks(t *testing.T) {
+	source := `mut int i = 0;
+for (i < 10) {
+   if (i % 2 == 0) {
+        print(i);
+   }
+   i = i + 1;
+}`
+
+	expected := `define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %i.addr = alloca i64
+  store i64 0, ptr %i.addr
+  br label %cond.0
+cond.0:
+  %t0 = load i64, ptr %i.addr
+  %t1 = icmp slt i64 %t0, 10
+  br i1 %t1, label %loop.1, label %escape.2
+loop.1:
+    %t2 = load i64, ptr %i.addr
+    %t3 = srem i64 %t2, 2
+    %t4 = icmp eq i64 %t3, 0
+    br i1 %t4, label %then.3, label %merge.4
+then.3:
+      %t5 = load i64, ptr %i.addr
+      call void @sydney_print_int(i64 %t5)
+      call void @sydney_print_newline()
+    br label %merge.4
+merge.4:
+    %t6 = load i64, ptr %i.addr
+    %t7 = add i64 %t6, 1
+    store i64 %t7, ptr %i.addr
+  br label %cond.0
+escape.2:
+  ret i32 0
+}
+`
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }
