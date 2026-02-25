@@ -523,7 +523,7 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 				val, _ := e.emitExpr(arg)
 				args[i] = fmt.Sprintf("%s %s", sig.paramTypes[i], val)
 			}
-			argsStr := strings.Join(args, " ")
+			argsStr := strings.Join(args, ", ")
 			if sig.retType == IrUnit {
 				line := fmt.Sprintf("call void %s(%s)", sig.name, argsStr)
 				e.emit(line)
