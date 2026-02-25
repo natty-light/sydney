@@ -436,14 +436,14 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 			op = "oge"
 		} else {
 			cmpType = icmp
-			op = "ogt"
+			op = "oge"
 		}
 		retType = IrBool
 	case "<":
 		//%t0 = icmp slt i64 %left, %right   ; <
 		if lType == IrFloat {
 			cmpType = fcmp
-			op = "ole"
+			op = "olt"
 		} else {
 			cmpType = icmp
 			op = "slt"
