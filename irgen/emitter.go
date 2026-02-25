@@ -300,6 +300,8 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 		hasReturn = true
 	case *ast.ForStmt:
 		val, valType = e.emitForStmt(s)
+	case *ast.SelectorAssignmentStmt:
+		val, valType = e.emitSelectorAssignment(s)
 	}
 	return val, valType, hasReturn
 }
@@ -335,6 +337,8 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		return e.emitStructLiteral(expr)
 	case *ast.InfixExpr:
 		return e.emitInfixExpr(expr)
+	case *ast.PrefixExpr:
+		return e.emitPrefixExpr(expr)
 	case *ast.CallExpr:
 		return e.emitCallExpr(expr)
 	case *ast.Identifier:
@@ -890,4 +894,39 @@ func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
 	e.emit(line)
 
 	return result, retType
+}
+
+func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (string, IrType) {
+	// ; load the struct pointer
+	//  %t0 = load ptr, ptr %p.addr
+	//
+	//  ; GEP to field x (index 0)
+	//  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
+	//
+	//  ; load the field value
+	//  store i64 2, ptr %t1
+
+	st := stmt.Left
+
+	val := st.Value.(*ast.Identifier).Value
+	fieldIdx := -1
+	for i, fieldName := range st.ResolvedType.Fields {
+		if fieldName == val {
+			fieldIdx = i
+			break
+		}
+	}
+
+	strPtr, _ := e.emitExpr(st.Left) // %t0 = load ptr, ptr %p.addr
+
+	tmp := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", tmp, stmt.Left.ResolvedType.Name, strPtr, fieldIdx)
+	e.emit(line)
+
+	val, valType := e.emitExpr(stmt.Value)
+
+	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, tmp)
+	e.emit(line)
+
+	return "", IrUnit
 }
