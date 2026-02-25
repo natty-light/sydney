@@ -206,6 +206,83 @@ escape.2:
 	runEmitterTest(t, source, expected)
 }
 
+func TestFunctions(t *testing.T) {
+	source := `func addFive(int i) -> int {
+    const int result = i + 5;
+    result;
+}
+
+func addSix(int i) -> int {
+    const int result = i + 6;
+    return result;
+}
+
+const int x = 0;
+const xPlusSix = addSix(x);
+const xPlusFive = addFive(x);
+
+print("x = ", x);
+print("x + 5 = ", xPlusFive);
+print("x + 6 = ", xPlusSix);`
+
+	expected := `@.str.0 = private unnamed_addr constant [5 x i8] c"x = \00"
+@.str.1 = private unnamed_addr constant [9 x i8] c"x + 5 = \00"
+@.str.2 = private unnamed_addr constant [9 x i8] c"x + 6 = \00"
+define i64 @addFive(i64 %i) {
+entry:
+  %i.addr = alloca i64
+  store i64 %i, ptr %i.addr
+  %t0 = load i64, ptr %i.addr
+  %t1 = add i64 %t0, 5
+  %result.addr = alloca i64
+  store i64 %t1, ptr %result.addr
+  %t2 = load i64, ptr %result.addr
+  ret i64 %t2
+}
+
+define i64 @addSix(i64 %i) {
+entry:
+  %i.addr = alloca i64
+  store i64 %i, ptr %i.addr
+  %t0 = load i64, ptr %i.addr
+  %t1 = add i64 %t0, 6
+  %result.addr = alloca i64
+  store i64 %t1, ptr %result.addr
+  %t2 = load i64, ptr %result.addr
+  ret i64 %t2
+}
+
+define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %x.addr = alloca i64
+  store i64 0, ptr %x.addr
+  %t0 = load i64, ptr %x.addr
+  %t1 = call i64 @addSix(i64 %t0)
+  %xPlusSix.addr = alloca i64
+  store i64 %t1, ptr %xPlusSix.addr
+  %t2 = load i64, ptr %x.addr
+  %t3 = call i64 @addFive(i64 %t2)
+  %xPlusFive.addr = alloca i64
+  store i64 %t3, ptr %xPlusFive.addr
+  call void @sydney_print_string(ptr @.str.0)
+  %t4 = load i64, ptr %x.addr
+  call void @sydney_print_int(i64 %t4)
+  call void @sydney_print_newline()
+  call void @sydney_print_string(ptr @.str.1)
+  %t5 = load i64, ptr %xPlusFive.addr
+  call void @sydney_print_int(i64 %t5)
+  call void @sydney_print_newline()
+  call void @sydney_print_string(ptr @.str.2)
+  %t6 = load i64, ptr %xPlusSix.addr
+  call void @sydney_print_int(i64 %t6)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+`
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }
