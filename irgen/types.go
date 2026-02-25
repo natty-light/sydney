@@ -33,8 +33,8 @@ func (s *IrStruct) String() string {
 	for i, t := range s.Types {
 		if i > 0 {
 			out.WriteString(", ")
-			out.WriteString(t.String())
 		}
+		out.WriteString(t.String())
 	}
 	out.WriteString(" }")
 
