@@ -227,10 +227,11 @@ func (e *Emitter) collectStrings(n ast.Node) error {
 		if err != nil {
 			return err
 		}
-
-		err = e.collectStrings(node.Alternative)
-		if err != nil {
-			return err
+		if node.Alternative != nil {
+			err = e.collectStrings(node.Alternative)
+			if err != nil {
+				return err
+			}
 		}
 	case *ast.IndexExpr:
 		err := e.collectStrings(node.Index)
@@ -456,6 +457,12 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 			op = "fdiv"
 		} else {
 			op = "sdiv"
+		}
+	case "%":
+		if lType == IrFloat {
+			op = "frem"
+		} else {
+			op = "srem"
 		}
 	case "==":
 		//%t0 = icmp eq i64 %left, %right    ; ==
