@@ -21,12 +21,12 @@ type funcSig struct {
 }
 
 type Emitter struct {
-	buf       bytes.Buffer
-	tmpIdx    int
-	lblIdx    int
-	locals    map[string]irLocal
-	inFunc    bool
-	funcDepth int
+	buf    bytes.Buffer
+	tmpIdx int
+	lblIdx int
+	locals map[string]irLocal
+	inFunc bool
+	depth  int
 
 	// Collected metadata
 	structTypes    map[string]types.StructType
@@ -71,7 +71,7 @@ func (e *Emitter) Emit(n ast.Node) error {
 		return err
 	}
 
-	return err
+	return nil
 }
 
 func (e *Emitter) Write(name string) {
@@ -131,8 +131,7 @@ func (e *Emitter) collect(n ast.Node) error {
 		for iname := range ifaces {
 			iface := e.interfaceTypes[iname]
 			methods := make([]string, len(iface.Methods))
-			for i, methodName := range iface.Methods {
-				method := fmt.Sprintf("@%s.%s", sname, methodName)
+			for i, method := range iface.Methods {
 				methods[i] = method
 				e.interfaceTypes[iname].MethodIndices[method] = i
 			}
@@ -320,52 +319,28 @@ func (e *Emitter) functions(node ast.Node) error {
 func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.emit("define i32 @main() {")
 	e.emit("entry: ")
-	e.funcDepth++
+	e.depth++
 	e.emit("call void @sydney_gc_init()")
 
-	err := e.main(node)
-	if err != nil {
-		return err
-	}
+	e.main(node)
 	e.emit("ret i32 0")
-	e.funcDepth--
+	e.depth--
 	e.emit("}")
 
 	return nil
 }
 
-func (e *Emitter) main(node ast.Node) error {
+func (e *Emitter) main(node ast.Node) (string, IrType) {
+	var val string
+	var valType IrType = IrUnit
 	switch node := node.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts {
-			err := e.main(stmt)
-			if err != nil {
-				return err
-			}
+			val, valType = e.emitStmt(stmt)
 		}
-	case *ast.ExpressionStmt:
-		err := e.main(node.Expr)
-		if err != nil {
-			return err
-		}
-	case *ast.BlockStmt:
-		for _, stmt := range node.Stmts {
-			err := e.main(stmt)
-			if err != nil {
-				return err
-			}
-		}
-	case *ast.VarDeclarationStmt:
-		e.emitVarDecl(node)
-	case *ast.VarAssignmentStmt:
-		e.emitVariableAssignment(node)
-	case *ast.CallExpr:
-		e.emitCallExpr(node)
-	case *ast.Identifier:
-		e.emitExpr(node)
 	}
 
-	return nil
+	return val, valType
 }
 
 func (e *Emitter) tmp() string {
@@ -382,8 +357,35 @@ func (e *Emitter) addStr(s string) {
 }
 
 func (e *Emitter) emit(line string) {
-	withIndent := strings.Repeat("  ", e.funcDepth) + line + "\n"
+	withIndent := strings.Repeat("  ", e.depth) + line + "\n"
 	e.buf.WriteString(withIndent)
+}
+
+func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType) {
+	switch s := stmt.(type) {
+	case *ast.ExpressionStmt:
+		return e.emitExpr(s.Expr)
+	case *ast.VarDeclarationStmt:
+		return e.emitVarDecl(s)
+	case *ast.VarAssignmentStmt:
+		return e.emitVariableAssignment(s)
+	case *ast.ReturnStmt:
+		return e.emitReturnStmt(s)
+	case *ast.ForStmt:
+		return e.emitForStmt(s)
+	}
+	return "", IrUnit
+}
+
+func (e *Emitter) emitBlock(block *ast.BlockStmt) (string, IrType) {
+	e.depth++
+	var lastVal string
+	var lastType IrType = IrUnit
+	for _, stmt := range block.Stmts {
+		lastVal, lastType = e.emitStmt(stmt)
+	}
+	e.depth--
+	return lastVal, lastType
 }
 
 func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
@@ -392,6 +394,15 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		return fmt.Sprintf("%d", expr.Value), IrInt
 	case *ast.FloatLiteral:
 		return fmt.Sprintf("%f", expr.Value), IrFloat
+	case *ast.StringLiteral:
+		idx := e.stringConsts[expr.Value]
+		name := fmt.Sprintf("@.str.%d", idx)
+		return name, IrPtr
+	case *ast.BooleanLiteral:
+		if expr.Value {
+			return "1", IrBool
+		}
+		return "0", IrBool
 	case *ast.InfixExpr:
 		return e.emitInfixExpr(expr)
 	case *ast.CallExpr:
@@ -402,6 +413,8 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		line := fmt.Sprintf("%s = load %s, %s %s", result, local.typ, IrPtr, local.alloca)
 		e.emit(line)
 		return result, local.typ
+	case *ast.IfExpr:
+		return e.emitIfExpr(expr)
 	}
 	return "", IrUnit
 }
@@ -410,7 +423,10 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 	left, lType := e.emitExpr(expr.Left)
 	right, _ := e.emitExpr(expr.Right) // discarding because typechecker has enforced this
 	result := e.tmp()
-	var op string
+	icmp := "icmp"
+	fcmp := "fcmp"
+	var op, cmpType string
+	retType := lType
 	switch expr.Operator {
 	case "+":
 		switch lType {
@@ -423,7 +439,6 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 		default:
 			op = "add"
 		}
-
 	case "-":
 		if lType == IrFloat {
 			op = "fsub"
@@ -442,13 +457,104 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 		} else {
 			op = "sdiv"
 		}
+	case "==":
+		//%t0 = icmp eq i64 %left, %right    ; ==
+		if lType == IrFloat {
+			cmpType = fcmp
+			op = "oeq"
+		} else {
+			cmpType = icmp
+			op = "eq"
+		}
+		retType = IrBool
+	case "!=":
+		//%t0 = icmp ne i64 %left, %right    ; !=
+		if lType == IrFloat {
+			cmpType = fcmp
+			op = "one"
+		} else {
+			cmpType = icmp
+			op = "ne"
+		}
+		retType = IrBool
+	case ">":
+		//%t0 = icmp sgt i64 %left, %right   ; >
+		if lType == IrFloat {
+			cmpType = fcmp
+			op = "ogt"
+		} else {
+			cmpType = icmp
+			op = "sgt"
+		}
+		retType = IrBool
+	case ">=":
+		//%t0 = icmp sge i64 %left, %right   ; >=
+		if lType == IrFloat {
+			cmpType = fcmp
+			op = "oge"
+		} else {
+			cmpType = icmp
+			op = "ogt"
+		}
+		retType = IrBool
+	case "<":
+		//%t0 = icmp slt i64 %left, %right   ; <
+		if lType == IrFloat {
+			cmpType = fcmp
+			op = "ole"
+		} else {
+			cmpType = icmp
+			op = "slt"
+		}
+		retType = IrBool
+	case "<=":
+		//%t0 = icmp sle i64 %left, %right   ; <=
+		if lType == IrFloat {
+			cmpType = fcmp
+			op = "ole"
+		} else {
+			cmpType = icmp
+			op = "sle"
+		}
+		retType = IrBool
+	case "||":
+		op = "or"
+	case "&&":
+		op = "and"
 	}
-	opStr := e.infixOpStr(op, lType, left, right)
+	var opStr string
+	if cmpType != "" {
+		opStr = e.emitInfixCmpStr(cmpType, op, lType, left, right)
+	} else {
+		opStr = e.infixOpStr(op, lType, left, right)
+	}
+
 	line := fmt.Sprintf("%s = %s", result, opStr)
 	e.emit(line)
 
-	return result, lType
+	return result, retType
 }
+
+func (e *Emitter) emitPrefixExpr(expr *ast.PrefixExpr) (string, IrType) {
+	val, valType := e.emitExpr(expr.Right)
+	result := e.tmp()
+	var opStr string
+	if expr.Operator == "!" {
+		//%t0 = xor i1 %right, 1
+		opStr = e.infixOpStr("xor", IrBool, val, "1")
+	} else if expr.Operator == "-" {
+		if valType == IrFloat {
+			opStr = fmt.Sprintf("fneg %s %s", IrFloat, val)
+		} else {
+			opStr = e.infixOpStr("sub", IrInt, "0", val)
+		}
+	}
+	line := fmt.Sprintf("%s = %s", result, opStr)
+	e.emit(line)
+
+	return result, valType
+}
+
 func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 	if ident, ok := expr.Function.(*ast.Identifier); ok && ident.Value == "print" {
 		arg, argType := e.emitExpr(expr.Arguments[0])
@@ -470,6 +576,10 @@ func (e *Emitter) infixOpStr(op string, t IrType, left, right string) string {
 	return fmt.Sprintf("%s %s %s, %s", op, t, left, right)
 }
 
+func (e *Emitter) emitInfixCmpStr(cmpType, op string, t IrType, left, right string) string {
+	return fmt.Sprintf("%s %s %s %s, %s", cmpType, op, t, left, right)
+}
+
 func (e *Emitter) emitStructType(t types.StructType) {
 	var out bytes.Buffer
 	out.WriteString("%struct.")
@@ -477,7 +587,7 @@ func (e *Emitter) emitStructType(t types.StructType) {
 	out.WriteString(" = type { ")
 	for i, tt := range t.Types {
 		if i > 0 {
-			out.WriteString(",")
+			out.WriteString(", ")
 		}
 		ttt := SydneyTypeToIrType(tt)
 		out.WriteString(ttt.String())
@@ -489,7 +599,7 @@ func (e *Emitter) emitStructType(t types.StructType) {
 
 func (e *Emitter) emitStringConst(s string, idx int) {
 	s, size := llvmEscapeString(s)
-	line := fmt.Sprintf("@.str.%d = private unnamed_addr constant [%d x i8] c\"%s\\00\"", idx, size, s)
+	line := fmt.Sprintf("@.str.%d = private unnamed_addr constant [%d x i8] c\"%s\"", idx, size, s)
 	e.emit(line)
 }
 
@@ -513,17 +623,21 @@ func llvmEscapeString(s string) (string, int) {
 func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 	numMethods := len(methods)
 	// @vtable.Circle.Shape = constant [1 x ptr] [ptr @Circle.area]
-	methodStrs := make([]string, numMethods)
+	entries := make([]string, numMethods)
 	for i, m := range methods {
-		methodStrs[i] = fmt.Sprintf("%s @%s.%s", IrPtr, sname, m)
+		entries[i] = fmt.Sprintf("ptr @%s.%s", sname, m)
 	}
-	methodsStr := fmt.Sprintf("[%s]", strings.Join(methodStrs, ", "))
+	methodsStr := fmt.Sprintf("[%s]", strings.Join(entries, ", "))
 	line := fmt.Sprintf("@vtable.%s.%s = constant [%d x ptr] %s", sname, iname, numMethods, methodsStr)
 	e.emit(line)
 }
 
-func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) {
+func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	val, valType := e.emitExpr(stmt.Value)
+	if valType == IrUnit {
+		val, valType = e.emitZeroValue(stmt.Type)
+	}
+
 	name := stmt.Name.Value
 	allocaName := "%" + name + ".addr"
 	line := fmt.Sprintf("%s = alloca %s", allocaName, valType)
@@ -531,12 +645,121 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) {
 	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
 	e.locals[name] = irLocal{alloca: allocaName, typ: valType}
 	e.emit(line)
+
+	return val, valType
 }
 
-func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) {
+func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) (string, IrType) {
 	val, valType := e.emitExpr(stmt.Value)
 	name := stmt.Identifier.Value
 	allocaName := e.locals[name]
 	line := fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName.alloca)
 	e.emit(line)
+
+	return val, valType
+}
+
+func (e *Emitter) emitZeroValue(t types.Type) (string, IrType) {
+	switch t {
+	case types.Int:
+		return "0", IrInt
+	case types.Float:
+		return "0.0", IrFloat
+	case types.Bool:
+		return "0", IrBool
+	}
+
+	return "", IrPtr
+}
+
+func (e *Emitter) label(prefix string) string {
+	name := fmt.Sprintf("%s.%d", prefix, e.lblIdx)
+	e.lblIdx++
+	return name
+}
+
+func (e *Emitter) emitLabel(name string) {
+	e.buf.WriteString(name + ":\n")
+}
+
+func (e *Emitter) emitReturnStmt(stmt *ast.ReturnStmt) (string, IrType) {
+	if stmt.ReturnValue == nil {
+		e.emit("ret void")
+		return "", IrUnit
+	}
+	val, typ := e.emitExpr(stmt.ReturnValue)
+	line := fmt.Sprintf("ret %s %s", typ, val)
+	e.emit(line)
+	return val, typ
+}
+
+func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
+	cond, _ := e.emitExpr(expr.Condition) // emit condition, typechecker enforces this is bool
+
+	hasElse := expr.Alternative != nil // controls if else block is emitted
+
+	// labels for blocks, else before merge for targets
+	thenLabel := e.label("then")
+	elseLabel := ""
+	if hasElse {
+		elseLabel = e.label("else")
+	}
+	mergeLabel := e.label("merge")
+
+	// alloca for result
+	var resultAddr string
+	if hasElse {
+		resultAddr = e.tmp()
+		line := fmt.Sprintf("%s = alloca i64", resultAddr)
+		e.emit(line)
+	}
+
+	falseLabel := mergeLabel
+	if hasElse {
+		falseLabel = elseLabel
+	}
+	// branch to our labels
+	line := fmt.Sprintf("br i1 %s, label %%%s, label %%%s", cond, thenLabel, falseLabel)
+	e.emit(line)
+
+	// consequence block
+	e.emitLabel(thenLabel)
+	thenVal, thenType := e.emitBlock(expr.Consequence)
+	// controls whether result is stored
+	isExpr := hasElse && thenType != IrUnit
+	// if there is an else, then there's an expression -- typechecker needs to enforce this more cleanly
+	if isExpr {
+		line = fmt.Sprintf("store %s %s, ptr %s", thenType, thenVal, resultAddr) // need to store result if this is an expression
+		e.emit(line)
+	}
+	line = fmt.Sprintf("br label %%%s", mergeLabel) // mergeLabel might be elseLabel if no alternative
+	e.emit(line)
+
+	// alternative block
+	if hasElse {
+		e.emitLabel(elseLabel)
+		elseVal, _ := e.emitBlock(expr.Alternative)
+		if isExpr {
+			line = fmt.Sprintf("store %s %s, ptr %s", thenType, elseVal, resultAddr)
+			e.emit(line)
+		}
+		line = fmt.Sprintf("br label %%%s", mergeLabel)
+		e.emit(line)
+	}
+
+	// merge block
+	e.emitLabel(mergeLabel)
+
+	if isExpr {
+		result := e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", result, thenType, resultAddr)
+		e.emit(line)
+		return result, thenType
+	}
+
+	return "", IrUnit
+}
+
+func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
+	return "", IrUnit
 }
