@@ -719,8 +719,7 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 		falseLabel = elseLabel
 	}
 	// branch to our labels
-	line := fmt.Sprintf("br i1 %s, label %%%s, label %%%s", cond, thenLabel, falseLabel)
-	e.emit(line)
+	e.emitBranch(cond, thenLabel, falseLabel)
 
 	// consequence block
 	e.emitLabel(thenLabel)
@@ -729,22 +728,20 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	isExpr := hasElse && thenType != IrUnit
 	// if there is an else, then there's an expression -- typechecker needs to enforce this more cleanly
 	if isExpr {
-		line = fmt.Sprintf("store %s %s, ptr %s", thenType, thenVal, resultAddr) // need to store result if this is an expression
+		line := fmt.Sprintf("store %s %s, ptr %s", thenType, thenVal, resultAddr) // need to store result if this is an expression
 		e.emit(line)
 	}
-	line = fmt.Sprintf("br label %%%s", mergeLabel) // mergeLabel might be elseLabel if no alternative
-	e.emit(line)
+	e.emitJmp(mergeLabel) // mergeLabel might be elseLabel if no alternative
 
 	// alternative block
 	if hasElse {
 		e.emitLabel(elseLabel)
 		elseVal, _ := e.emitBlock(expr.Alternative)
 		if isExpr {
-			line = fmt.Sprintf("store %s %s, ptr %s", thenType, elseVal, resultAddr)
+			line := fmt.Sprintf("store %s %s, ptr %s", thenType, elseVal, resultAddr)
 			e.emit(line)
 		}
-		line = fmt.Sprintf("br label %%%s", mergeLabel)
-		e.emit(line)
+		e.emitJmp(mergeLabel)
 	}
 
 	// merge block
@@ -752,7 +749,7 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 
 	if isExpr {
 		result := e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", result, thenType, resultAddr)
+		line := fmt.Sprintf("%s = load %s, ptr %s", result, thenType, resultAddr)
 		e.emit(line)
 		return result, thenType
 	}
@@ -761,5 +758,35 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 }
 
 func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
+	condLabel := e.label("cond")
+	loopLabel := e.label("loop")
+	escapeLabel := e.label("escape")
+
+	// so we can branch back here
+	e.emitJmp(condLabel)
+	e.emitLabel(condLabel)
+	cond, _ := e.emitExpr(stmt.Condition)
+	e.emitBranch(cond, loopLabel, escapeLabel)
+
+	// set loop body
+	e.emitLabel(loopLabel)
+	e.emitBlock(stmt.Body)
+
+	// jump back to above condition
+	e.emitJmp(condLabel)
+
+	// how to get out of loop
+	e.emitLabel(escapeLabel)
+
 	return "", IrUnit
+}
+
+func (e *Emitter) emitBranch(cond, l1, l2 string) {
+	line := fmt.Sprintf("br i1 %s, label %%%s, label %%%s", cond, l1, l2)
+	e.emit(line)
+}
+
+func (e *Emitter) emitJmp(label string) {
+	line := fmt.Sprintf("br label %%%s", label)
+	e.emit(line)
 }

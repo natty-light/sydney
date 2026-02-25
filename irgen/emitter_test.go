@@ -74,6 +74,97 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestIfExpr(t *testing.T) {
+	source := `mut int x = 0;
+mut int y = 0;
+if (x == y) {
+    print("true");
+} else {
+    print("false");
+}
+
+mut z = if (x == y) { 1; } else { 0; };
+print(z);`
+
+	expected := `@.str.0 = private unnamed_addr constant [5 x i8] c"true\00"
+@.str.1 = private unnamed_addr constant [6 x i8] c"false\00"
+define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %x.addr = alloca i64
+  store i64 0, ptr %x.addr
+  %y.addr = alloca i64
+  store i64 0, ptr %y.addr
+  %t0 = load i64, ptr %x.addr
+  %t1 = load i64, ptr %y.addr
+  %t2 = icmp eq i64 %t0, %t1
+  %t3 = alloca i64
+  br i1 %t2, label %then.0, label %else.1
+then.0:
+    call void @sydney_print_string(ptr @.str.0)
+    call void @sydney_print_newline()
+  br label %merge.2
+else.1:
+    call void @sydney_print_string(ptr @.str.1)
+    call void @sydney_print_newline()
+  br label %merge.2
+merge.2:
+  %t4 = load i64, ptr %x.addr
+  %t5 = load i64, ptr %y.addr
+  %t6 = icmp eq i64 %t4, %t5
+  %t7 = alloca i64
+  br i1 %t6, label %then.3, label %else.4
+then.3:
+  store i64 1, ptr %t7
+  br label %merge.5
+else.4:
+  store i64 0, ptr %t7
+  br label %merge.5
+merge.5:
+  %t8 = load i64, ptr %t7
+  %z.addr = alloca i64
+  store i64 %t8, ptr %z.addr
+  %t9 = load i64, ptr %z.addr
+  call void @sydney_print_int(i64 %t9)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+`
+	runEmitterTest(t, source, expected)
+}
+
+func TestForLoop(t *testing.T) {
+	source := `mut int i = 0;
+for (i < 5) {
+    print(i);
+    i = i + 1;
+}`
+	expected := `define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %i.addr = alloca i64
+  store i64 0, ptr %i.addr
+  br label %cond.0
+cond.0:
+  %t0 = load i64, ptr %i.addr
+  %t1 = icmp slt i64 %t0, 5
+  br i1 %t1, label %loop.1, label %escape.2
+loop.1:
+    %t2 = load i64, ptr %i.addr
+    call void @sydney_print_int(i64 %t2)
+    call void @sydney_print_newline()
+    %t3 = load i64, ptr %i.addr
+    %t4 = add i64 %t3, 1
+    store i64 %t4, ptr %i.addr
+  br label %cond.0
+escape.2:
+  ret i32 0
+}
+`
+
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }
