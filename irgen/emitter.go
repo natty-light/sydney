@@ -331,6 +331,8 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 			return "1", IrBool
 		}
 		return "0", IrBool
+	case *ast.StructLiteral:
+		return e.emitStructLiteral(expr)
 	case *ast.InfixExpr:
 		return e.emitInfixExpr(expr)
 	case *ast.CallExpr:
@@ -343,6 +345,8 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		return result, local.typ
 	case *ast.IfExpr:
 		return e.emitIfExpr(expr)
+	case *ast.SelectorExpr:
+		return e.emitSelectorExpr(expr)
 	}
 	return "", IrUnit
 }
@@ -595,7 +599,7 @@ func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	val, valType := e.emitExpr(stmt.Value)
 	if valType == IrUnit {
-		val, valType = e.emitZeroValue(stmt.Type)
+		val, valType = e.getZeroValue(stmt.Type)
 	}
 
 	name := stmt.Name.Value
@@ -619,7 +623,7 @@ func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) (string, I
 	return val, valType
 }
 
-func (e *Emitter) emitZeroValue(t types.Type) (string, IrType) {
+func (e *Emitter) getZeroValue(t types.Type) (string, IrType) {
 	switch t {
 	case types.Int:
 		return "0", IrInt
@@ -818,4 +822,72 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	e.locals = oldLocals
 
 	return val, valType
+}
+
+func (e *Emitter) emitStructLiteral(lit *ast.StructLiteral) (string, IrType) {
+	//; Point { x: 1, y: 2 }
+	//%t0 = call ptr @sydney_gc_alloc(i64 16)
+	//%t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
+	//store i64 1, ptr %t1
+	//%t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
+	//store i64 2, ptr %t2
+	//; result is %t0 (ptr)
+	result := e.tmp()
+	size := len(lit.Fields) * 8 // all values at 8 bytes as int64, float64, etc
+
+	// how to compute size?
+	line := fmt.Sprintf("%s = call %s @sydney_gc_alloc(%s %d)", result, IrPtr, IrInt, size)
+	e.emit(line)
+	for i, fieldName := range lit.ResolvedType.Fields {
+		litIdx := -1
+		for j, field := range lit.Fields {
+			if field == fieldName {
+				litIdx = j
+			}
+		}
+		fTmp := e.tmp()
+
+		line = fmt.Sprintf("%s = getelementptr %%struct.%s, %s %s, %s %s, %s %d", fTmp, lit.Name, IrPtr, result, IrInt32, "0", IrInt32, i)
+		e.emit(line)
+		val, valType := e.emitExpr(lit.Values[litIdx])
+		line = fmt.Sprintf("store %s %s, %s %s", valType, val, IrPtr, fTmp)
+		e.emit(line)
+	}
+
+	return result, IrPtr
+}
+
+func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
+	// ; load the struct pointer
+	//  %t0 = load ptr, ptr %p.addr
+	//
+	//  ; GEP to field x (index 0)
+	//  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
+	//
+	//  ; load the field value
+	//  %t2 = load i64, ptr %t1
+	//  ; %t2 is the result
+
+	val := expr.Value.(*ast.Identifier).Value
+	fieldIdx := -1
+	for i, fieldName := range expr.ResolvedType.Fields {
+		if fieldName == val {
+			fieldIdx = i
+			break
+		}
+	}
+	retType := SydneyTypeToIrType(expr.ResolvedType.Types[fieldIdx])
+
+	structPtr, _ := e.emitExpr(expr.Left)
+
+	gepTmp := e.tmp()
+
+	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", gepTmp, expr.ResolvedType.Name, structPtr, fieldIdx)
+	e.emit(line)
+
+	result := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", result, retType, gepTmp)
+	e.emit(line)
+
+	return result, retType
 }

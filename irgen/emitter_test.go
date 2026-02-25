@@ -283,6 +283,38 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestStructs(t *testing.T) {
+	source := `define struct Point { x int, y int }
+const Point p = Point { x: 0, y: 0 };
+print(p.x);
+print(p.y);`
+	expected := `%struct.Point = type { i64, i64 }
+define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_gc_alloc(i64 16)
+  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
+  store i64 0, ptr %t1
+  %t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
+  store i64 0, ptr %t2
+  %p.addr = alloca ptr
+  store ptr %t0, ptr %p.addr
+  %t3 = load ptr, ptr %p.addr
+  %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
+  %t5 = load i64, ptr %t4
+  call void @sydney_print_int(i64 %t5)
+  call void @sydney_print_newline()
+  %t6 = load ptr, ptr %p.addr
+  %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
+  %t8 = load i64, ptr %t7
+  call void @sydney_print_int(i64 %t8)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+`
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }

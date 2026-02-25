@@ -14,6 +14,7 @@ const (
 	IrPtr   BasicIrType = "ptr"
 	IrNull  BasicIrType = "ptr" // nullptr
 	IrUnit  BasicIrType = "void"
+	IrInt32 BasicIrType = "i32"
 )
 
 type IrStruct struct {
