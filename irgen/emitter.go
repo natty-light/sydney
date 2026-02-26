@@ -220,7 +220,11 @@ func (e *Emitter) preamble() {
 		e.emitStructType(v)
 	}
 
+	sorted := make([]string, len(e.stringConsts))
 	for s, i := range e.stringConsts {
+		sorted[i] = s
+	}
+	for i, s := range sorted {
 		e.emitStringConst(s, i)
 	}
 
