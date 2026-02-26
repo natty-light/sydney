@@ -368,6 +368,172 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestInterfaceDispatch(t *testing.T) {
+	source := `define struct Circle { radius float }
+define struct Rect { w float, h float}
+define interface Area { area() -> float }
+define implementation Circle -> Area
+define implementation Rect -> Area
+
+func area(Circle c) -> float {
+    const pi = 3.14;
+    return c.radius * c.radius * pi;
+}
+
+func area(Rect r) -> float {
+    return r.w * r.h;
+}
+
+const Circle c = Circle { radius: 2.0 };
+const Rect r = Rect { w: 2.0, h: 2.0 };
+
+func getArea(Area a) -> float {
+    return a.area();
+}
+
+const rectA = getArea(r);
+print("rect area: ", rectA);
+
+const circA = getArea(c);
+print("circle area: ", circA);`
+
+	expected := `%struct.Circle = type { double }
+%struct.Rect = type { double, double }
+@.str.0 = private unnamed_addr constant [12 x i8] c"rect area: \00"
+@.str.1 = private unnamed_addr constant [14 x i8] c"circle area: \00"
+@vtable.Circle.Area = constant [1 x ptr] [ptr @Circle.area]
+@vtable.Rect.Area = constant [1 x ptr] [ptr @Rect.area]
+define double @Circle.area(ptr %c) {
+entry:
+  %c.addr = alloca ptr
+  store ptr %c, ptr %c.addr
+  %pi.addr = alloca double
+  store double 3.140000, ptr %pi.addr
+  %t0 = load ptr, ptr %c.addr
+  %t1 = getelementptr %struct.Circle, ptr %t0, i32 0, i32 0
+  %t2 = load double, ptr %t1
+  %t3 = load ptr, ptr %c.addr
+  %t4 = getelementptr %struct.Circle, ptr %t3, i32 0, i32 0
+  %t5 = load double, ptr %t4
+  %t6 = fmul double %t2, %t5
+  %t7 = load double, ptr %pi.addr
+  %t8 = fmul double %t6, %t7
+  ret double %t8
+}
+
+define double @Rect.area(ptr %r) {
+entry:
+  %r.addr = alloca ptr
+  store ptr %r, ptr %r.addr
+  %t0 = load ptr, ptr %r.addr
+  %t1 = getelementptr %struct.Rect, ptr %t0, i32 0, i32 0
+  %t2 = load double, ptr %t1
+  %t3 = load ptr, ptr %r.addr
+  %t4 = getelementptr %struct.Rect, ptr %t3, i32 0, i32 1
+  %t5 = load double, ptr %t4
+  %t6 = fmul double %t2, %t5
+  ret double %t6
+}
+
+define double @getArea(ptr %a) {
+entry:
+  %a.addr = alloca ptr
+  store ptr %a, ptr %a.addr
+  %t0 = load ptr, ptr %a.addr
+  %t1 = load { ptr, ptr }, ptr %t0
+  %t2 = extractvalue { ptr, ptr } %t1, 0
+  %t3 = extractvalue { ptr, ptr } %t1, 1
+  %t4 = getelementptr [1 x ptr], ptr %t3, i32 0, i32 0
+  %t5 = load ptr, ptr %t4
+  %t6 = call double %t5(ptr %t2)
+  ret double %t6
+}
+
+define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_gc_alloc(i64 8)
+  %t1 = getelementptr %struct.Circle, ptr %t0, i32 0, i32 0
+  store double 2.000000, ptr %t1
+  %c.addr = alloca ptr
+  store ptr %t0, ptr %c.addr
+  %t2 = call ptr @sydney_gc_alloc(i64 16)
+  %t3 = getelementptr %struct.Rect, ptr %t2, i32 0, i32 0
+  store double 2.000000, ptr %t3
+  %t4 = getelementptr %struct.Rect, ptr %t2, i32 0, i32 1
+  store double 2.000000, ptr %t4
+  %r.addr = alloca ptr
+  store ptr %t2, ptr %r.addr
+  %t5 = load ptr, ptr %r.addr
+  %t6 = alloca { ptr, ptr }
+  %t7 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 0
+  store ptr %t5, ptr %t7
+  %t8 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 1
+  store ptr @vtable.Rect.Area, ptr %t8
+  %t9 = call double @getArea(ptr %t6)
+  %rectA.addr = alloca double
+  store double %t9, ptr %rectA.addr
+  call void @sydney_print_string(ptr @.str.0)
+  %t10 = load double, ptr %rectA.addr
+  call void @sydney_print_float(double %t10)
+  call void @sydney_print_newline()
+  %t11 = load ptr, ptr %c.addr
+  %t12 = alloca { ptr, ptr }
+  %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
+  store ptr %t11, ptr %t13
+  %t14 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 1
+  store ptr @vtable.Circle.Area, ptr %t14
+  %t15 = call double @getArea(ptr %t12)
+  %circA.addr = alloca double
+  store double %t15, ptr %circA.addr
+  call void @sydney_print_string(ptr @.str.1)
+  %t16 = load double, ptr %circA.addr
+  call void @sydney_print_float(double %t16)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+`
+
+	runEmitterTest(t, source, expected)
+}
+
+func TestArrays(t *testing.T) {
+	source := `const array<int> a = [0, 1, 2, 3];
+print(a[1]);`
+
+	expected := `define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_gc_alloc(i64 32)
+  %t1 = getelementptr i64, ptr %t0, i32 0
+  store i64 0, ptr %t1
+  %t2 = getelementptr i64, ptr %t0, i32 1
+  store i64 1, ptr %t2
+  %t3 = getelementptr i64, ptr %t0, i32 2
+  store i64 2, ptr %t3
+  %t4 = getelementptr i64, ptr %t0, i32 3
+  store i64 3, ptr %t4
+  %t5 = call ptr @sydney_gc_alloc(i64 16)
+  %t6 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 0
+  store i64 4, ptr %t6
+  %t7 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 1
+  store ptr %t0, ptr %t7
+  %a.addr = alloca ptr
+  store ptr %t5, ptr %a.addr
+  %t8 = load ptr, ptr %a.addr
+  %t9 = getelementptr { i64, ptr }, ptr %t8, i32 0, i32 1
+  %t10 = load ptr, ptr %t9
+  %t11 = getelementptr i64, ptr %t10, i64 1
+  %t12 = load i64, ptr %t11
+  call void @sydney_print_int(i64 %t12)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+`
+
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }
