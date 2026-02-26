@@ -319,6 +319,35 @@ func (e *Emitter) emitBlock(block *ast.BlockStmt) (string, IrType, bool) {
 }
 
 func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
+	val, valType := e.emitExprInner(expr)
+	if castTo := expr.GetCastTo(); castTo != nil {
+		concreteName := e.getConcreteType(expr)
+		iface := castTo.Name
+		ifaceAlloca := e.tmp()
+		line := fmt.Sprintf("%s = alloca { ptr, ptr }", ifaceAlloca)
+		e.emit(line)
+
+		// store value ptr at index 0
+		valSlot := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", valSlot, ifaceAlloca)
+		e.emit(line)
+		line = fmt.Sprintf("store ptr %s, ptr %s", val, valSlot)
+		e.emit(line)
+
+		// Store vtable pointer at index 1
+		vtableSlot := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", vtableSlot, ifaceAlloca)
+		e.emit(line)
+		line = fmt.Sprintf("store ptr @vtable.%s.%s, ptr %s", concreteName, iface, vtableSlot)
+		e.emit(line)
+
+		return ifaceAlloca, IrPtr
+	}
+
+	return val, valType
+}
+
+func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		return fmt.Sprintf("%d", expr.Value), IrInt
@@ -436,7 +465,7 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 			op = "oge"
 		} else {
 			cmpType = icmp
-			op = "oge"
+			op = "sge"
 		}
 		retType = IrBool
 	case "<":
@@ -537,7 +566,109 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 		}
 	}
 
+	// Check for interface method call via mangled name
+	if expr.MangledName != "" {
+		e.emitStructMethodCall(expr)
+	}
+
+	if sel, ok := expr.Function.(*ast.SelectorExpr); ok {
+		if castTo := sel.Left.GetCastTo(); castTo != nil {
+			return e.emitInterfaceMethodCall(expr, sel, castTo)
+		}
+
+		if ident, ok := sel.Left.(*ast.Identifier); ok {
+			if iface, ok := ident.ResolvedType.(types.InterfaceType); ok {
+				return e.emitInterfaceMethodCall(expr, sel, &iface)
+			}
+		}
+	}
+
 	return "", IrUnit
+}
+
+func (e *Emitter) emitStructMethodCall(expr *ast.CallExpr) (string, IrType) {
+	sig, exists := e.funcSigs[expr.MangledName]
+	if exists {
+		// this is a struct receiver, not interface polymorphism
+		args := make([]string, len(expr.Arguments))
+		for i, arg := range expr.Arguments {
+			val, _ := e.emitExpr(arg)
+			args[i] = fmt.Sprintf("%s %s", sig.paramTypes[i], val)
+		}
+		argsStr := strings.Join(args, ", ")
+		if sig.retType == IrUnit {
+			e.emit(fmt.Sprintf("call void %s(%s)", sig.name, argsStr))
+			return "", IrUnit
+		}
+		result := e.tmp()
+		e.emit(fmt.Sprintf("%s = call %s %s(%s)", result, sig.retType, sig.name, argsStr))
+		return result, sig.retType
+	}
+
+	return "", IrUnit
+}
+
+func (e *Emitter) emitInterfaceMethodCall(expr *ast.CallExpr, sel *ast.SelectorExpr, iface *types.InterfaceType) (string, IrType) {
+	// CastTo boxing handles emitting of { ptr, ptr } alloca
+	ifacePtr, _ := e.emitExpr(sel.Left)
+
+	// load fat pointer
+	ifaceVal := e.tmp()
+	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, ifacePtr)
+	e.emit(line)
+
+	// Extract value pointer (index 0)
+	//%val.ptr = extractvalue { ptr, ptr } %iface, 0
+	valPtr := e.tmp()
+	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
+	e.emit(line)
+
+	//; Extract vtable pointer (index 1)
+	//%vtable.ptr = extractvalue { ptr, ptr } %iface, 1
+	vtablePtr := e.tmp()
+	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
+	e.emit(line)
+
+	methodName := sel.Value.(*ast.Identifier).Value
+	methodIdx := iface.MethodIndices[methodName]
+	numMethods := len(iface.Methods)
+
+	// GEP into vtable to get the method function pointer
+	// "area" is method index 0 in Shape
+	//%fn.ptr.addr = getelementptr [1 x ptr], ptr %vtable.ptr, i32 0, i32 0
+	fnPtrAddr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr [%d x ptr], ptr %s, i32 0, i32 %d", fnPtrAddr, numMethods, vtablePtr, methodIdx)
+	e.emit(line)
+
+	// load function pointer
+	//%fn.ptr = load ptr, ptr %fn.ptr.addr
+	fnPtr := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnPtrAddr)
+	e.emit(line)
+
+	args := make([]string, len(expr.Arguments)+1)
+	args[0] = fmt.Sprintf("ptr %s", valPtr)
+	for i, arg := range expr.Arguments {
+		val, valType := e.emitExpr(arg)
+		args[i+1] = fmt.Sprintf("%s %s", valType, val)
+	}
+	argStr := strings.Join(args, ", ")
+
+	// Call the method — first arg is the receiver (value pointer)
+	method := iface.Types[methodIdx]
+	retType := SydneyTypeToIrType(method.(types.FunctionType).Return)
+	if retType == IrUnit {
+		line = fmt.Sprintf("call void %s(%s)", fnPtr, argStr)
+		e.emit(line)
+		return "", IrUnit
+	}
+
+	//%result = call double %fn.ptr(ptr %val.ptr)
+	result := e.tmp()
+	line = fmt.Sprintf("%s = call %s %s(%s)", result, retType, fnPtr, argStr)
+	e.emit(line)
+
+	return result, retType
 }
 
 func (e *Emitter) infixOpStr(op string, t IrType, left, right string) string {
@@ -788,7 +919,7 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	e.tmpIdx = 0
 	e.lblIdx = 0
 
-	argStr := strings.Join(paramParts, " ")
+	argStr := strings.Join(paramParts, ", ")
 	line := fmt.Sprintf("define %s @%s(%s) {", ret, name, argStr)
 	e.emit(line)
 	e.emitLabel("entry")
@@ -929,4 +1060,17 @@ func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (stri
 	e.emit(line)
 
 	return "", IrUnit
+}
+
+func (e *Emitter) getConcreteType(expr ast.Expr) string {
+	switch node := expr.(type) {
+	case *ast.StructLiteral:
+		return node.ResolvedType.Signature()
+	case *ast.Identifier:
+		return node.ResolvedType.Signature()
+	case *ast.CallExpr:
+		return node.ResolvedType.Signature()
+	}
+
+	return ""
 }
