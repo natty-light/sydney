@@ -364,6 +364,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return "0", IrBool
 	case *ast.StructLiteral:
 		return e.emitStructLiteral(expr)
+	case *ast.ArrayLiteral:
+		return e.emitArrayLiteral(expr)
 	case *ast.InfixExpr:
 		return e.emitInfixExpr(expr)
 	case *ast.PrefixExpr:
@@ -380,6 +382,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitIfExpr(expr)
 	case *ast.SelectorExpr:
 		return e.emitSelectorExpr(expr)
+	case *ast.IndexExpr:
+		return e.emitArrayIndexExpr(expr)
 	}
 	return "", IrUnit
 }
@@ -1073,4 +1077,89 @@ func (e *Emitter) getConcreteType(expr ast.Expr) string {
 	}
 
 	return ""
+}
+
+func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
+	//  { i64, ptr }   ; { length, data_ptr }
+	// Where data_ptr points to a gc_alloc'd buffer of N * element_size bytes.
+	//
+	//  For [1, 2, 3] the IR would look like:
+	//
+	//  ; Allocate data buffer (3 elements * 8 bytes)
+	//  %t0 = call ptr @sydney_gc_alloc(i64 24)
+	l := len(arr.Elements) * 8 // 8 bytes since we use 64bit sizes
+	buf := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", buf, l)
+
+	//  Store each element
+	//  %t1 = getelementptr i64, ptr %t0, i32 0
+	//  store i64 1, ptr %t1
+	//  %t2 = getelementptr i64, ptr %t0, i32 1
+	//  store i64 2, ptr %t2
+	e.emit(line)
+	for i, element := range arr.Elements {
+		val, valType := e.emitExpr(element)
+		elemPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 %d", elemPtr, valType, buf, i)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", valType, val, elemPtr)
+		e.emit(line)
+	}
+
+	//  Allocate the header struct { len, data }
+	//  %t4 = call ptr @sydney_gc_alloc(i64 16)
+	//  %t5 = getelementptr { i64, ptr }, ptr %t4, i32 0, i32 0
+	//  store i64 3, ptr %t5
+	//  %t6 = getelementptr { i64, ptr }, ptr %t4, i32 0, i32 1
+	//  store ptr %t0, ptr %t6
+	headerPtr := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", headerPtr) // 2 bytes since header is fixed size
+	e.emit(line)
+	lenPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, headerPtr)
+	e.emit(line)
+	line = fmt.Sprintf("store i64 %d, ptr %s", len(arr.Elements), lenPtr) // store length
+	e.emit(line)
+	dPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dPtr, headerPtr) // store data
+	e.emit(line)
+	line = fmt.Sprintf("store ptr %s, ptr %s", buf, dPtr)
+	e.emit(line)
+
+	//  ; result is %t4 (ptr to the header)
+	return headerPtr, IrPtr
+}
+
+func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
+	// 1. Load the header from the variable
+	//  2. GEP index 1 to get the data pointer
+	//  3. Load the data pointer
+	//  4. GEP with the index into the data buffer
+	//  5. Load the element
+	local := e.locals[expr.Left.(*ast.Identifier).Value]
+	idx, _ := e.emitExpr(expr.Index)
+
+	headPtr := e.tmp()
+	line := fmt.Sprintf("%s = load ptr, ptr %s", headPtr, local.alloca)
+	e.emit(line)
+
+	dataPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, headPtr)
+	e.emit(line)
+
+	data := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr)
+	e.emit(line)
+
+	elemType := SydneyTypeToIrType(expr.ResolvedType)
+
+	elemPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", elemPtr, elemType, data, idx)
+	e.emit(line)
+
+	result := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", result, elemType, elemPtr)
+	e.emit(line)
+
+	return result, elemType
 }
