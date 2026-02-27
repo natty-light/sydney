@@ -401,7 +401,9 @@ print("circle area: ", circA);`
 %struct.Rect = type { double, double }
 @.str.0 = private unnamed_addr constant [12 x i8] c"rect area: \00"
 @.str.1 = private unnamed_addr constant [14 x i8] c"circle area: \00"
+@vtable.Circle. = constant [0 x ptr] []
 @vtable.Circle.Area = constant [1 x ptr] [ptr @Circle.area]
+@vtable.Rect. = constant [0 x ptr] []
 @vtable.Rect.Area = constant [1 x ptr] [ptr @Rect.area]
 define double @Circle.area(ptr %c) {
 entry:

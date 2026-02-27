@@ -1055,6 +1055,7 @@ func (c *Checker) satisfiesSameInterface(actual, expected types.Type) bool {
 }
 
 func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type {
+	c.typeOf(node.Left, nil)
 	t := c.typeOf(node.Left.Left, nil)
 
 	indexOrKeyType := c.typeOf(node.Left.Index, nil)
