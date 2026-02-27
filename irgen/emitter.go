@@ -384,6 +384,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 			return "1", IrBool
 		}
 		return "0", IrBool
+	case *ast.NullLiteral:
+		return "null", IrNull
 	case *ast.StructLiteral:
 		return e.emitStructLiteral(expr)
 	case *ast.ArrayLiteral:
