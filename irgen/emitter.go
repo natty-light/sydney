@@ -20,6 +20,11 @@ type funcSig struct {
 	name       string   // IR function name (e.g. "@add", "@Circle.area")
 }
 
+type freeVar struct {
+	name string
+	typ  IrType
+}
+
 type Emitter struct {
 	buf     *bytes.Buffer
 	funcBuf *bytes.Buffer
@@ -1170,6 +1175,13 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	//}
 
 	anon := e.anon()
+	freeVars := e.findFreeVars(expr.Body, expr.Parameters)
+
+	envTypes := make([]string, len(freeVars))
+	for i, fv := range freeVars {
+		envTypes[i] = fv.typ.String()
+	}
+	envTypeStr := strings.Join(envTypes, ", ")
 	retType := SydneyTypeToIrType(expr.Type.Return)
 
 	paramIrTypes := make([]string, len(expr.Parameters))
@@ -1187,11 +1199,13 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	oldLocals := e.locals
 	oldTmpIdx := e.tmpIdx
 	oldLblIdx := e.lblIdx
+	oldDepth := e.depth
 	buf := e.buf
-	e.buf = e.funcBuf
+	e.buf = &bytes.Buffer{} // fresh buffer, not funcBuf
 	e.locals = make(map[string]irLocal)
 	e.tmpIdx = 0
 	e.lblIdx = 0
+	e.depth = 0
 
 	var line string
 	if len(paramParts) > 0 {
@@ -1204,6 +1218,25 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	e.emitLabel("entry")
 
 	e.depth++
+	// store free vars in function body
+	for i, fv := range freeVars {
+		gepPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %%env, i32 0, i32 %d", gepPtr, envTypeStr, i)
+		e.emit(line)
+
+		loaded := e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, fv.typ, gepPtr)
+		e.emit(line)
+
+		allocaName := "%" + fv.name + ".addr"
+		line = fmt.Sprintf("%s = alloca %s", allocaName, fv.typ)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, loaded, allocaName)
+		e.emit(line)
+		e.locals[fv.name] = irLocal{allocaName, fv.typ}
+	}
+
+	// allocate params
 	for i, paramName := range expr.Parameters {
 		pName := paramName.Value
 		allocaName := "%" + pName + ".addr"
@@ -1233,7 +1266,9 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	e.lblIdx = oldLblIdx
 	e.tmpIdx = oldTmpIdx
 	e.locals = oldLocals
-	e.buf = buf
+	e.depth = oldDepth
+	e.funcBuf.Write(e.buf.Bytes()) // append completed function to funcBuf
+	e.buf = buf                    // restore caller's buffer
 
 	closure := e.tmp()
 	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", closure)
@@ -1246,8 +1281,34 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	envSlot := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envSlot, closure)
 	e.emit(line)
-	line = fmt.Sprintf("store ptr null, ptr %s", envSlot)
-	e.emit(line) // null env for no captures
+
+	// create env ptr
+	if len(freeVars) > 0 {
+		size := len(freeVars) * 8
+		envPtr := e.tmp()
+		line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", envPtr, size)
+		e.emit(line)
+
+		for i, fv := range freeVars {
+			slot := e.tmp()
+			line = fmt.Sprintf("%s = getelementptr { %s }, ptr %s, i32 0, i32 %d", slot, envTypeStr, envPtr, i)
+			e.emit(line)
+
+			fvVal := e.tmp()
+			local := oldLocals[fv.name]
+			line = fmt.Sprintf("%s = load %s, ptr %s", fvVal, fv.typ, local.alloca)
+			e.emit(line)
+
+			line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, fvVal, slot)
+			e.emit(line)
+		}
+
+		line = fmt.Sprintf("store ptr %s, ptr %s", envPtr, envSlot)
+		e.emit(line)
+	} else {
+		line = fmt.Sprintf("store ptr null, ptr %s", envSlot)
+		e.emit(line) // null env for no captures
+	}
 
 	return closure, IrPtr
 }
@@ -1329,4 +1390,90 @@ func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrT
 	e.emit(line)
 	return result, sig.retType
 
+}
+
+func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []freeVar {
+	paramSet := make(map[string]bool)
+	for _, p := range params {
+		paramSet[p.Value] = true
+	}
+
+	seen := make(map[string]bool)
+
+	var freeVars []freeVar
+
+	var walk func(node ast.Node)
+	walk = func(node ast.Node) {
+		if node == nil {
+			return
+		}
+
+		switch n := node.(type) {
+		case *ast.Identifier:
+			if !paramSet[n.Value] && !seen[n.Value] {
+				if local, ok := e.locals[n.Value]; ok {
+					seen[n.Value] = true
+					freeVars = append(freeVars, freeVar{
+						name: n.Value,
+						typ:  local.typ,
+					})
+				}
+			}
+		case *ast.BlockStmt:
+			for _, s := range n.Stmts {
+				walk(s)
+			}
+		case *ast.ExpressionStmt:
+			walk(n.Expr)
+		case *ast.VarDeclarationStmt:
+			paramSet[n.Name.Value] = true
+			walk(n.Value)
+		case *ast.VarAssignmentStmt:
+			walk(n.Value)
+		case *ast.IndexAssignmentStmt:
+			walk(n.Left)
+			walk(n.Value)
+		case *ast.SelectorAssignmentStmt:
+			walk(n.Left)
+			walk(n.Value)
+		case *ast.ReturnStmt:
+			walk(n.ReturnValue)
+		case *ast.ForStmt:
+			walk(n.Condition)
+			walk(n.Body)
+		case *ast.InfixExpr:
+			walk(n.Left)
+			walk(n.Right)
+		case *ast.PrefixExpr:
+			walk(n.Right)
+		case *ast.IfExpr:
+			walk(n.Condition)
+			walk(n.Consequence)
+			walk(n.Alternative)
+		case *ast.CallExpr:
+			walk(n.Function)
+			for _, arg := range n.Arguments {
+				walk(arg)
+			}
+		case *ast.IndexExpr:
+			walk(n.Left)
+			walk(n.Index)
+		case *ast.SelectorExpr:
+			walk(n.Left)
+			// value is a name
+		case *ast.ArrayLiteral:
+			for _, elem := range n.Elements {
+				walk(elem)
+			}
+		case *ast.FunctionLiteral:
+			walk(n.Body)
+
+		}
+	}
+
+	for _, s := range stmt.Stmts {
+		walk(s)
+	}
+
+	return freeVars
 }
