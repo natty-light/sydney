@@ -70,18 +70,34 @@ pub extern "C" fn sydney_gc_collect() {
     unsafe {
         let gc = GC.as_mut().unwrap();
 
+        let anchor: usize = 0;
+        let stack_top = &anchor as *const usize as *mut u8;
+        // this will only work on macOS
+        let stack_base = libc::pthread_get_stackaddr_np(libc::pthread_self()) as *mut u8;
+
+        let low = min(stack_top as usize, stack_base as usize);
+        let high = max(stack_top as usize, stack_base as usize);
+
+
+        let mut stack_roots: Vec<*mut u8> = Vec::new();
+        for addr in (low..high).step_by(8) {
+            let value = *(addr as *const usize);
+            if gc.allocations.contains_key(&value) {
+                stack_roots.push(value as *mut u8);
+            }
+        }
+
         // mark
         for root_addr in gc.global_roots.iter() {
             let heap_ptr: *mut u8 = **root_addr;
             mark(heap_ptr);
         }
 
-        let anchor: usize = 0;
-        let stack_top = &anchor as *const usize as *mut u8;
-        // this will only work on macOS
-        let stack_base = libc::pthread_get_stackaddr_np(libc::pthread_self()) as *mut u8;
+        for ptr in stack_roots.iter() {
+            mark(*ptr);
+        }
 
-        scan_range(stack_top, stack_base);
+
 
         let before = gc.allocations.len();
         // sweep
@@ -97,7 +113,7 @@ pub extern "C" fn sydney_gc_collect() {
             }
         });
         let after = gc.allocations.len();
-        eprintln!("GC: {} total, {} swept, {} kept", before, before-after, after);
+        // eprintln!("GC: {} total, {} swept, {} kept", before, before-after, after);
 
     }
 }

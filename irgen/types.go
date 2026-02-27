@@ -8,13 +8,14 @@ import (
 type BasicIrType string
 
 const (
-	IrInt   BasicIrType = "i64"
-	IrFloat BasicIrType = "double"
-	IrBool  BasicIrType = "i1"
-	IrPtr   BasicIrType = "ptr"
-	IrNull  BasicIrType = "ptr" // nullptr
-	IrUnit  BasicIrType = "void"
-	IrInt32 BasicIrType = "i32"
+	IrInt    BasicIrType = "i64"
+	IrFloat  BasicIrType = "double"
+	IrBool   BasicIrType = "i1"
+	IrPtr    BasicIrType = "ptr"
+	IrNull   BasicIrType = "ptr" // nullptr
+	IrUnit   BasicIrType = "void"
+	IrInt32  BasicIrType = "i32"
+	IrFatPtr BasicIrType = "{ ptr, ptr }"
 )
 
 type IrStruct struct {

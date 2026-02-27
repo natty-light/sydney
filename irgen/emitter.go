@@ -22,13 +22,22 @@ type irGlobal struct {
 
 type funcSig struct {
 	retType    IrType   // IR return type string
-	paramTypes []string // IR param type strings
+	paramTypes []IrType // IR param type strings
 	name       string   // IR function name (e.g. "@add", "@Circle.area")
 }
 
 type freeVar struct {
 	name string
 	typ  IrType
+}
+
+type funcState struct {
+	locals    map[string]irLocal
+	tmpIdx    int
+	lblIdx    int
+	depth     int
+	allocaBuf *bytes.Buffer
+	bodyBuf   *bytes.Buffer
 }
 
 type Emitter struct {
@@ -52,6 +61,9 @@ type Emitter struct {
 
 	funcSigs   map[string]funcSig   // function name → { retType, paramTypes }
 	scopeStack []map[string]irLocal // stack of local scopes for nested functions
+
+	allocaBuf *bytes.Buffer
+	bodyBuf   *bytes.Buffer
 }
 
 func New() *Emitter {
@@ -300,14 +312,20 @@ func (e *Emitter) functions(node *ast.Program) {
 
 func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.emit("define i32 @main() {")
-	e.emit("entry: ")
-	e.depth++
-	e.emit("call void @sydney_gc_init()")
 
+	e.allocaBuf = &bytes.Buffer{}
+	e.bodyBuf = &bytes.Buffer{}
+	e.depth = 1
+
+	e.emit("call void @sydney_gc_init()")
 	e.main(node)
 	e.emit("call void @sydney_gc_shutdown()")
 	e.emit("ret i32 0")
-	e.depth--
+
+	e.assembleFunction(e.buf)
+	e.depth = 0
+	e.allocaBuf = nil
+	e.bodyBuf = nil
 	e.emit("}")
 
 	return nil
@@ -347,7 +365,83 @@ func (e *Emitter) addStr(s string) {
 
 func (e *Emitter) emit(line string) {
 	withIndent := strings.Repeat("  ", e.depth) + line + "\n"
+	if e.bodyBuf != nil {
+		e.bodyBuf.WriteString(withIndent)
+	} else {
+		e.buf.WriteString(withIndent)
+	}
+}
+
+func (e *Emitter) emitBypass(line string) {
+	withIndent := strings.Repeat("  ", e.depth) + line + "\n"
 	e.buf.WriteString(withIndent)
+}
+
+func (e *Emitter) label(prefix string) string {
+	name := fmt.Sprintf("%s.%d", prefix, e.lblIdx)
+	e.lblIdx++
+	return name
+}
+
+func (e *Emitter) global(name string) string {
+	return fmt.Sprintf("@%s", name)
+}
+
+func (e *Emitter) emitLabel(name string) {
+	line := name + ":\n"
+	if e.bodyBuf != nil {
+		e.bodyBuf.WriteString(line)
+	} else {
+		e.buf.WriteString(line)
+	}
+}
+
+func (e *Emitter) emitAlloca(name string, typ IrType) {
+	line := fmt.Sprintf("  %s = alloca %s\n", name, typ)
+	e.allocaBuf.WriteString(line)
+}
+
+func (e *Emitter) emitBranch(cond, l1, l2 string) {
+	line := fmt.Sprintf("br i1 %s, label %%%s, label %%%s", cond, l1, l2)
+	e.emit(line)
+}
+
+func (e *Emitter) emitJmp(label string) {
+	line := fmt.Sprintf("br label %%%s", label)
+	e.emit(line)
+}
+
+func (e *Emitter) beginFunction() funcState {
+	state := funcState{
+		locals:    e.locals,
+		tmpIdx:    e.tmpIdx,
+		lblIdx:    e.lblIdx,
+		depth:     e.depth,
+		allocaBuf: e.allocaBuf,
+		bodyBuf:   e.bodyBuf,
+	}
+
+	e.locals = make(map[string]irLocal)
+	e.tmpIdx = 0
+	e.lblIdx = 0
+	e.allocaBuf = &bytes.Buffer{}
+	e.bodyBuf = &bytes.Buffer{}
+	return state
+}
+
+func (e *Emitter) endFunction(state funcState) {
+	e.locals = state.locals
+	e.tmpIdx = state.tmpIdx
+	e.lblIdx = state.lblIdx
+	e.depth = state.depth
+	e.allocaBuf = state.allocaBuf
+	e.bodyBuf = state.bodyBuf
+}
+
+func (e *Emitter) assembleFunction(target *bytes.Buffer) {
+	target.WriteString("entry:\n")
+	e.allocaBuf.WriteTo(target)
+	e.bodyBuf.WriteTo(target)
 }
 
 func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
@@ -392,12 +486,11 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		concreteName := e.getConcreteType(expr)
 		iface := castTo.Name
 		ifaceAlloca := e.tmp()
-		line := fmt.Sprintf("%s = alloca { ptr, ptr }", ifaceAlloca)
-		e.emit(line)
+		e.emitAlloca(ifaceAlloca, IrFatPtr)
 
 		// store value ptr at index 0
 		valSlot := e.tmp()
-		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", valSlot, ifaceAlloca)
+		line := fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", valSlot, ifaceAlloca)
 		e.emit(line)
 		line = fmt.Sprintf("store ptr %s, ptr %s", val, valSlot)
 		e.emit(line)
@@ -674,69 +767,6 @@ func (e *Emitter) emitStructMethodCall(expr *ast.CallExpr) (string, IrType) {
 	return "", IrUnit
 }
 
-func (e *Emitter) emitInterfaceMethodCall(expr *ast.CallExpr, sel *ast.SelectorExpr, iface *types.InterfaceType) (string, IrType) {
-	// CastTo boxing handles emitting of { ptr, ptr } alloca
-	ifacePtr, _ := e.emitExpr(sel.Left)
-
-	// load fat pointer
-	ifaceVal := e.tmp()
-	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, ifacePtr)
-	e.emit(line)
-
-	// Extract value pointer (index 0)
-	//%val.ptr = extractvalue { ptr, ptr } %iface, 0
-	valPtr := e.tmp()
-	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
-	e.emit(line)
-
-	//; Extract vtable pointer (index 1)
-	//%vtable.ptr = extractvalue { ptr, ptr } %iface, 1
-	vtablePtr := e.tmp()
-	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
-	e.emit(line)
-
-	methodName := sel.Value.(*ast.Identifier).Value
-	methodIdx := iface.MethodIndices[methodName]
-	numMethods := len(iface.Methods)
-
-	// GEP into vtable to get the method function pointer
-	// "area" is method index 0 in Shape
-	//%fn.ptr.addr = getelementptr [1 x ptr], ptr %vtable.ptr, i32 0, i32 0
-	fnPtrAddr := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr [%d x ptr], ptr %s, i32 0, i32 %d", fnPtrAddr, numMethods, vtablePtr, methodIdx)
-	e.emit(line)
-
-	// load function pointer
-	//%fn.ptr = load ptr, ptr %fn.ptr.addr
-	fnPtr := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnPtrAddr)
-	e.emit(line)
-
-	args := make([]string, len(expr.Arguments)+1)
-	args[0] = fmt.Sprintf("ptr %s", valPtr)
-	for i, arg := range expr.Arguments {
-		val, valType := e.emitExpr(arg)
-		args[i+1] = fmt.Sprintf("%s %s", valType, val)
-	}
-	argStr := strings.Join(args, ", ")
-
-	// Call the method — first arg is the receiver (value pointer)
-	method := iface.Types[methodIdx]
-	retType := SydneyTypeToIrType(method.(types.FunctionType).Return)
-	if retType == IrUnit {
-		line = fmt.Sprintf("call void %s(%s)", fnPtr, argStr)
-		e.emit(line)
-		return "", IrUnit
-	}
-
-	//%result = call double %fn.ptr(ptr %val.ptr)
-	result := e.tmp()
-	line = fmt.Sprintf("%s = call %s %s(%s)", result, retType, fnPtr, argStr)
-	e.emit(line)
-
-	return result, retType
-}
-
 func (e *Emitter) infixOpStr(op string, t IrType, left, right string) string {
 	return fmt.Sprintf("%s %s %s, %s", op, t, left, right)
 }
@@ -768,23 +798,6 @@ func (e *Emitter) emitStringConst(s string, idx int) {
 	e.emit(line)
 }
 
-func llvmEscapeString(s string) (string, int) {
-	var buf bytes.Buffer
-	for i := 0; i < len(s); i++ {
-		b := s[i]
-		if b >= 32 && b <= 126 && b != '\\' && b != '"' {
-			buf.WriteByte(b)
-		} else {
-			_, err := fmt.Fprintf(&buf, "\\%02X", b)
-			if err != nil {
-				return "", 0
-			}
-		}
-	}
-	buf.WriteString("\\00")
-	return buf.String(), len(s) + 1 // byte count including null
-}
-
 func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 	numMethods := len(methods)
 	// @vtable.Circle.Shape = constant [1 x ptr] [ptr @Circle.area]
@@ -814,9 +827,9 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 		e.emit(line)
 	} else {
 		allocaName := "%" + name + ".addr"
-		line := fmt.Sprintf("%s = alloca %s", allocaName, valType)
-		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
+		e.emitAlloca(allocaName, valType)
+
+		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
 		e.locals[name] = irLocal{alloca: allocaName, typ: valType}
 		e.emit(line)
 	}
@@ -867,18 +880,39 @@ func (e *Emitter) getZeroValueFromIrType(t IrType) string {
 	return "null"
 }
 
-func (e *Emitter) label(prefix string) string {
-	name := fmt.Sprintf("%s.%d", prefix, e.lblIdx)
-	e.lblIdx++
-	return name
-}
+func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (string, IrType) {
+	// ; load the struct pointer
+	//  %t0 = load ptr, ptr %p.addr
+	//
+	//  ; GEP to field x (index 0)
+	//  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
+	//
+	//  ; load the field value
+	//  store i64 2, ptr %t1
 
-func (e *Emitter) global(name string) string {
-	return fmt.Sprintf("@%s", name)
-}
+	st := stmt.Left
 
-func (e *Emitter) emitLabel(name string) {
-	e.buf.WriteString(name + ":\n")
+	val := st.Value.(*ast.Identifier).Value
+	fieldIdx := -1
+	for i, fieldName := range st.ResolvedType.Fields {
+		if fieldName == val {
+			fieldIdx = i
+			break
+		}
+	}
+
+	strPtr, _ := e.emitExpr(st.Left) // %t0 = load ptr, ptr %p.addr
+
+	tmp := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", tmp, stmt.Left.ResolvedType.Name, strPtr, fieldIdx)
+	e.emit(line)
+
+	val, valType := e.emitExpr(stmt.Value)
+
+	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, tmp)
+	e.emit(line)
+
+	return "", IrUnit
 }
 
 func (e *Emitter) emitReturnStmt(stmt *ast.ReturnStmt) (string, IrType) {
@@ -890,6 +924,30 @@ func (e *Emitter) emitReturnStmt(stmt *ast.ReturnStmt) (string, IrType) {
 	line := fmt.Sprintf("ret %s %s", typ, val)
 	e.emit(line)
 	return val, typ
+}
+
+func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
+	condLabel := e.label("cond")
+	loopLabel := e.label("loop")
+	escapeLabel := e.label("escape")
+
+	// so we can branch back here
+	e.emitJmp(condLabel)
+	e.emitLabel(condLabel)
+	cond, _ := e.emitExpr(stmt.Condition)
+	e.emitBranch(cond, loopLabel, escapeLabel)
+
+	// set loop body
+	e.emitLabel(loopLabel)
+	e.emitBlock(stmt.Body)
+
+	// jump back to above condition
+	e.emitJmp(condLabel)
+
+	// how to get out of loop
+	e.emitLabel(escapeLabel)
+
+	return "", IrUnit
 }
 
 func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
@@ -909,8 +967,7 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	var resultAddr string
 	if hasElse {
 		resultAddr = e.tmp()
-		line := fmt.Sprintf("%s = alloca i64", resultAddr)
-		e.emit(line)
+		e.emitAlloca(resultAddr, IrInt) // i think this is wrong, and the if expr needs a resolved type
 	}
 
 	falseLabel := mergeLabel
@@ -956,49 +1013,15 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	return "", IrUnit
 }
 
-func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
-	condLabel := e.label("cond")
-	loopLabel := e.label("loop")
-	escapeLabel := e.label("escape")
-
-	// so we can branch back here
-	e.emitJmp(condLabel)
-	e.emitLabel(condLabel)
-	cond, _ := e.emitExpr(stmt.Condition)
-	e.emitBranch(cond, loopLabel, escapeLabel)
-
-	// set loop body
-	e.emitLabel(loopLabel)
-	e.emitBlock(stmt.Body)
-
-	// jump back to above condition
-	e.emitJmp(condLabel)
-
-	// how to get out of loop
-	e.emitLabel(escapeLabel)
-
-	return "", IrUnit
-}
-
-func (e *Emitter) emitBranch(cond, l1, l2 string) {
-	line := fmt.Sprintf("br i1 %s, label %%%s, label %%%s", cond, l1, l2)
-	e.emit(line)
-}
-
-func (e *Emitter) emitJmp(label string) {
-	line := fmt.Sprintf("br label %%%s", label)
-	e.emit(line)
-}
-
 func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrType) {
 	// construct signature struct
 	fType, _ := decl.Type.(types.FunctionType)
-	paramIrTypes := make([]string, len(decl.Params))
+	paramIrTypes := make([]IrType, len(decl.Params))
 	paramParts := make([]string, len(decl.Params))
 
 	for i, p := range fType.Params {
 		t := SydneyTypeToIrType(p)
-		paramIrTypes[i] = t.String()
+		paramIrTypes[i] = t
 		paramParts[i] = fmt.Sprintf("%s %%%s", t, decl.Params[i].Value)
 	}
 
@@ -1011,31 +1034,25 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 
 	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
 
-	// save state
-	oldLocals := e.locals
-	oldTmpIdx := e.tmpIdx
-	oldLblIdx := e.lblIdx
-	e.locals = make(map[string]irLocal)
-	e.tmpIdx = 0
-	e.lblIdx = 0
+	state := e.beginFunction()
 
 	argStr := strings.Join(paramParts, ", ")
 	line := fmt.Sprintf("define %s @%s(%s) {", ret, name, argStr)
-	e.emit(line)
-	e.emitLabel("entry")
+	e.emitBypass(line)
 
-	e.depth++
+	e.depth = 1
+
 	for i, paramName := range decl.Params {
 		pName := paramName.Value
 		allocaName := "%" + pName + ".addr"
-		line = fmt.Sprintf("%s = alloca %s", allocaName, paramIrTypes[i])
-		e.emit(line)
+		e.emitAlloca(allocaName, paramIrTypes[i])
+
 		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
 		e.emit(line)
 		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(fType.Params[i])}
 	}
 
-	e.depth--
+	e.depth = 0
 
 	val, valType, hasReturn := e.emitBlock(decl.Body)
 	e.depth++
@@ -1048,48 +1065,153 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 		}
 	}
 
-	e.depth--
-	e.emit("}")
-	e.emit("")
-	// restore state
-	e.lblIdx = oldLblIdx
-	e.tmpIdx = oldTmpIdx
-	e.locals = oldLocals
+	e.assembleFunction(e.buf)
+	e.emitBypass("}\n\n")
+	e.endFunction(state)
 
 	return val, valType
 }
 
-func (e *Emitter) emitStructLiteral(lit *ast.StructLiteral) (string, IrType) {
-	//; Point { x: 1, y: 2 }
-	//%t0 = call ptr @sydney_gc_alloc(i64 16)
-	//%t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
-	//store i64 1, ptr %t1
-	//%t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
-	//store i64 2, ptr %t2
-	//; result is %t0 (ptr)
-	result := e.tmp()
-	size := len(lit.Fields) * 8 // all values at 8 bytes as int64, float64, etc
+func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
+	// no captures
+	// define i64 @anon.0(ptr %env, i64 %x) {
+	//entry:
+	//  %x.addr = alloca i64
+	//  store i64 %x, ptr %x.addr
+	//  %t0 = load i64, ptr %x.addr
+	//  %t1 = add i64 %t0, 1
+	//  ret i64 %t1
+	//}
 
-	// how to compute size?
-	line := fmt.Sprintf("%s = call %s @sydney_gc_alloc(%s %d)", result, IrPtr, IrInt, size)
-	e.emit(line)
-	for i, fieldName := range lit.ResolvedType.Fields {
-		litIdx := -1
-		for j, field := range lit.Fields {
-			if field == fieldName {
-				litIdx = j
-			}
-		}
-		fTmp := e.tmp()
+	anon := e.anon()
+	freeVars := e.findFreeVars(expr.Body, expr.Parameters)
 
-		line = fmt.Sprintf("%s = getelementptr %%struct.%s, %s %s, %s %s, %s %d", fTmp, lit.Name, IrPtr, result, IrInt32, "0", IrInt32, i)
-		e.emit(line)
-		val, valType := e.emitExpr(lit.Values[litIdx])
-		line = fmt.Sprintf("store %s %s, %s %s", valType, val, IrPtr, fTmp)
-		e.emit(line)
+	envTypes := make([]string, len(freeVars))
+	for i, fv := range freeVars {
+		envTypes[i] = fv.typ.String()
+	}
+	envTypeStr := strings.Join(envTypes, ", ")
+	retType := SydneyTypeToIrType(expr.Type.Return)
+
+	paramIrTypes := make([]IrType, len(expr.Parameters))
+	paramParts := make([]string, len(expr.Parameters))
+
+	for i, p := range expr.Type.Params {
+		t := SydneyTypeToIrType(p)
+		paramIrTypes[i] = t
+		paramParts[i] = fmt.Sprintf("%s %%%s", t, expr.Parameters[i].Value)
 	}
 
-	return result, IrPtr
+	argStr := strings.Join(paramParts, ", ")
+
+	// save state
+	closureBuf := &bytes.Buffer{}
+	state := e.beginFunction()
+
+	var line string
+	if len(paramParts) > 0 {
+		line = fmt.Sprintf("define %s %s(ptr %%env, %s) {", retType, anon, argStr)
+	} else {
+		line = fmt.Sprintf("define %s %s(ptr %%env) {", retType, anon)
+	}
+
+	closureBuf.WriteString(line)
+
+	e.depth = 1
+
+	// store free vars in function body
+	for i, fv := range freeVars {
+		gepPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %%env, i32 0, i32 %d", gepPtr, envTypeStr, i)
+		e.emit(line)
+
+		loaded := e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, fv.typ, gepPtr)
+		e.emit(line)
+
+		allocaName := "%" + fv.name + ".addr"
+		e.emitAlloca(allocaName, fv.typ)
+
+		line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, loaded, allocaName)
+		e.emit(line)
+		e.locals[fv.name] = irLocal{allocaName, fv.typ}
+	}
+
+	// allocate params
+	for i, paramName := range expr.Parameters {
+		pName := paramName.Value
+		allocaName := "%" + pName + ".addr"
+		e.emitAlloca(allocaName, paramIrTypes[i])
+
+		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
+		e.emit(line)
+		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(expr.Type.Params[i])}
+	}
+	e.depth = 0
+
+	val, valType, hasReturn := e.emitBlock(expr.Body)
+
+	e.depth = 1
+	if !hasReturn {
+		if retType == IrUnit {
+			e.emit("ret void")
+		} else {
+			line = fmt.Sprintf("ret %s %s", valType, val)
+			e.emit(line)
+		}
+	}
+
+	// assemble function into temporay closure buffer
+	e.assembleFunction(closureBuf)
+	closureBuf.WriteString("}\n\n")
+
+	// restore state
+	e.endFunction(state)
+
+	e.funcBuf.Write(closureBuf.Bytes())
+
+	// allocate closure and store
+	closure := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", closure)
+	e.emit(line)
+	fnSlot := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnSlot, closure)
+	e.emit(line)
+	line = fmt.Sprintf("store ptr %s, ptr %s", anon, fnSlot)
+	e.emit(line)
+	envSlot := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envSlot, closure)
+	e.emit(line)
+
+	// create env ptr
+	if len(freeVars) > 0 {
+		size := len(freeVars) * 8
+		envPtr := e.tmp()
+		line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", envPtr, size)
+		e.emit(line)
+
+		for i, fv := range freeVars {
+			slot := e.tmp()
+			line = fmt.Sprintf("%s = getelementptr { %s }, ptr %s, i32 0, i32 %d", slot, envTypeStr, envPtr, i)
+			e.emit(line)
+
+			fvVal := e.tmp()
+			local := state.locals[fv.name]
+			line = fmt.Sprintf("%s = load %s, ptr %s", fvVal, fv.typ, local.alloca)
+			e.emit(line)
+
+			line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, fvVal, slot)
+			e.emit(line)
+		}
+
+		line = fmt.Sprintf("store ptr %s, ptr %s", envPtr, envSlot)
+		e.emit(line)
+	} else {
+		line = fmt.Sprintf("store ptr null, ptr %s", envSlot)
+		e.emit(line) // null env for no captures
+	}
+
+	return closure, IrPtr
 }
 
 func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
@@ -1127,41 +1249,6 @@ func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
 	return result, retType
 }
 
-func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (string, IrType) {
-	// ; load the struct pointer
-	//  %t0 = load ptr, ptr %p.addr
-	//
-	//  ; GEP to field x (index 0)
-	//  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
-	//
-	//  ; load the field value
-	//  store i64 2, ptr %t1
-
-	st := stmt.Left
-
-	val := st.Value.(*ast.Identifier).Value
-	fieldIdx := -1
-	for i, fieldName := range st.ResolvedType.Fields {
-		if fieldName == val {
-			fieldIdx = i
-			break
-		}
-	}
-
-	strPtr, _ := e.emitExpr(st.Left) // %t0 = load ptr, ptr %p.addr
-
-	tmp := e.tmp()
-	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", tmp, stmt.Left.ResolvedType.Name, strPtr, fieldIdx)
-	e.emit(line)
-
-	val, valType := e.emitExpr(stmt.Value)
-
-	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, tmp)
-	e.emit(line)
-
-	return "", IrUnit
-}
-
 func (e *Emitter) getConcreteType(expr ast.Expr) string {
 	switch node := expr.(type) {
 	case *ast.StructLiteral:
@@ -1175,216 +1262,37 @@ func (e *Emitter) getConcreteType(expr ast.Expr) string {
 	return ""
 }
 
-func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
-	//  { i64, ptr }   ; { length, data_ptr }
-	// Where data_ptr points to a gc_alloc'd buffer of N * element_size bytes.
-	//
-	//  For [1, 2, 3] the IR would look like:
-	//
-	//  ; Allocate data buffer (3 elements * 8 bytes)
-	//  %t0 = call ptr @sydney_gc_alloc(i64 24)
-	l := len(arr.Elements) * 8 // 8 bytes since we use 64bit sizes
-	buf := e.tmp()
-	line := fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", buf, l)
-
-	//  Store each element
-	//  %t1 = getelementptr i64, ptr %t0, i32 0
-	//  store i64 1, ptr %t1
-	//  %t2 = getelementptr i64, ptr %t0, i32 1
-	//  store i64 2, ptr %t2
-	e.emit(line)
-	for i, element := range arr.Elements {
-		val, valType := e.emitExpr(element)
-		elemPtr := e.tmp()
-		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 %d", elemPtr, valType, buf, i)
-		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", valType, val, elemPtr)
-		e.emit(line)
-	}
-
-	//  Allocate the header struct { len, data }
-	//  %t4 = call ptr @sydney_gc_alloc(i64 16)
-	//  %t5 = getelementptr { i64, ptr }, ptr %t4, i32 0, i32 0
-	//  store i64 3, ptr %t5
-	//  %t6 = getelementptr { i64, ptr }, ptr %t4, i32 0, i32 1
-	//  store ptr %t0, ptr %t6
-	headerPtr := e.tmp()
-	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", headerPtr) // 2 bytes since header is fixed size
-	e.emit(line)
-	lenPtr := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, headerPtr)
-	e.emit(line)
-	line = fmt.Sprintf("store i64 %d, ptr %s", len(arr.Elements), lenPtr) // store length
-	e.emit(line)
-	dPtr := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dPtr, headerPtr) // store data
-	e.emit(line)
-	line = fmt.Sprintf("store ptr %s, ptr %s", buf, dPtr)
-	e.emit(line)
-
-	//  ; result is %t4 (ptr to the header)
-	return headerPtr, IrPtr
-}
-
-func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
-	//  5. Load the element
-	elemPtr, elemType := e.emitArrayElementPtr(expr)
-
+func (e *Emitter) emitStructLiteral(lit *ast.StructLiteral) (string, IrType) {
+	//; Point { x: 1, y: 2 }
+	//%t0 = call ptr @sydney_gc_alloc(i64 16)
+	//%t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
+	//store i64 1, ptr %t1
+	//%t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
+	//store i64 2, ptr %t2
+	//; result is %t0 (ptr)
 	result := e.tmp()
-	line := fmt.Sprintf("%s = load %s, ptr %s", result, elemType, elemPtr)
+	size := len(lit.Fields) * 8 // all values at 8 bytes as int64, float64, etc
+
+	// how to compute size?
+	line := fmt.Sprintf("%s = call %s @sydney_gc_alloc(%s %d)", result, IrPtr, IrInt, size)
 	e.emit(line)
-
-	return result, elemType
-}
-
-func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
-	// no captures
-	// define i64 @anon.0(ptr %env, i64 %x) {
-	//entry:
-	//  %x.addr = alloca i64
-	//  store i64 %x, ptr %x.addr
-	//  %t0 = load i64, ptr %x.addr
-	//  %t1 = add i64 %t0, 1
-	//  ret i64 %t1
-	//}
-
-	anon := e.anon()
-	freeVars := e.findFreeVars(expr.Body, expr.Parameters)
-
-	envTypes := make([]string, len(freeVars))
-	for i, fv := range freeVars {
-		envTypes[i] = fv.typ.String()
-	}
-	envTypeStr := strings.Join(envTypes, ", ")
-	retType := SydneyTypeToIrType(expr.Type.Return)
-
-	paramIrTypes := make([]string, len(expr.Parameters))
-	paramParts := make([]string, len(expr.Parameters))
-
-	for i, p := range expr.Type.Params {
-		t := SydneyTypeToIrType(p)
-		paramIrTypes[i] = t.String()
-		paramParts[i] = fmt.Sprintf("%s %%%s", t, expr.Parameters[i].Value)
-	}
-
-	argStr := strings.Join(paramParts, ", ")
-
-	// save state
-	oldLocals := e.locals
-	oldTmpIdx := e.tmpIdx
-	oldLblIdx := e.lblIdx
-	oldDepth := e.depth
-	buf := e.buf
-	e.buf = &bytes.Buffer{} // fresh buffer, not funcBuf
-	e.locals = make(map[string]irLocal)
-	e.tmpIdx = 0
-	e.lblIdx = 0
-	e.depth = 0
-
-	var line string
-	if len(paramParts) > 0 {
-		line = fmt.Sprintf("define %s %s(ptr %%env, %s) {", retType, anon, argStr)
-	} else {
-		line = fmt.Sprintf("define %s %s(ptr %%env) {", retType, anon)
-	}
-
-	e.emit(line)
-	e.emitLabel("entry")
-
-	e.depth++
-	// store free vars in function body
-	for i, fv := range freeVars {
-		gepPtr := e.tmp()
-		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %%env, i32 0, i32 %d", gepPtr, envTypeStr, i)
-		e.emit(line)
-
-		loaded := e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, fv.typ, gepPtr)
-		e.emit(line)
-
-		allocaName := "%" + fv.name + ".addr"
-		line = fmt.Sprintf("%s = alloca %s", allocaName, fv.typ)
-		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, loaded, allocaName)
-		e.emit(line)
-		e.locals[fv.name] = irLocal{allocaName, fv.typ}
-	}
-
-	// allocate params
-	for i, paramName := range expr.Parameters {
-		pName := paramName.Value
-		allocaName := "%" + pName + ".addr"
-		line = fmt.Sprintf("%s = alloca %s", allocaName, paramIrTypes[i])
-		e.emit(line)
-		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
-		e.emit(line)
-		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(expr.Type.Params[i])}
-	}
-	e.depth--
-
-	val, valType, hasReturn := e.emitBlock(expr.Body)
-	e.depth++
-	if !hasReturn {
-		if retType == IrUnit {
-			e.emit("ret void")
-		} else {
-			line = fmt.Sprintf("ret %s %s", valType, val)
-			e.emit(line)
+	for i, fieldName := range lit.ResolvedType.Fields {
+		litIdx := -1
+		for j, field := range lit.Fields {
+			if field == fieldName {
+				litIdx = j
+			}
 		}
+		fTmp := e.tmp()
+
+		line = fmt.Sprintf("%s = getelementptr %%struct.%s, %s %s, %s %s, %s %d", fTmp, lit.Name, IrPtr, result, IrInt32, "0", IrInt32, i)
+		e.emit(line)
+		val, valType := e.emitExpr(lit.Values[litIdx])
+		line = fmt.Sprintf("store %s %s, %s %s", valType, val, IrPtr, fTmp)
+		e.emit(line)
 	}
 
-	e.depth--
-	e.emit("}")
-	e.emit("")
-	// restore state
-	e.lblIdx = oldLblIdx
-	e.tmpIdx = oldTmpIdx
-	e.locals = oldLocals
-	e.depth = oldDepth
-	e.funcBuf.Write(e.buf.Bytes()) // append completed function to funcBuf
-	e.buf = buf                    // restore caller's buffer
-
-	closure := e.tmp()
-	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", closure)
-	e.emit(line)
-	fnSlot := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnSlot, closure)
-	e.emit(line)
-	line = fmt.Sprintf("store ptr %s, ptr %s", anon, fnSlot)
-	e.emit(line)
-	envSlot := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envSlot, closure)
-	e.emit(line)
-
-	// create env ptr
-	if len(freeVars) > 0 {
-		size := len(freeVars) * 8
-		envPtr := e.tmp()
-		line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", envPtr, size)
-		e.emit(line)
-
-		for i, fv := range freeVars {
-			slot := e.tmp()
-			line = fmt.Sprintf("%s = getelementptr { %s }, ptr %s, i32 0, i32 %d", slot, envTypeStr, envPtr, i)
-			e.emit(line)
-
-			fvVal := e.tmp()
-			local := oldLocals[fv.name]
-			line = fmt.Sprintf("%s = load %s, ptr %s", fvVal, fv.typ, local.alloca)
-			e.emit(line)
-
-			line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, fvVal, slot)
-			e.emit(line)
-		}
-
-		line = fmt.Sprintf("store ptr %s, ptr %s", envPtr, envSlot)
-		e.emit(line)
-	} else {
-		line = fmt.Sprintf("store ptr null, ptr %s", envSlot)
-		e.emit(line) // null env for no captures
-	}
-
-	return closure, IrPtr
+	return result, IrPtr
 }
 
 func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string) (string, IrType) {
@@ -1464,6 +1372,69 @@ func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrT
 	e.emit(line)
 	return result, sig.retType
 
+}
+
+func (e *Emitter) emitInterfaceMethodCall(expr *ast.CallExpr, sel *ast.SelectorExpr, iface *types.InterfaceType) (string, IrType) {
+	// CastTo boxing handles emitting of { ptr, ptr } alloca
+	ifacePtr, _ := e.emitExpr(sel.Left)
+
+	// load fat pointer
+	ifaceVal := e.tmp()
+	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, ifacePtr)
+	e.emit(line)
+
+	// Extract value pointer (index 0)
+	//%val.ptr = extractvalue { ptr, ptr } %iface, 0
+	valPtr := e.tmp()
+	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
+	e.emit(line)
+
+	//; Extract vtable pointer (index 1)
+	//%vtable.ptr = extractvalue { ptr, ptr } %iface, 1
+	vtablePtr := e.tmp()
+	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
+	e.emit(line)
+
+	methodName := sel.Value.(*ast.Identifier).Value
+	methodIdx := iface.MethodIndices[methodName]
+	numMethods := len(iface.Methods)
+
+	// GEP into vtable to get the method function pointer
+	// "area" is method index 0 in Shape
+	//%fn.ptr.addr = getelementptr [1 x ptr], ptr %vtable.ptr, i32 0, i32 0
+	fnPtrAddr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr [%d x ptr], ptr %s, i32 0, i32 %d", fnPtrAddr, numMethods, vtablePtr, methodIdx)
+	e.emit(line)
+
+	// load function pointer
+	//%fn.ptr = load ptr, ptr %fn.ptr.addr
+	fnPtr := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnPtrAddr)
+	e.emit(line)
+
+	args := make([]string, len(expr.Arguments)+1)
+	args[0] = fmt.Sprintf("ptr %s", valPtr)
+	for i, arg := range expr.Arguments {
+		val, valType := e.emitExpr(arg)
+		args[i+1] = fmt.Sprintf("%s %s", valType, val)
+	}
+	argStr := strings.Join(args, ", ")
+
+	// Call the method — first arg is the receiver (value pointer)
+	method := iface.Types[methodIdx]
+	retType := SydneyTypeToIrType(method.(types.FunctionType).Return)
+	if retType == IrUnit {
+		line = fmt.Sprintf("call void %s(%s)", fnPtr, argStr)
+		e.emit(line)
+		return "", IrUnit
+	}
+
+	//%result = call double %fn.ptr(ptr %val.ptr)
+	result := e.tmp()
+	line = fmt.Sprintf("%s = call %s %s(%s)", result, retType, fnPtr, argStr)
+	e.emit(line)
+
+	return result, retType
 }
 
 func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []freeVar {
@@ -1585,4 +1556,83 @@ func (e *Emitter) emitArrayElementPtr(expr *ast.IndexExpr) (string, IrType) {
 	e.emit(line)
 
 	return elemPtr, elemType
+}
+
+func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
+	//  5. Load the element
+	elemPtr, elemType := e.emitArrayElementPtr(expr)
+
+	result := e.tmp()
+	line := fmt.Sprintf("%s = load %s, ptr %s", result, elemType, elemPtr)
+	e.emit(line)
+
+	return result, elemType
+}
+
+func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
+	//  { i64, ptr }   ; { length, data_ptr }
+	// Where data_ptr points to a gc_alloc'd buffer of N * element_size bytes.
+	//
+	//  For [1, 2, 3] the IR would look like:
+	//
+	//  ; Allocate data buffer (3 elements * 8 bytes)
+	//  %t0 = call ptr @sydney_gc_alloc(i64 24)
+	l := len(arr.Elements) * 8 // 8 bytes since we use 64bit sizes
+	buf := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", buf, l)
+
+	//  Store each element
+	//  %t1 = getelementptr i64, ptr %t0, i32 0
+	//  store i64 1, ptr %t1
+	//  %t2 = getelementptr i64, ptr %t0, i32 1
+	//  store i64 2, ptr %t2
+	e.emit(line)
+	for i, element := range arr.Elements {
+		val, valType := e.emitExpr(element)
+		elemPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 %d", elemPtr, valType, buf, i)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", valType, val, elemPtr)
+		e.emit(line)
+	}
+
+	//  Allocate the header struct { len, data }
+	//  %t4 = call ptr @sydney_gc_alloc(i64 16)
+	//  %t5 = getelementptr { i64, ptr }, ptr %t4, i32 0, i32 0
+	//  store i64 3, ptr %t5
+	//  %t6 = getelementptr { i64, ptr }, ptr %t4, i32 0, i32 1
+	//  store ptr %t0, ptr %t6
+	headerPtr := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", headerPtr) // 2 bytes since header is fixed size
+	e.emit(line)
+	lenPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, headerPtr)
+	e.emit(line)
+	line = fmt.Sprintf("store i64 %d, ptr %s", len(arr.Elements), lenPtr) // store length
+	e.emit(line)
+	dPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dPtr, headerPtr) // store data
+	e.emit(line)
+	line = fmt.Sprintf("store ptr %s, ptr %s", buf, dPtr)
+	e.emit(line)
+
+	//  ; result is %t4 (ptr to the header)
+	return headerPtr, IrPtr
+}
+
+func llvmEscapeString(s string) (string, int) {
+	var buf bytes.Buffer
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 32 && b <= 126 && b != '\\' && b != '"' {
+			buf.WriteByte(b)
+		} else {
+			_, err := fmt.Fprintf(&buf, "\\%02X", b)
+			if err != nil {
+				return "", 0
+			}
+		}
+	}
+	buf.WriteString("\\00")
+	return buf.String(), len(s) + 1 // byte count including null
 }
