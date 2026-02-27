@@ -257,7 +257,11 @@ func TestIndexExpressionsErrorChecking(t *testing.T) {
 		},
 		{
 			"const array<int> a = [1]; a[1] = false;",
-			"type mismatch: cannot assign bool to element of array a of type array<int>",
+			"type mismatch: cannot assign bool to element of array of type array<int>",
+		},
+		{
+			"const array<int> a = [1]; a[false] = 1;",
+			"index must be type int, got bool",
 		},
 	}
 
@@ -467,6 +471,25 @@ func TestConstantReassingTypeErrorChecking(t *testing.T) {
 	}
 
 	testTypeErrors(t, tests)
+}
+
+func TestNestedArrays(t *testing.T) {
+	s := `const array<array<int>> nested = [[1, 2, 3], [4, 5, 6]];
+print(nested[0][0]);
+nested[0][1] = 10;
+`
+
+	l := lexer.New(s)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	c := New(nil)
+	c.Check(program)
+
+	errors := c.Errors()
+	if len(errors) != 0 {
+		t.Fatalf("typechecker errors: %v", errors)
+	}
+
 }
 
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
