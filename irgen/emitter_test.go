@@ -738,6 +738,32 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestLocalVariables(t *testing.T) {
+	source := `func addTwo(int x) -> int { return x + 2 };
+print(addTwo(3));`
+
+	expected := `define i64 @addTwo(i64 %x) {
+entry:
+  %x.addr = alloca i64
+  store i64 %x, ptr %x.addr
+  %t0 = load i64, ptr %x.addr
+  %t1 = add i64 %t0, 2
+  ret i64 %t1
+}
+
+define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %t0 = call i64 @addTwo(i64 3)
+  call void @sydney_print_int(i64 %t0)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+`
+
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }
