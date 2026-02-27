@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sydney/ast"
 	"sydney/types"
@@ -228,21 +229,39 @@ func (e *Emitter) preamble() {
 	e.emit("declare i64 @sydney_strlen(ptr)")
 	e.emit("")
 
-	for _, v := range e.structTypes {
-		e.emitStructType(v)
+	structs := make([]string, 0, len(e.structTypes))
+	for name, _ := range e.structTypes {
+		structs = append(structs, name)
+	}
+	slices.Sort(structs)
+	for _, name := range structs {
+		s := e.structTypes[name]
+		e.emitStructType(s)
 	}
 
-	sorted := make([]string, len(e.stringConsts))
+	strs := make([]string, len(e.stringConsts))
 	for s, i := range e.stringConsts {
-		sorted[i] = s
+		strs[i] = s
 	}
-	for i, s := range sorted {
+	for i, s := range strs {
 		e.emitStringConst(s, i)
 	}
 
-	for sname, imap := range e.vtables {
-		for iname, methods := range imap {
-			e.emitInterfaceType(sname, iname, methods)
+	vtableStructs := make([]string, len(e.interfaceTypes))
+	for sname, _ := range e.vtables {
+		vtableStructs = append(vtableStructs, sname)
+	}
+	slices.Sort(vtableStructs)
+
+	for _, sname := range vtableStructs {
+		imap := e.vtables[sname]
+		ifaceNames := make([]string, len(imap))
+		for iname := range imap {
+			ifaceNames = append(ifaceNames, iname)
+		}
+		slices.Sort(ifaceNames)
+		for _, iname := range ifaceNames {
+			e.emitInterfaceType(sname, iname, imap[iname])
 		}
 	}
 }
@@ -324,6 +343,8 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 		val, valType = e.emitForStmt(s)
 	case *ast.SelectorAssignmentStmt:
 		val, valType = e.emitSelectorAssignment(s)
+	case *ast.IndexAssignmentStmt:
+		val, valType = e.emitIndexAssignment(s)
 	}
 	return val, valType, hasReturn
 }
@@ -1132,34 +1153,11 @@ func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
 }
 
 func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
-	// 1. Load the header from the variable
-	//  2. GEP index 1 to get the data pointer
-	//  3. Load the data pointer
-	//  4. GEP with the index into the data buffer
 	//  5. Load the element
-	local := e.locals[expr.Left.(*ast.Identifier).Value]
-	idx, _ := e.emitExpr(expr.Index)
-
-	headPtr := e.tmp()
-	line := fmt.Sprintf("%s = load ptr, ptr %s", headPtr, local.alloca)
-	e.emit(line)
-
-	dataPtr := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, headPtr)
-	e.emit(line)
-
-	data := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr)
-	e.emit(line)
-
-	elemType := SydneyTypeToIrType(expr.ResolvedType)
-
-	elemPtr := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", elemPtr, elemType, data, idx)
-	e.emit(line)
+	elemPtr, elemType := e.emitArrayElementPtr(expr)
 
 	result := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", result, elemType, elemPtr)
+	line := fmt.Sprintf("%s = load %s, ptr %s", result, elemType, elemPtr)
 	e.emit(line)
 
 	return result, elemType
@@ -1478,4 +1476,39 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 	}
 
 	return freeVars
+}
+
+func (e *Emitter) emitIndexAssignment(stmt *ast.IndexAssignmentStmt) (string, IrType) {
+	elemPtr, elemType := e.emitArrayElementPtr(stmt.Left)
+	val, _ := e.emitExpr(stmt.Value)
+	line := fmt.Sprintf("store %s %s, ptr %s", elemType, val, elemPtr)
+	e.emit(line)
+
+	return "", IrUnit
+}
+
+func (e *Emitter) emitArrayElementPtr(expr *ast.IndexExpr) (string, IrType) {
+	// 1. Load the header from the variable
+	//  2. GEP index 1 to get the data pointer
+	//  3. Load the data pointer
+	//  4. GEP with the index into the data buffer
+	idx, _ := e.emitExpr(expr.Index)
+
+	headPtr, _ := e.emitExpr(expr.Left)
+
+	dataPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, headPtr)
+	e.emit(line)
+
+	data := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr)
+	e.emit(line)
+
+	elemType := SydneyTypeToIrType(expr.ResolvedType)
+
+	elemPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", elemPtr, elemType, data, idx)
+	e.emit(line)
+
+	return elemPtr, elemType
 }

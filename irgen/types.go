@@ -69,6 +69,10 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrPtr // ptr — function pointer
 	case types.InterfaceType:
 		return IrPtr // ptr — interface fat pointer
+	case types.ArrayType:
+		return IrPtr
+	case types.MapType:
+		return IrPtr
 	}
 	return IrUnit
 }

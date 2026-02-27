@@ -261,7 +261,7 @@ func TestIndexExpressionsErrorChecking(t *testing.T) {
 		},
 		{
 			"const array<int> a = [1]; a[false] = 1;",
-			"index must be type int, got bool",
+			"index type for array must be int, got bool",
 		},
 	}
 
