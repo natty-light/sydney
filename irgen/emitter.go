@@ -15,6 +15,11 @@ type irLocal struct {
 	typ    IrType
 }
 
+type irGlobal struct {
+	name string
+	typ  IrType
+}
+
 type funcSig struct {
 	retType    IrType   // IR return type string
 	paramTypes []string // IR param type strings
@@ -33,6 +38,7 @@ type Emitter struct {
 	anonIdx int
 	lblIdx  int
 	locals  map[string]irLocal
+	globals map[string]irGlobal
 	inFunc  bool
 	depth   int
 
@@ -44,7 +50,6 @@ type Emitter struct {
 	stringIdx      int
 	topLevelFuncs  map[string]bool
 
-	globals    map[string]irLocal   // global variable name → { allocaName, irType }
 	funcSigs   map[string]funcSig   // function name → { retType, paramTypes }
 	scopeStack []map[string]irLocal // stack of local scopes for nested functions
 }
@@ -58,7 +63,7 @@ func New() *Emitter {
 		vtables:        make(map[string]map[string][]string),
 		locals:         make(map[string]irLocal),
 		topLevelFuncs:  make(map[string]bool),
-		globals:        make(map[string]irLocal),
+		globals:        make(map[string]irGlobal),
 		funcSigs:       make(map[string]funcSig),
 		scopeStack:     make([]map[string]irLocal, 0),
 
@@ -128,6 +133,13 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 		}
 	case *ast.FunctionDeclarationStmt:
 		e.topLevelFuncs[node.Name.Value] = true
+	case *ast.VarDeclarationStmt:
+		name := node.Name.Value
+		globalName := e.global(name)
+		e.globals[globalName] = irGlobal{
+			name: globalName,
+			typ:  SydneyTypeToIrType(node.Type),
+		}
 	}
 
 	e.collectStrings(n)
@@ -263,6 +275,18 @@ func (e *Emitter) preamble() {
 		for _, iname := range ifaceNames {
 			e.emitInterfaceType(sname, iname, imap[iname])
 		}
+	}
+
+	globals := make([]string, 0, len(e.globals))
+	for _, global := range e.globals {
+		globals = append(globals, global.name)
+	}
+	slices.Sort(globals)
+	for _, name := range globals {
+		global := e.globals[name]
+		zeroVal := e.getZeroValueFromIrType(global.typ)
+		line := fmt.Sprintf("%s = global %s %s", global.name, global.typ, zeroVal)
+		e.emit(line)
 	}
 }
 
@@ -420,11 +444,22 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	case *ast.CallExpr:
 		return e.emitCallExpr(expr)
 	case *ast.Identifier:
-		local := e.locals[expr.Value]
+		name := expr.Value
+		irRep, ok := e.locals[name]
+		var irName string
+		var irType IrType
+		if ok {
+			irName = irRep.alloca
+			irType = irRep.typ
+		} else {
+			global, _ := e.globals[e.global(name)]
+			irName = global.name
+			irType = global.typ
+		}
 		result := e.tmp()
-		line := fmt.Sprintf("%s = load %s, %s %s", result, local.typ, IrPtr, local.alloca)
+		line := fmt.Sprintf("%s = load %s, %s %s", result, irType, IrPtr, irName)
 		e.emit(line)
-		return result, local.typ
+		return result, irType
 	case *ast.IfExpr:
 		return e.emitIfExpr(expr)
 	case *ast.SelectorExpr:
@@ -588,7 +623,11 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 		}
 		local, exists := e.locals[ident.Value]
 		if exists {
-			return e.emitClosureCall(expr, local)
+			return e.emitClosureCall(expr, local.alloca)
+		}
+		global, gExists := e.globals[e.global(ident.Value)]
+		if gExists {
+			return e.emitClosureCall(expr, global.name)
 		}
 	}
 
@@ -758,18 +797,26 @@ func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 }
 
 func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
+	global, isGlobal := e.globals[e.global(stmt.Name.Value)]
+
 	val, valType := e.emitExpr(stmt.Value)
 	if valType == IrUnit {
 		val, valType = e.getZeroValue(stmt.Type)
 	}
 
 	name := stmt.Name.Value
-	allocaName := "%" + name + ".addr"
-	line := fmt.Sprintf("%s = alloca %s", allocaName, valType)
-	e.emit(line)
-	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
-	e.locals[name] = irLocal{alloca: allocaName, typ: valType}
-	e.emit(line)
+	if isGlobal {
+		name = global.name
+		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
+		e.emit(line)
+	} else {
+		allocaName := "%" + name + ".addr"
+		line := fmt.Sprintf("%s = alloca %s", allocaName, valType)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
+		e.locals[name] = irLocal{alloca: allocaName, typ: valType}
+		e.emit(line)
+	}
 
 	return val, valType
 }
@@ -777,8 +824,15 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) (string, IrType) {
 	val, valType := e.emitExpr(stmt.Value)
 	name := stmt.Identifier.Value
-	allocaName := e.locals[name]
-	line := fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName.alloca)
+	irRep, ok := e.locals[name]
+	var irName string
+	if ok {
+		irName = irRep.alloca
+	} else {
+		global, _ := e.globals[e.global(name)]
+		irName = global.name
+	}
+	line := fmt.Sprintf("store %s %s, ptr %s", valType, val, irName)
 	e.emit(line)
 
 	return val, valType
@@ -797,10 +851,27 @@ func (e *Emitter) getZeroValue(t types.Type) (string, IrType) {
 	return "", IrPtr
 }
 
+func (e *Emitter) getZeroValueFromIrType(t IrType) string {
+	switch t {
+	case IrInt:
+		return "0"
+	case IrFloat:
+		return "0.0"
+	case IrBool:
+		return "0"
+	}
+
+	return "null"
+}
+
 func (e *Emitter) label(prefix string) string {
 	name := fmt.Sprintf("%s.%d", prefix, e.lblIdx)
 	e.lblIdx++
 	return name
+}
+
+func (e *Emitter) global(name string) string {
+	return fmt.Sprintf("@%s", name)
 }
 
 func (e *Emitter) emitLabel(name string) {
@@ -1313,9 +1384,9 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	return closure, IrPtr
 }
 
-func (e *Emitter) emitClosureCall(expr *ast.CallExpr, local irLocal) (string, IrType) {
+func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string) (string, IrType) {
 	closurePtr := e.tmp()
-	line := fmt.Sprintf("%s = load ptr, ptr %s", closurePtr, local.alloca)
+	line := fmt.Sprintf("%s = load ptr, ptr %s", closurePtr, name)
 	e.emit(line)
 
 	fnAddr := e.tmp()

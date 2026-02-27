@@ -92,6 +92,9 @@ func (c *Checker) check(n ast.Node) types.Type {
 		name := node.Name.Value
 		varType, outer, ok := c.env.Get(name)
 		valType := c.typeOf(node.Value, varType)
+		if node.Type == nil {
+			node.Type = valType
+		}
 
 		if ok && !outer {
 			if !c.typesMatch(valType, varType) {
@@ -104,6 +107,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 				c.env.SetConst(name)
 			}
 		}
+		n = node
 	case *ast.VarAssignmentStmt:
 		name := node.Identifier.Value
 		varType, _, ok := c.env.Get(name)
