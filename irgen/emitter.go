@@ -305,6 +305,7 @@ func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.emit("call void @sydney_gc_init()")
 
 	e.main(node)
+	e.emit("call void @sydney_gc_shutdown()")
 	e.emit("ret i32 0")
 	e.depth--
 	e.emit("}")
@@ -808,6 +809,8 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	if isGlobal {
 		name = global.name
 		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
+		e.emit(line)
+		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
 		e.emit(line)
 	} else {
 		allocaName := "%" + name + ".addr"
