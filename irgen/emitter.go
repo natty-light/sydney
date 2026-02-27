@@ -21,12 +21,14 @@ type funcSig struct {
 }
 
 type Emitter struct {
-	buf    bytes.Buffer
-	tmpIdx int
-	lblIdx int
-	locals map[string]irLocal
-	inFunc bool
-	depth  int
+	buf     *bytes.Buffer
+	funcBuf *bytes.Buffer
+	tmpIdx  int
+	anonIdx int
+	lblIdx  int
+	locals  map[string]irLocal
+	inFunc  bool
+	depth   int
 
 	// Collected metadata
 	structTypes    map[string]types.StructType
@@ -54,7 +56,8 @@ func New() *Emitter {
 		funcSigs:       make(map[string]funcSig),
 		scopeStack:     make([]map[string]irLocal, 0),
 
-		buf: bytes.Buffer{},
+		buf:     &bytes.Buffer{},
+		funcBuf: &bytes.Buffer{},
 	}
 }
 
@@ -64,6 +67,10 @@ func (e *Emitter) Emit(n ast.Node) error {
 	e.functions(program)
 
 	err := e.mainWrapper(n)
+	if err != nil {
+		return err
+	}
+	_, err = e.funcBuf.WriteTo(e.buf)
 	if err != nil {
 		return err
 	}
@@ -276,6 +283,12 @@ func (e *Emitter) tmp() string {
 	return name
 }
 
+func (e *Emitter) anon() string {
+	name := fmt.Sprintf("@anon.%d", e.anonIdx)
+	e.anonIdx++
+	return name
+}
+
 func (e *Emitter) addStr(s string) {
 	if _, ok := e.stringConsts[s]; !ok {
 		e.stringConsts[s] = e.stringIdx
@@ -370,6 +383,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitStructLiteral(expr)
 	case *ast.ArrayLiteral:
 		return e.emitArrayLiteral(expr)
+	case *ast.FunctionLiteral:
+		return e.emitClosure(expr)
 	case *ast.InfixExpr:
 		return e.emitInfixExpr(expr)
 	case *ast.PrefixExpr:
@@ -537,40 +552,15 @@ func (e *Emitter) emitPrefixExpr(expr *ast.PrefixExpr) (string, IrType) {
 func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
 		if ident.Value == "print" {
-			for _, a := range expr.Arguments {
-				arg, argType := e.emitExpr(a)
-				switch argType {
-				case IrInt:
-					e.emit(fmt.Sprintf("call void @sydney_print_int(i64 %s)", arg))
-				case IrFloat:
-					e.emit(fmt.Sprintf("call void @sydney_print_float(double %s)", arg))
-				case IrPtr:
-					e.emit(fmt.Sprintf("call void @sydney_print_string(ptr %s)", arg))
-				case IrBool:
-					e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", arg))
-				}
-			}
-			e.emit("call void @sydney_print_newline()")
-			return "", IrUnit
+			return e.emitPrintCall(expr)
 		}
 		sig, exists := e.funcSigs[ident.Value]
 		if exists {
-			args := make([]string, len(expr.Arguments))
-			for i, arg := range expr.Arguments {
-				val, _ := e.emitExpr(arg)
-				args[i] = fmt.Sprintf("%s %s", sig.paramTypes[i], val)
-			}
-			argsStr := strings.Join(args, ", ")
-			if sig.retType == IrUnit {
-				line := fmt.Sprintf("call void %s(%s)", sig.name, argsStr)
-				e.emit(line)
-				return "", IrUnit
-			}
-
-			result := e.tmp()
-			line := fmt.Sprintf("%s = call %s %s(%s)", result, sig.retType, sig.name, argsStr)
-			e.emit(line)
-			return result, sig.retType
+			return e.emitFunctionCall(expr, sig)
+		}
+		local, exists := e.locals[ident.Value]
+		if exists {
+			return e.emitClosureCall(expr, local)
 		}
 	}
 
@@ -1166,4 +1156,177 @@ func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	e.emit(line)
 
 	return result, elemType
+}
+
+func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
+	// no captures
+	// define i64 @anon.0(ptr %env, i64 %x) {
+	//entry:
+	//  %x.addr = alloca i64
+	//  store i64 %x, ptr %x.addr
+	//  %t0 = load i64, ptr %x.addr
+	//  %t1 = add i64 %t0, 1
+	//  ret i64 %t1
+	//}
+
+	anon := e.anon()
+	retType := SydneyTypeToIrType(expr.Type.Return)
+
+	paramIrTypes := make([]string, len(expr.Parameters))
+	paramParts := make([]string, len(expr.Parameters))
+
+	for i, p := range expr.Type.Params {
+		t := SydneyTypeToIrType(p)
+		paramIrTypes[i] = t.String()
+		paramParts[i] = fmt.Sprintf("%s %%%s", t, expr.Parameters[i].Value)
+	}
+
+	argStr := strings.Join(paramParts, ", ")
+
+	// save state
+	oldLocals := e.locals
+	oldTmpIdx := e.tmpIdx
+	oldLblIdx := e.lblIdx
+	buf := e.buf
+	e.buf = e.funcBuf
+	e.locals = make(map[string]irLocal)
+	e.tmpIdx = 0
+	e.lblIdx = 0
+
+	var line string
+	if len(paramParts) > 0 {
+		line = fmt.Sprintf("define %s %s(ptr %%env, %s) {", retType, anon, argStr)
+	} else {
+		line = fmt.Sprintf("define %s %s(ptr %%env) {", retType, anon)
+	}
+
+	e.emit(line)
+	e.emitLabel("entry")
+
+	e.depth++
+	for i, paramName := range expr.Parameters {
+		pName := paramName.Value
+		allocaName := "%" + pName + ".addr"
+		line = fmt.Sprintf("%s = alloca %s", allocaName, paramIrTypes[i])
+		e.emit(line)
+		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
+		e.emit(line)
+		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(expr.Type.Params[i])}
+	}
+	e.depth--
+
+	val, valType, hasReturn := e.emitBlock(expr.Body)
+	e.depth++
+	if !hasReturn {
+		if retType == IrUnit {
+			e.emit("ret void")
+		} else {
+			line = fmt.Sprintf("ret %s %s", valType, val)
+			e.emit(line)
+		}
+	}
+
+	e.depth--
+	e.emit("}")
+	e.emit("")
+	// restore state
+	e.lblIdx = oldLblIdx
+	e.tmpIdx = oldTmpIdx
+	e.locals = oldLocals
+	e.buf = buf
+
+	closure := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", closure)
+	e.emit(line)
+	fnSlot := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnSlot, closure)
+	e.emit(line)
+	line = fmt.Sprintf("store ptr %s, ptr %s", anon, fnSlot)
+	e.emit(line)
+	envSlot := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envSlot, closure)
+	e.emit(line)
+	line = fmt.Sprintf("store ptr null, ptr %s", envSlot)
+	e.emit(line) // null env for no captures
+
+	return closure, IrPtr
+}
+
+func (e *Emitter) emitClosureCall(expr *ast.CallExpr, local irLocal) (string, IrType) {
+	closurePtr := e.tmp()
+	line := fmt.Sprintf("%s = load ptr, ptr %s", closurePtr, local.alloca)
+	e.emit(line)
+
+	fnAddr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnAddr, closurePtr)
+	e.emit(line)
+	fnPtr := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnAddr)
+	e.emit(line)
+
+	envAddr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envAddr, closurePtr)
+	e.emit(line)
+	envPtr := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", envPtr, envAddr)
+	e.emit(line)
+
+	args := []string{fmt.Sprintf("ptr %s", envPtr)}
+	for _, arg := range expr.Arguments {
+		val, valType := e.emitExpr(arg)
+		args = append(args, fmt.Sprintf("%s %s", valType, val))
+	}
+	argStr := strings.Join(args, ", ")
+
+	retType := SydneyTypeToIrType(expr.ResolvedType)
+
+	if retType == IrUnit {
+		line = fmt.Sprintf("call void %s(%s)", fnPtr, argStr)
+		e.emit(line)
+		return "", IrUnit
+	}
+
+	result := e.tmp()
+	line = fmt.Sprintf("%s = call %s %s(%s)", result, retType, fnPtr, argStr)
+	e.emit(line)
+
+	return result, retType
+}
+
+func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
+	for _, a := range expr.Arguments {
+		arg, argType := e.emitExpr(a)
+		switch argType {
+		case IrInt:
+			e.emit(fmt.Sprintf("call void @sydney_print_int(i64 %s)", arg))
+		case IrFloat:
+			e.emit(fmt.Sprintf("call void @sydney_print_float(double %s)", arg))
+		case IrPtr:
+			e.emit(fmt.Sprintf("call void @sydney_print_string(ptr %s)", arg))
+		case IrBool:
+			e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", arg))
+		}
+	}
+	e.emit("call void @sydney_print_newline()")
+	return "", IrUnit
+}
+
+func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrType) {
+	args := make([]string, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		val, _ := e.emitExpr(arg)
+		args[i] = fmt.Sprintf("%s %s", sig.paramTypes[i], val)
+	}
+	argsStr := strings.Join(args, ", ")
+	if sig.retType == IrUnit {
+		line := fmt.Sprintf("call void %s(%s)", sig.name, argsStr)
+		e.emit(line)
+		return "", IrUnit
+	}
+
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call %s %s(%s)", result, sig.retType, sig.name, argsStr)
+	e.emit(line)
+	return result, sig.retType
+
 }

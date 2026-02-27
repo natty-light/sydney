@@ -534,6 +534,74 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestAnonymousFunction(t *testing.T) {
+	source := `const anon = func() -> int { return 1; };
+print(anon());
+
+const adder = func(int a, int b) -> int { return a + b };
+const sum = adder(1, 2);
+print(sum);`
+
+	expected := `define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_gc_alloc(i64 16)
+  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
+  store ptr @anon.0, ptr %t1
+  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
+  store ptr null, ptr %t2
+  %anon.addr = alloca ptr
+  store ptr %t0, ptr %anon.addr
+  %t3 = load ptr, ptr %anon.addr
+  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
+  %t5 = load ptr, ptr %t4
+  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
+  %t7 = load ptr, ptr %t6
+  %t8 = call i64 %t5(ptr %t7)
+  call void @sydney_print_int(i64 %t8)
+  call void @sydney_print_newline()
+  %t9 = call ptr @sydney_gc_alloc(i64 16)
+  %t10 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 0
+  store ptr @anon.1, ptr %t10
+  %t11 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 1
+  store ptr null, ptr %t11
+  %adder.addr = alloca ptr
+  store ptr %t9, ptr %adder.addr
+  %t12 = load ptr, ptr %adder.addr
+  %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
+  %t14 = load ptr, ptr %t13
+  %t15 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 1
+  %t16 = load ptr, ptr %t15
+  %t17 = call i64 %t14(ptr %t16, i64 1, i64 2)
+  %sum.addr = alloca i64
+  store i64 %t17, ptr %sum.addr
+  %t18 = load i64, ptr %sum.addr
+  call void @sydney_print_int(i64 %t18)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+  define i64 @anon.0(ptr %env) {
+entry:
+    ret i64 1
+  }
+  
+  define i64 @anon.1(ptr %env, i64 %a, i64 %b) {
+entry:
+    %a.addr = alloca i64
+    store i64 %a, ptr %a.addr
+    %b.addr = alloca i64
+    store i64 %b, ptr %b.addr
+    %t0 = load i64, ptr %a.addr
+    %t1 = load i64, ptr %b.addr
+    %t2 = add i64 %t0, %t1
+    ret i64 %t2
+  }
+  
+`
+
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }
