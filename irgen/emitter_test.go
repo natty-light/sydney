@@ -580,23 +580,180 @@ entry:
   call void @sydney_print_newline()
   ret i32 0
 }
-  define i64 @anon.0(ptr %env) {
+define i64 @anon.0(ptr %env) {
 entry:
-    ret i64 1
-  }
-  
-  define i64 @anon.1(ptr %env, i64 %a, i64 %b) {
+  ret i64 1
+}
+
+define i64 @anon.1(ptr %env, i64 %a, i64 %b) {
 entry:
-    %a.addr = alloca i64
-    store i64 %a, ptr %a.addr
-    %b.addr = alloca i64
-    store i64 %b, ptr %b.addr
-    %t0 = load i64, ptr %a.addr
-    %t1 = load i64, ptr %b.addr
-    %t2 = add i64 %t0, %t1
-    ret i64 %t2
-  }
-  
+  %a.addr = alloca i64
+  store i64 %a, ptr %a.addr
+  %b.addr = alloca i64
+  store i64 %b, ptr %b.addr
+  %t0 = load i64, ptr %a.addr
+  %t1 = load i64, ptr %b.addr
+  %t2 = add i64 %t0, %t1
+  ret i64 %t2
+}
+
+`
+
+	runEmitterTest(t, source, expected)
+}
+
+func TestCaptures(t *testing.T) {
+	source := `const int x = 10;
+const f = func(int y) -> int { return x + y };
+print(f(5));`
+
+	expected := `define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %x.addr = alloca i64
+  store i64 10, ptr %x.addr
+  %t0 = call ptr @sydney_gc_alloc(i64 16)
+  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
+  store ptr @anon.0, ptr %t1
+  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
+  %t3 = call ptr @sydney_gc_alloc(i64 8)
+  %t4 = getelementptr { i64 }, ptr %t3, i32 0, i32 0
+  %t5 = load i64, ptr %x.addr
+  store i64 %t5, ptr %t4
+  store ptr %t3, ptr %t2
+  %f.addr = alloca ptr
+  store ptr %t0, ptr %f.addr
+  %t6 = load ptr, ptr %f.addr
+  %t7 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 0
+  %t8 = load ptr, ptr %t7
+  %t9 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 1
+  %t10 = load ptr, ptr %t9
+  %t11 = call i64 %t8(ptr %t10, i64 5)
+  call void @sydney_print_int(i64 %t11)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+define i64 @anon.0(ptr %env, i64 %y) {
+entry:
+  %t0 = getelementptr { i64 }, ptr %env, i32 0, i32 0
+  %t1 = load i64, ptr %t0
+  %x.addr = alloca i64
+  store i64 %t1, ptr %x.addr
+  %y.addr = alloca i64
+  store i64 %y, ptr %y.addr
+  %t2 = load i64, ptr %x.addr
+  %t3 = load i64, ptr %y.addr
+  %t4 = add i64 %t2, %t3
+  ret i64 %t4
+}
+
+`
+
+	runEmitterTest(t, source, expected)
+}
+
+func TestNestedClosures(t *testing.T) {
+	source := `const x = 10;
+
+const getAdder = func(int y) -> fn<(int) -> int> { return func(int z) -> int { return x + y + z }; };
+const fiveAdder = getAdder(5);
+const sixAdder = getAdder(6);
+print(fiveAdder(5));
+print(sixAdder(5));`
+
+	expected := `define i32 @main() {
+entry: 
+  call void @sydney_gc_init()
+  %x.addr = alloca i64
+  store i64 10, ptr %x.addr
+  %t0 = call ptr @sydney_gc_alloc(i64 16)
+  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
+  store ptr @anon.0, ptr %t1
+  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
+  %t3 = call ptr @sydney_gc_alloc(i64 8)
+  %t4 = getelementptr { i64 }, ptr %t3, i32 0, i32 0
+  %t5 = load i64, ptr %x.addr
+  store i64 %t5, ptr %t4
+  store ptr %t3, ptr %t2
+  %getAdder.addr = alloca ptr
+  store ptr %t0, ptr %getAdder.addr
+  %t6 = load ptr, ptr %getAdder.addr
+  %t7 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 0
+  %t8 = load ptr, ptr %t7
+  %t9 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 1
+  %t10 = load ptr, ptr %t9
+  %t11 = call ptr %t8(ptr %t10, i64 5)
+  %fiveAdder.addr = alloca ptr
+  store ptr %t11, ptr %fiveAdder.addr
+  %t12 = load ptr, ptr %getAdder.addr
+  %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
+  %t14 = load ptr, ptr %t13
+  %t15 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 1
+  %t16 = load ptr, ptr %t15
+  %t17 = call ptr %t14(ptr %t16, i64 6)
+  %sixAdder.addr = alloca ptr
+  store ptr %t17, ptr %sixAdder.addr
+  %t18 = load ptr, ptr %fiveAdder.addr
+  %t19 = getelementptr { ptr, ptr }, ptr %t18, i32 0, i32 0
+  %t20 = load ptr, ptr %t19
+  %t21 = getelementptr { ptr, ptr }, ptr %t18, i32 0, i32 1
+  %t22 = load ptr, ptr %t21
+  %t23 = call i64 %t20(ptr %t22, i64 5)
+  call void @sydney_print_int(i64 %t23)
+  call void @sydney_print_newline()
+  %t24 = load ptr, ptr %sixAdder.addr
+  %t25 = getelementptr { ptr, ptr }, ptr %t24, i32 0, i32 0
+  %t26 = load ptr, ptr %t25
+  %t27 = getelementptr { ptr, ptr }, ptr %t24, i32 0, i32 1
+  %t28 = load ptr, ptr %t27
+  %t29 = call i64 %t26(ptr %t28, i64 5)
+  call void @sydney_print_int(i64 %t29)
+  call void @sydney_print_newline()
+  ret i32 0
+}
+define i64 @anon.1(ptr %env, i64 %z) {
+entry:
+  %t0 = getelementptr { i64, i64 }, ptr %env, i32 0, i32 0
+  %t1 = load i64, ptr %t0
+  %x.addr = alloca i64
+  store i64 %t1, ptr %x.addr
+  %t2 = getelementptr { i64, i64 }, ptr %env, i32 0, i32 1
+  %t3 = load i64, ptr %t2
+  %y.addr = alloca i64
+  store i64 %t3, ptr %y.addr
+  %z.addr = alloca i64
+  store i64 %z, ptr %z.addr
+  %t4 = load i64, ptr %x.addr
+  %t5 = load i64, ptr %y.addr
+  %t6 = add i64 %t4, %t5
+  %t7 = load i64, ptr %z.addr
+  %t8 = add i64 %t6, %t7
+  ret i64 %t8
+}
+
+define ptr @anon.0(ptr %env, i64 %y) {
+entry:
+  %t0 = getelementptr { i64 }, ptr %env, i32 0, i32 0
+  %t1 = load i64, ptr %t0
+  %x.addr = alloca i64
+  store i64 %t1, ptr %x.addr
+  %y.addr = alloca i64
+  store i64 %y, ptr %y.addr
+  %t2 = call ptr @sydney_gc_alloc(i64 16)
+  %t3 = getelementptr { ptr, ptr }, ptr %t2, i32 0, i32 0
+  store ptr @anon.1, ptr %t3
+  %t4 = getelementptr { ptr, ptr }, ptr %t2, i32 0, i32 1
+  %t5 = call ptr @sydney_gc_alloc(i64 16)
+  %t6 = getelementptr { i64, i64 }, ptr %t5, i32 0, i32 0
+  %t7 = load i64, ptr %x.addr
+  store i64 %t7, ptr %t6
+  %t8 = getelementptr { i64, i64 }, ptr %t5, i32 0, i32 1
+  %t9 = load i64, ptr %y.addr
+  store i64 %t9, ptr %t8
+  store ptr %t5, ptr %t4
+  ret ptr %t2
+}
+
 `
 
 	runEmitterTest(t, source, expected)
