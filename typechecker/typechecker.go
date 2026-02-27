@@ -123,40 +123,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 
 		return types.Unit
 	case *ast.IndexAssignmentStmt:
-		ident, ok := node.Left.Left.(*ast.Identifier)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to %s", node.Left.Left.String()))
-		}
-
-		indexOrKeyType := c.typeOf(node.Left.Index, nil)
-
-		t, _, ok := c.env.Get(ident.Value)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", ident.Value))
-		}
-
-		valType := c.typeOf(node.Value, t)
-
-		switch colType := t.(type) {
-		case types.ArrayType:
-			if indexOrKeyType != types.Int {
-				c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", indexOrKeyType.Signature()))
-			}
-
-			if !c.typesMatch(valType, colType.ElemType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to element of array %s of type %s", valType.Signature(), ident.Value, colType.Signature()))
-			}
-		case types.MapType:
-			if !c.typesMatch(indexOrKeyType, colType.KeyType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: key for map %s of type %s must be %s, got %s", ident.Value, colType.Signature(), colType.KeyType.Signature(), indexOrKeyType.Signature()))
-			}
-
-			if !c.typesMatch(valType, colType.ValueType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map %s of type %s", valType.Signature(), ident.Value, colType.Signature()))
-			}
-		}
-
-		return types.Unit
+		return c.checkIndexAssignment(node)
 	case *ast.BlockStmt:
 		oldEnv := c.env
 		c.env = NewTypeEnv(oldEnv)
@@ -169,41 +136,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 
 		return lastType
 	case *ast.FunctionDeclarationStmt:
-		name := node.Name.Value
-		fTypeRaw := node.Type.(types.FunctionType)
-		if len(fTypeRaw.Params) > 0 {
-			receiverType := fTypeRaw.Params[0]
-			if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
-				name = fmt.Sprintf("%s.%s", sn, name)
-				node.MangledName = name
-				n = node
-			}
-		}
-
-		fTypeRetrieved, _, ok := c.env.Get(node.Name.Value)
-		if !ok {
-			c.env.Set(name, node.Type)
-			fTypeRetrieved = node.Type
-		}
-
-		fType, ok := fTypeRetrieved.(types.FunctionType)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot use function declaration of %s", node.Name.Value))
-		}
-
-		oldReturnType := c.currentReturnType
-		c.currentReturnType = fType.Return
-		oldEnv := c.env
-		c.env = NewTypeEnv(oldEnv)
-
-		for i, param := range node.Params {
-			c.env.Set(param.Value, fType.Params[i])
-		}
-
-		c.check(node.Body)
-
-		c.env = oldEnv
-		c.currentReturnType = oldReturnType
+		return c.checkFunctionDeclaration(n, node)
 	case *ast.SelectorAssignmentStmt:
 		str := c.typeOf(node.Left.Left, nil)
 
@@ -441,31 +374,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		e = expr
 		return t
 	case *ast.IndexExpr:
-		lt := c.typeOf(expr.Left, nil)
-		idxT := c.typeOf(expr.Index, nil)
-		mt, mok := lt.(types.MapType)
-		at, aok := lt.(types.ArrayType)
-
-		if aok {
-			if idxT != types.Int {
-				c.errors = append(c.errors, fmt.Sprintf("index type for array must be int, got %s", idxT.Signature()))
-				return nil
-			}
-			expr.ResolvedType = at.ElemType
-			e = expr
-			return at.ElemType
-		} else if mok {
-			if idxT != mt.KeyType {
-				c.errors = append(c.errors, fmt.Sprintf("index type for map %s must be %s, got %s", mt.Signature(), mt.KeyType.Signature(), idxT.Signature()))
-				return nil
-			}
-
-			expr.ResolvedType = mt.ValueType
-			e = expr
-			return mt.ValueType
-		}
-		c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
-		return nil
+		return c.checkIndexExpr(e, expr)
 	case *ast.SelectorExpr:
 		t := c.typeOf(expr.Left, nil)
 		structType, ok := t.(types.StructType)
@@ -1143,4 +1052,102 @@ func (c *Checker) satisfiesSameInterface(actual, expected types.Type) bool {
 	}
 
 	return false
+}
+
+func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type {
+	t := c.typeOf(node.Left.Left, nil)
+
+	indexOrKeyType := c.typeOf(node.Left.Index, nil)
+
+	valType := c.typeOf(node.Value, t)
+
+	switch colType := t.(type) {
+	case types.ArrayType:
+		if indexOrKeyType != types.Int {
+			c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", indexOrKeyType.Signature()))
+		}
+
+		if !c.typesMatch(valType, colType.ElemType) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to element of array of type %s", valType.Signature(), colType.Signature()))
+		}
+	case types.MapType:
+		if !c.typesMatch(indexOrKeyType, colType.KeyType) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: key for map of type %s must be %s, got %s", colType.Signature(), colType.KeyType.Signature(), indexOrKeyType.Signature()))
+		}
+
+		if !c.typesMatch(valType, colType.ValueType) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map of type %s", valType.Signature(), colType.Signature()))
+		}
+	}
+
+	return types.Unit
+}
+
+func (c *Checker) checkFunctionDeclaration(n ast.Node, node *ast.FunctionDeclarationStmt) types.Type {
+	name := node.Name.Value
+	fTypeRaw := node.Type.(types.FunctionType)
+	if len(fTypeRaw.Params) > 0 {
+		receiverType := fTypeRaw.Params[0]
+		if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
+			name = fmt.Sprintf("%s.%s", sn, name)
+			node.MangledName = name
+			n = node
+		}
+	}
+
+	fTypeRetrieved, _, ok := c.env.Get(node.Name.Value)
+	if !ok {
+		c.env.Set(name, node.Type)
+		fTypeRetrieved = node.Type
+	}
+
+	fType, ok := fTypeRetrieved.(types.FunctionType)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("cannot use function declaration of %s", node.Name.Value))
+	}
+
+	oldReturnType := c.currentReturnType
+	c.currentReturnType = fType.Return
+	oldEnv := c.env
+	c.env = NewTypeEnv(oldEnv)
+
+	for i, param := range node.Params {
+		c.env.Set(param.Value, fType.Params[i])
+	}
+
+	c.check(node.Body)
+
+	c.env = oldEnv
+	c.currentReturnType = oldReturnType
+
+	return types.Unit
+}
+
+func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
+	lt := c.typeOf(expr.Left, nil)
+	idxT := c.typeOf(expr.Index, nil)
+	mt, mok := lt.(types.MapType)
+	at, aok := lt.(types.ArrayType)
+
+	if aok {
+		if idxT != types.Int {
+			c.errors = append(c.errors, fmt.Sprintf("index type for array must be int, got %s", idxT.Signature()))
+			return nil
+		}
+		expr.ResolvedType = at.ElemType
+		e = expr
+		return at.ElemType
+	} else if mok {
+		if idxT != mt.KeyType {
+			c.errors = append(c.errors, fmt.Sprintf("index type for map %s must be %s, got %s", mt.Signature(), mt.KeyType.Signature(), idxT.Signature()))
+			return nil
+		}
+
+		expr.ResolvedType = mt.ValueType
+		e = expr
+		return mt.ValueType
+	}
+	c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
+
+	return nil
 }
