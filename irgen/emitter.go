@@ -1115,7 +1115,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		line = fmt.Sprintf("define %s %s(ptr %%env) {", retType, anon)
 	}
 
-	closureBuf.WriteString(line)
+	closureBuf.WriteString(line + "\n")
 
 	e.depth = 1
 
