@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var declarations string = `declare void @sydney_print_int(i64)
+var declarations = `declare void @sydney_print_int(i64)
 declare void @sydney_print_float(double)
 declare void @sydney_print_string(ptr)
 declare ptr @sydney_strcat(ptr, ptr)
@@ -23,11 +23,12 @@ declare i64 @sydney_strlen(ptr)`
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
 	expected := `define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = add i64 1, 2
   call void @sydney_print_int(i64 %t0)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -39,13 +40,15 @@ func TestVarDeclarations(t *testing.T) {
 	source := `mut float pi = 3.0 + 0.14; print(pi);`
 	expected := `@pi = global double 0.0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = fadd double 3.000000, 0.140000
   store double %t0, ptr @pi
+  call void @sydney_gc_add_global_root(ptr @pi)
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -59,14 +62,16 @@ pi = 2.0;
 print(pi);`
 	expected := `@pi = global double 0.0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = fadd double 3.000000, 0.140000
   store double %t0, ptr @pi
+  call void @sydney_gc_add_global_root(ptr @pi)
   store double 2.000000, ptr @pi
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -92,14 +97,17 @@ print(z);`
 @y = global i64 0
 @z = global i64 0
 define i32 @main() {
-entry: 
+entry:
+  %t3 = alloca i64
+  %t7 = alloca i64
   call void @sydney_gc_init()
   store i64 0, ptr @x
+  call void @sydney_gc_add_global_root(ptr @x)
   store i64 0, ptr @y
+  call void @sydney_gc_add_global_root(ptr @y)
   %t0 = load i64, ptr @x
   %t1 = load i64, ptr @y
   %t2 = icmp eq i64 %t0, %t1
-  %t3 = alloca i64
   br i1 %t2, label %then.0, label %else.1
 then.0:
     call void @sydney_print_string(ptr @.str.0)
@@ -113,7 +121,6 @@ merge.2:
   %t4 = load i64, ptr @x
   %t5 = load i64, ptr @y
   %t6 = icmp eq i64 %t4, %t5
-  %t7 = alloca i64
   br i1 %t6, label %then.3, label %else.4
 then.3:
   store i64 1, ptr %t7
@@ -124,9 +131,11 @@ else.4:
 merge.5:
   %t8 = load i64, ptr %t7
   store i64 %t8, ptr @z
+  call void @sydney_gc_add_global_root(ptr @z)
   %t9 = load i64, ptr @z
   call void @sydney_print_int(i64 %t9)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -141,9 +150,10 @@ for (i < 5) {
 }`
 	expected := `@i = global i64 0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   store i64 0, ptr @i
+  call void @sydney_gc_add_global_root(ptr @i)
   br label %cond.0
 cond.0:
   %t0 = load i64, ptr @i
@@ -158,6 +168,7 @@ loop.1:
     store i64 %t4, ptr @i
   br label %cond.0
 escape.2:
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -176,9 +187,10 @@ for (i < 10) {
 
 	expected := `@i = global i64 0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   store i64 0, ptr @i
+  call void @sydney_gc_add_global_root(ptr @i)
   br label %cond.0
 cond.0:
   %t0 = load i64, ptr @i
@@ -200,6 +212,7 @@ merge.4:
     store i64 %t7, ptr @i
   br label %cond.0
 escape.2:
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -234,37 +247,42 @@ print("x + 6 = ", xPlusSix);`
 define i64 @addFive(i64 %i) {
 entry:
   %i.addr = alloca i64
+  %result.addr = alloca i64
   store i64 %i, ptr %i.addr
   %t0 = load i64, ptr %i.addr
   %t1 = add i64 %t0, 5
-  %result.addr = alloca i64
   store i64 %t1, ptr %result.addr
   %t2 = load i64, ptr %result.addr
   ret i64 %t2
-}
+  }
+
 
 define i64 @addSix(i64 %i) {
 entry:
   %i.addr = alloca i64
+  %result.addr = alloca i64
   store i64 %i, ptr %i.addr
   %t0 = load i64, ptr %i.addr
   %t1 = add i64 %t0, 6
-  %result.addr = alloca i64
   store i64 %t1, ptr %result.addr
   %t2 = load i64, ptr %result.addr
   ret i64 %t2
-}
+  }
+
 
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   store i64 0, ptr @x
+  call void @sydney_gc_add_global_root(ptr @x)
   %t0 = load i64, ptr @x
   %t1 = call i64 @addSix(i64 %t0)
   store i64 %t1, ptr @xPlusSix
+  call void @sydney_gc_add_global_root(ptr @xPlusSix)
   %t2 = load i64, ptr @x
   %t3 = call i64 @addFive(i64 %t2)
   store i64 %t3, ptr @xPlusFive
+  call void @sydney_gc_add_global_root(ptr @xPlusFive)
   call void @sydney_print_string(ptr @.str.0)
   %t4 = load i64, ptr @x
   call void @sydney_print_int(i64 %t4)
@@ -277,6 +295,7 @@ entry:
   %t6 = load i64, ptr @xPlusSix
   call void @sydney_print_int(i64 %t6)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -291,7 +310,7 @@ print(p.y);`
 	expected := `%struct.Point = type { i64, i64 }
 @p = global ptr null
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = call ptr @sydney_gc_alloc(i64 16)
   %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
@@ -299,6 +318,7 @@ entry:
   %t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
   store i64 0, ptr %t2
   store ptr %t0, ptr @p
+  call void @sydney_gc_add_global_root(ptr @p)
   %t3 = load ptr, ptr @p
   %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
   %t5 = load i64, ptr %t4
@@ -309,6 +329,7 @@ entry:
   %t8 = load i64, ptr %t7
   call void @sydney_print_int(i64 %t8)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -328,7 +349,7 @@ print(p.y);`
 	expected := `%struct.Point = type { i64, i64 }
 @p = global ptr null
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = call ptr @sydney_gc_alloc(i64 16)
   %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
@@ -336,6 +357,7 @@ entry:
   %t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
   store i64 0, ptr %t2
   store ptr %t0, ptr @p
+  call void @sydney_gc_add_global_root(ptr @p)
   %t3 = load ptr, ptr @p
   %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
   %t5 = load i64, ptr %t4
@@ -362,6 +384,7 @@ entry:
   %t18 = load i64, ptr %t17
   call void @sydney_print_int(i64 %t18)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -412,8 +435,8 @@ print("circle area: ", circA);`
 define double @Circle.area(ptr %c) {
 entry:
   %c.addr = alloca ptr
-  store ptr %c, ptr %c.addr
   %pi.addr = alloca double
+  store ptr %c, ptr %c.addr
   store double 3.140000, ptr %pi.addr
   %t0 = load ptr, ptr %c.addr
   %t1 = getelementptr %struct.Circle, ptr %t0, i32 0, i32 0
@@ -425,7 +448,8 @@ entry:
   %t7 = load double, ptr %pi.addr
   %t8 = fmul double %t6, %t7
   ret double %t8
-}
+  }
+
 
 define double @Rect.area(ptr %r) {
 entry:
@@ -439,7 +463,8 @@ entry:
   %t5 = load double, ptr %t4
   %t6 = fmul double %t2, %t5
   ret double %t6
-}
+  }
+
 
 define double @getArea(ptr %a) {
 entry:
@@ -453,45 +478,51 @@ entry:
   %t5 = load ptr, ptr %t4
   %t6 = call double %t5(ptr %t2)
   ret double %t6
-}
+  }
+
 
 define i32 @main() {
-entry: 
+entry:
+  %t6 = alloca { ptr, ptr }
+  %t12 = alloca { ptr, ptr }
   call void @sydney_gc_init()
   %t0 = call ptr @sydney_gc_alloc(i64 8)
   %t1 = getelementptr %struct.Circle, ptr %t0, i32 0, i32 0
   store double 2.000000, ptr %t1
   store ptr %t0, ptr @c
+  call void @sydney_gc_add_global_root(ptr @c)
   %t2 = call ptr @sydney_gc_alloc(i64 16)
   %t3 = getelementptr %struct.Rect, ptr %t2, i32 0, i32 0
   store double 2.000000, ptr %t3
   %t4 = getelementptr %struct.Rect, ptr %t2, i32 0, i32 1
   store double 2.000000, ptr %t4
   store ptr %t2, ptr @r
+  call void @sydney_gc_add_global_root(ptr @r)
   %t5 = load ptr, ptr @r
-  %t6 = alloca { ptr, ptr }
   %t7 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 0
   store ptr %t5, ptr %t7
   %t8 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 1
   store ptr @vtable.Rect.Area, ptr %t8
   %t9 = call double @getArea(ptr %t6)
   store double %t9, ptr @rectA
+  call void @sydney_gc_add_global_root(ptr @rectA)
   call void @sydney_print_string(ptr @.str.0)
   %t10 = load double, ptr @rectA
   call void @sydney_print_float(double %t10)
   call void @sydney_print_newline()
   %t11 = load ptr, ptr @c
-  %t12 = alloca { ptr, ptr }
   %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
   store ptr %t11, ptr %t13
   %t14 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 1
   store ptr @vtable.Circle.Area, ptr %t14
   %t15 = call double @getArea(ptr %t12)
   store double %t15, ptr @circA
+  call void @sydney_gc_add_global_root(ptr @circA)
   call void @sydney_print_string(ptr @.str.1)
   %t16 = load double, ptr @circA
   call void @sydney_print_float(double %t16)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -505,7 +536,7 @@ print(a[1]);`
 
 	expected := `@a = global ptr null
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = call ptr @sydney_gc_alloc(i64 32)
   %t1 = getelementptr i64, ptr %t0, i32 0
@@ -522,6 +553,7 @@ entry:
   %t7 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 1
   store ptr %t0, ptr %t7
   store ptr %t5, ptr @a
+  call void @sydney_gc_add_global_root(ptr @a)
   %t8 = load ptr, ptr @a
   %t9 = getelementptr { i64, ptr }, ptr %t8, i32 0, i32 1
   %t10 = load ptr, ptr %t9
@@ -529,6 +561,7 @@ entry:
   %t12 = load i64, ptr %t11
   call void @sydney_print_int(i64 %t12)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
@@ -548,7 +581,7 @@ print(sum);`
 @anon = global ptr null
 @sum = global i64 0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = call ptr @sydney_gc_alloc(i64 16)
   %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
@@ -556,6 +589,7 @@ entry:
   %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
   store ptr null, ptr %t2
   store ptr %t0, ptr @anon
+  call void @sydney_gc_add_global_root(ptr @anon)
   %t3 = load ptr, ptr @anon
   %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
   %t5 = load ptr, ptr %t4
@@ -570,6 +604,7 @@ entry:
   %t11 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 1
   store ptr null, ptr %t11
   store ptr %t9, ptr @adder
+  call void @sydney_gc_add_global_root(ptr @adder)
   %t12 = load ptr, ptr @adder
   %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
   %t14 = load ptr, ptr %t13
@@ -577,9 +612,11 @@ entry:
   %t16 = load ptr, ptr %t15
   %t17 = call i64 %t14(ptr %t16, i64 1, i64 2)
   store i64 %t17, ptr @sum
+  call void @sydney_gc_add_global_root(ptr @sum)
   %t18 = load i64, ptr @sum
   call void @sydney_print_int(i64 %t18)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 define i64 @anon.0(ptr %env) {
@@ -590,8 +627,8 @@ entry:
 define i64 @anon.1(ptr %env, i64 %a, i64 %b) {
 entry:
   %a.addr = alloca i64
-  store i64 %a, ptr %a.addr
   %b.addr = alloca i64
+  store i64 %a, ptr %a.addr
   store i64 %b, ptr %b.addr
   %t0 = load i64, ptr %a.addr
   %t1 = load i64, ptr %b.addr
@@ -612,15 +649,17 @@ print(f(5));`
 	expected := `@f = global ptr null
 @x = global i64 0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   store i64 10, ptr @x
+  call void @sydney_gc_add_global_root(ptr @x)
   %t0 = call ptr @sydney_gc_alloc(i64 16)
   %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
   store ptr @anon.0, ptr %t1
   %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
   store ptr null, ptr %t2
   store ptr %t0, ptr @f
+  call void @sydney_gc_add_global_root(ptr @f)
   %t3 = load ptr, ptr @f
   %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
   %t5 = load ptr, ptr %t4
@@ -629,6 +668,7 @@ entry:
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 define i64 @anon.0(ptr %env, i64 %y) {
@@ -660,15 +700,17 @@ print(sixAdder(5));`
 @sixAdder = global ptr null
 @x = global i64 0
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   store i64 10, ptr @x
+  call void @sydney_gc_add_global_root(ptr @x)
   %t0 = call ptr @sydney_gc_alloc(i64 16)
   %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
   store ptr @anon.0, ptr %t1
   %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
   store ptr null, ptr %t2
   store ptr %t0, ptr @getAdder
+  call void @sydney_gc_add_global_root(ptr @getAdder)
   %t3 = load ptr, ptr @getAdder
   %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
   %t5 = load ptr, ptr %t4
@@ -676,6 +718,7 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call ptr %t5(ptr %t7, i64 5)
   store ptr %t8, ptr @fiveAdder
+  call void @sydney_gc_add_global_root(ptr @fiveAdder)
   %t9 = load ptr, ptr @getAdder
   %t10 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 0
   %t11 = load ptr, ptr %t10
@@ -683,6 +726,7 @@ entry:
   %t13 = load ptr, ptr %t12
   %t14 = call ptr %t11(ptr %t13, i64 6)
   store ptr %t14, ptr @sixAdder
+  call void @sydney_gc_add_global_root(ptr @sixAdder)
   %t15 = load ptr, ptr @fiveAdder
   %t16 = getelementptr { ptr, ptr }, ptr %t15, i32 0, i32 0
   %t17 = load ptr, ptr %t16
@@ -699,15 +743,16 @@ entry:
   %t26 = call i64 %t23(ptr %t25, i64 5)
   call void @sydney_print_int(i64 %t26)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 define i64 @anon.1(ptr %env, i64 %z) {
 entry:
+  %y.addr = alloca i64
+  %z.addr = alloca i64
   %t0 = getelementptr { i64 }, ptr %env, i32 0, i32 0
   %t1 = load i64, ptr %t0
-  %y.addr = alloca i64
   store i64 %t1, ptr %y.addr
-  %z.addr = alloca i64
   store i64 %z, ptr %z.addr
   %t2 = load i64, ptr @x
   %t3 = load i64, ptr %y.addr
@@ -749,14 +794,16 @@ entry:
   %t0 = load i64, ptr %x.addr
   %t1 = add i64 %t0, 2
   ret i64 %t1
-}
+  }
+
 
 define i32 @main() {
-entry: 
+entry:
   call void @sydney_gc_init()
   %t0 = call i64 @addTwo(i64 3)
   call void @sydney_print_int(i64 %t0)
   call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
   ret i32 0
 }
 `
