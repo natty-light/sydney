@@ -26,6 +26,7 @@ type (
 		expressionNode()
 		SetCastTo(it *types.InterfaceType)
 		GetCastTo() *types.InterfaceType
+		GetResolvedType() types.Type
 	}
 )
 
@@ -45,6 +46,10 @@ type noCast struct{}
 
 func (n *noCast) SetCastTo(_ *types.InterfaceType) {}
 func (n *noCast) GetCastTo() *types.InterfaceType  { return nil }
+
+type resolvable struct{ ResolvedType types.Type }
+
+func (r *resolvable) GetResolvedType() types.Type { return r.ResolvedType }
 
 // Statements
 type (
@@ -129,12 +134,14 @@ type (
 	IntegerLiteral struct {
 		Token token.Token
 		Value int64
+		resolvable
 		noCast
 	}
 
 	BooleanLiteral struct {
 		Token token.Token
 		Value bool
+		resolvable
 		noCast
 	}
 
@@ -144,23 +151,27 @@ type (
 		Body       *BlockStmt
 		Name       string
 		Type       types.FunctionType
+		resolvable
 		noCast
 	}
 
 	StringLiteral struct {
 		Token token.Token
 		Value string
+		resolvable
 		noCast
 	}
 
 	ArrayLiteral struct {
 		Token    token.Token
 		Elements []Expr
+		resolvable
 		noCast
 	}
 
 	NullLiteral struct {
 		Token token.Token
+		resolvable
 		noCast
 	}
 
@@ -168,12 +179,13 @@ type (
 		Token token.Token
 		Pairs map[Expr]Expr
 		noCast
-		ResolvedType types.MapType
+		resolvable
 	}
 
 	FloatLiteral struct {
 		Token token.Token
 		Value float64
+		resolvable
 		noCast
 	}
 
@@ -181,23 +193,24 @@ type (
 		Token      token.Token
 		Parameters []*Identifier
 		Body       *BlockStmt
+		resolvable
 		noCast
 	}
 
 	StructLiteral struct {
-		Token        token.Token
-		Name         string
-		Fields       []string
-		Values       []Expr
-		ResolvedType types.StructType
+		Token  token.Token
+		Name   string
+		Fields []string
+		Values []Expr
+		resolvable
 		castable
 	}
 
 	// Expressions
 	Identifier struct {
-		Token        token.Token // token.Ident
-		Value        string
-		ResolvedType types.Type
+		Token token.Token // token.Ident
+		Value string
+		resolvable
 		castable
 	}
 
@@ -205,6 +218,7 @@ type (
 		Token    token.Token
 		Operator string
 		Right    Expr
+		resolvable
 		noCast
 	}
 
@@ -213,6 +227,7 @@ type (
 		Left     Expr
 		Operator string
 		Right    Expr
+		resolvable
 		noCast
 	}
 
@@ -221,15 +236,16 @@ type (
 		Condition   Expr
 		Consequence *BlockStmt
 		Alternative *BlockStmt
+		resolvable
 		castable
 	}
 
 	CallExpr struct {
-		Token        token.Token
-		Function     Expr
-		Arguments    []Expr
-		MangledName  string
-		ResolvedType types.Type
+		Token       token.Token
+		Function    Expr
+		Arguments   []Expr
+		MangledName string
+		resolvable
 		castable
 	}
 
@@ -237,16 +253,16 @@ type (
 		Token         token.Token
 		Left          Expr
 		Index         Expr
-		ResolvedType  types.Type
 		ContainerType types.Type
+		resolvable
 		castable
 	}
 
 	SelectorExpr struct {
-		Token        token.Token
-		Left         Expr
-		Value        Expr
-		ResolvedType types.StructType
+		Token token.Token
+		Left  Expr
+		Value Expr
+		resolvable
 		castable
 	}
 )

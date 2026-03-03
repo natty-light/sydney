@@ -910,7 +910,9 @@ func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (stri
 
 	val := st.Value.(*ast.Identifier).Value
 	fieldIdx := -1
-	for i, fieldName := range st.ResolvedType.Fields {
+
+	t := st.ResolvedType.(types.StructType)
+	for i, fieldName := range t.Fields {
 		if fieldName == val {
 			fieldIdx = i
 			break
@@ -920,7 +922,7 @@ func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (stri
 	strPtr, _ := e.emitExpr(st.Left) // %t0 = load ptr, ptr %p.addr
 
 	tmp := e.tmp()
-	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", tmp, stmt.Left.ResolvedType.Name, strPtr, fieldIdx)
+	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", tmp, t.Name, strPtr, fieldIdx)
 	e.emit(line)
 
 	val, valType := e.emitExpr(stmt.Value)
@@ -1242,20 +1244,22 @@ func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
 	//  ; %t2 is the result
 
 	val := expr.Value.(*ast.Identifier).Value // this needs to be changed since we might have Circle.Point.x
+
+	t := expr.ResolvedType.(types.StructType)
 	fieldIdx := -1
-	for i, fieldName := range expr.ResolvedType.Fields {
+	for i, fieldName := range t.Fields {
 		if fieldName == val {
 			fieldIdx = i
 			break
 		}
 	}
-	retType := SydneyTypeToIrType(expr.ResolvedType.Types[fieldIdx])
+	retType := SydneyTypeToIrType(t.Types[fieldIdx])
 
 	structPtr, _ := e.emitExpr(expr.Left)
 
 	gepTmp := e.tmp()
 
-	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", gepTmp, expr.ResolvedType.Name, structPtr, fieldIdx)
+	line := fmt.Sprintf("%s = getelementptr %%struct.%s, ptr %s, i32 0, i32 %d", gepTmp, t.Name, structPtr, fieldIdx)
 	e.emit(line)
 
 	result := e.tmp()
@@ -1292,7 +1296,9 @@ func (e *Emitter) emitStructLiteral(lit *ast.StructLiteral) (string, IrType) {
 	// how to compute size?
 	line := fmt.Sprintf("%s = call %s @sydney_gc_alloc(%s %d)", result, IrPtr, IrInt, size)
 	e.emit(line)
-	for i, fieldName := range lit.ResolvedType.Fields {
+
+	st := lit.ResolvedType.(types.StructType)
+	for i, fieldName := range st.Fields {
 		litIdx := -1
 		for j, field := range lit.Fields {
 			if field == fieldName {
@@ -1662,8 +1668,9 @@ func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
 
 func (e *Emitter) emitHashLiteral(lit *ast.HashLiteral) (string, IrType) {
 	result := e.tmp()
+	t := lit.ResolvedType.(types.MapType)
 	var line string
-	switch lit.ResolvedType.KeyType {
+	switch t.KeyType {
 	case types.Int:
 		line = fmt.Sprintf("%s = call ptr @sydney_map_create_int()", result)
 	case types.Bool:

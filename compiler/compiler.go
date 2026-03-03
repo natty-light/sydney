@@ -536,7 +536,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpClosure, fnIdx, len(freeSymbols))
 	case *ast.StructLiteral:
-		t := node.ResolvedType
+		t := node.ResolvedType.(types.StructType)
 		for _, field := range t.Fields {
 			idx := slices.Index(node.Fields, field)
 			err := c.Compile(node.Values[idx])
@@ -550,6 +550,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpStruct, idx, len(t.Fields))
 	case *ast.SelectorExpr:
+		t := node.ResolvedType.(types.StructType)
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -557,10 +558,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		fieldIdent := node.Value.(*ast.Identifier)
 		// resolved type is appended in typechecker
-		idx := slices.Index(node.ResolvedType.Fields, fieldIdent.Value)
+		idx := slices.Index(t.Fields, fieldIdent.Value)
 
 		c.emit(code.OpGetField, idx)
 	case *ast.SelectorAssignmentStmt:
+		t := node.Left.ResolvedType.(types.StructType)
 		err := c.Compile(node.Left.Left) // compile collection ident
 		if err != nil {
 			return err
@@ -571,7 +573,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		fieldIdent := node.Left.Value.(*ast.Identifier)
-		idx := slices.Index(node.Left.ResolvedType.Fields, fieldIdent.Value)
+		idx := slices.Index(t.Fields, fieldIdent.Value)
 
 		c.emit(code.OpSetField, idx)
 	}
