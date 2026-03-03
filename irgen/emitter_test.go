@@ -18,7 +18,13 @@ declare ptr @sydney_gc_alloc(i64)
 declare void @sydney_gc_collect()
 declare void @sydney_gc_add_global_root(ptr)
 declare void @sydney_gc_shutdown()
-declare i64 @sydney_strlen(ptr)`
+declare i64 @sydney_strlen(ptr)
+declare ptr @sydney_map_create_int()
+declare ptr @sydney_map_create_string()
+declare void @sydney_map_set_str(ptr, ptr, i64)
+declare ptr @sydney_map_get_str(ptr, ptr)
+declare void @sydney_map_set_int(ptr, i64, i64)
+declare ptr @sydney_map_get_int(ptr, i64)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -802,6 +808,43 @@ entry:
   call void @sydney_gc_init()
   %t0 = call i64 @addTwo(i64 3)
   call void @sydney_print_int(i64 %t0)
+  call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
+  ret i32 0
+}
+`
+
+	runEmitterTest(t, source, expected)
+}
+
+func TestMapAllocationAndAssignment(t *testing.T) {
+	source := `const map<int, int> m = { 1: 0 }
+m[0] = 1;
+print(m[0]);
+print(m[1]);
+print(m[2]);`
+
+	expected := `@m = global ptr null
+define i32 @main() {
+entry:
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_map_create_int()
+  call void @sydney_map_set_int(ptr %t0, i64 1, i64 0)
+  store ptr %t0, ptr @m
+  call void @sydney_gc_add_global_root(ptr @m)
+  %t1 = load ptr, ptr @m
+  call void @sydney_map_set_int(ptr %t1, i64 0, i64 1)
+  %t2 = load ptr, ptr @m
+  %t3 = call i64 @sydney_map_get_int(ptr %t2, i64 0)
+  call void @sydney_print_int(i64 %t3)
+  call void @sydney_print_newline()
+  %t4 = load ptr, ptr @m
+  %t5 = call i64 @sydney_map_get_int(ptr %t4, i64 1)
+  call void @sydney_print_int(i64 %t5)
+  call void @sydney_print_newline()
+  %t6 = load ptr, ptr @m
+  %t7 = call i64 @sydney_map_get_int(ptr %t6, i64 2)
+  call void @sydney_print_int(i64 %t7)
   call void @sydney_print_newline()
   call void @sydney_gc_shutdown()
   ret i32 0
