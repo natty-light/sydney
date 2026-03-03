@@ -294,11 +294,16 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		}
 		isEmpty := len(expr.Elements) == 0
 
+		var resolved types.ArrayType
 		if elemType == nil {
-			return types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
+			resolved = types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
+		} else {
+			resolved = types.ArrayType{ElemType: elemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 		}
 
-		return types.ArrayType{ElemType: elemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
+		expr.ResolvedType = resolved
+
+		return resolved
 	case *ast.HashLiteral:
 		expected, _ := toMap(expectedType)
 		var keyType, valType types.Type
@@ -354,10 +359,16 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	case *ast.InfixExpr:
 		lt := c.typeOf(expr.Left, nil)
 		rt := c.typeOf(expr.Right, nil)
-		return c.checkInfixExpr(expr.Operator, lt, rt)
+		resolved := c.checkInfixExpr(expr.Operator, lt, rt)
+		expr.ResolvedType = resolved
+		e = expr
+		return resolved
 	case *ast.PrefixExpr:
 		t := c.typeOf(expr.Right, nil)
-		return c.checkPrefixExpr(expr.Operator, t)
+		resolved := c.checkPrefixExpr(expr.Operator, t)
+		expr.ResolvedType = resolved
+		e = expr
+		return resolved
 	case *ast.IfExpr:
 		t := c.typeOf(expr.Condition, types.Bool)
 		if t != types.Bool {
@@ -375,13 +386,18 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			}
 		}
 
+		expr.ResolvedType = cType
+		e = expr
 		return cType
 	case *ast.CallExpr:
 		t := c.typeOfCallExpr(expr)
-		e = expr
+		e = expr // this is fucky -- side effects :(
 		return t
 	case *ast.IndexExpr:
-		return c.checkIndexExpr(e, expr)
+		resolved := c.checkIndexExpr(e, expr)
+		expr.ResolvedType = resolved
+		e = expr
+		return resolved
 	case *ast.SelectorExpr:
 		t := c.typeOf(expr.Left, nil)
 		structType, ok := t.(types.StructType)
@@ -435,7 +451,8 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 				c.boxIfNecessary(expr.Values[i], actualType, expectedType)
 			}
 		}
-		e.(*ast.StructLiteral).ResolvedType = structType
+		expr.ResolvedType = structType
+		e = expr
 
 		return structType
 	}
