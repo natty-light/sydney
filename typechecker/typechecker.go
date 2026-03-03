@@ -333,6 +333,9 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			c.boxIfNecessary(v, vType, valType)
 		}
 
+		expr.ResolvedType = types.MapType{ValueType: valType, KeyType: keyType}
+		e = expr
+
 		isEmpty := len(expr.Pairs) == 0
 		if keyType == nil {
 			return types.MapType{ValueType: types.Null, KeyType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
@@ -1140,6 +1143,7 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 			return nil
 		}
 		expr.ResolvedType = at.ElemType
+		expr.ContainerType = at
 		e = expr
 		return at.ElemType
 	} else if mok {
@@ -1149,6 +1153,7 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 		}
 
 		expr.ResolvedType = mt.ValueType
+		expr.ContainerType = mt
 		e = expr
 		return mt.ValueType
 	}

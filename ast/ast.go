@@ -168,6 +168,7 @@ type (
 		Token token.Token
 		Pairs map[Expr]Expr
 		noCast
+		ResolvedType types.MapType
 	}
 
 	FloatLiteral struct {
@@ -233,10 +234,11 @@ type (
 	}
 
 	IndexExpr struct {
-		Token        token.Token
-		Left         Expr
-		Index        Expr
-		ResolvedType types.Type
+		Token         token.Token
+		Left          Expr
+		Index         Expr
+		ResolvedType  types.Type
+		ContainerType types.Type
 		castable
 	}
 
