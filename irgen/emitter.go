@@ -251,6 +251,12 @@ func (e *Emitter) preamble() {
 	e.emit("declare void @sydney_gc_add_global_root(ptr)")
 	e.emit("declare void @sydney_gc_shutdown()")
 	e.emit("declare i64 @sydney_strlen(ptr)")
+	e.emit("declare ptr @sydney_map_create_int()")
+	e.emit("declare ptr @sydney_map_create_string()")
+	e.emit("declare void @sydney_map_set_str(ptr, ptr, i64)")
+	e.emit("declare ptr @sydney_map_get_str(ptr, ptr)")
+	e.emit("declare void @sydney_map_set_int(ptr, i64, i64)")
+	e.emit("declare ptr @sydney_map_get_int(ptr, i64)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -463,7 +469,11 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 	case *ast.SelectorAssignmentStmt:
 		val, valType = e.emitSelectorAssignment(s)
 	case *ast.IndexAssignmentStmt:
-		val, valType = e.emitIndexAssignment(s)
+		if _, ok := s.Left.ContainerType.(types.MapType); ok {
+			val, valType = e.emitMapIndexAssignment(s)
+		} else {
+			val, valType = e.emitArrayIndexAssignment(s)
+		}
 	}
 	return val, valType, hasReturn
 }
@@ -531,6 +541,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitArrayLiteral(expr)
 	case *ast.FunctionLiteral:
 		return e.emitClosure(expr)
+	case *ast.HashLiteral:
+		return e.emitHashLiteral(expr)
 	case *ast.InfixExpr:
 		return e.emitInfixExpr(expr)
 	case *ast.PrefixExpr:
@@ -559,6 +571,10 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	case *ast.SelectorExpr:
 		return e.emitSelectorExpr(expr)
 	case *ast.IndexExpr:
+		if _, ok := expr.ContainerType.(types.MapType); ok {
+			return e.emitMapIndexExpr(expr)
+		}
+
 		return e.emitArrayIndexExpr(expr)
 	}
 	return "", IrUnit
@@ -1225,7 +1241,7 @@ func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
 	//  %t2 = load i64, ptr %t1
 	//  ; %t2 is the result
 
-	val := expr.Value.(*ast.Identifier).Value
+	val := expr.Value.(*ast.Identifier).Value // this needs to be changed since we might have Circle.Point.x
 	fieldIdx := -1
 	for i, fieldName := range expr.ResolvedType.Fields {
 		if fieldName == val {
@@ -1523,10 +1539,21 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 	return freeVars
 }
 
-func (e *Emitter) emitIndexAssignment(stmt *ast.IndexAssignmentStmt) (string, IrType) {
+func (e *Emitter) emitArrayIndexAssignment(stmt *ast.IndexAssignmentStmt) (string, IrType) {
 	elemPtr, elemType := e.emitArrayElementPtr(stmt.Left)
 	val, _ := e.emitExpr(stmt.Value)
 	line := fmt.Sprintf("store %s %s, ptr %s", elemType, val, elemPtr)
+	e.emit(line)
+
+	return "", IrUnit
+}
+
+func (e *Emitter) emitMapIndexAssignment(stmt *ast.IndexAssignmentStmt) (string, IrType) {
+	mapPtr, _ := e.emitExpr(stmt.Left.Left)
+	idx, _ := e.emitExpr(stmt.Left.Index)
+
+	val, _ := e.emitExpr(stmt.Value)
+	line := fmt.Sprintf("call void @sydney_map_set_int(ptr %s, i64 %s, i64 %s)", mapPtr, idx, val)
 	e.emit(line)
 
 	return "", IrUnit
@@ -1567,6 +1594,19 @@ func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	e.emit(line)
 
 	return result, elemType
+}
+
+func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
+
+	mapPtr, _ := e.emitExpr(expr.Left)
+
+	key := expr.Index.(*ast.IntegerLiteral).Value
+
+	val := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_map_get_int(ptr %s, i64 %d)", val, mapPtr, key)
+	e.emit(line)
+
+	return val, IrInt
 }
 
 func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
@@ -1618,6 +1658,30 @@ func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
 
 	//  ; result is %t4 (ptr to the header)
 	return headerPtr, IrPtr
+}
+
+func (e *Emitter) emitHashLiteral(lit *ast.HashLiteral) (string, IrType) {
+	result := e.tmp()
+	var line string
+	switch lit.ResolvedType.KeyType {
+	case types.Int:
+		line = fmt.Sprintf("%s = call ptr @sydney_map_create_int()", result)
+	case types.Bool:
+		line = fmt.Sprintf("%s = call ptr @sydney_map_create_int()", result)
+	case types.String:
+		line = fmt.Sprintf("%s = call ptr @sydney_map_create_str()", result)
+	}
+	e.emit(line)
+
+	for k, v := range lit.Pairs {
+		key, _ := e.emitExpr(k)
+		val, _ := e.emitExpr(v)
+
+		line = fmt.Sprintf("call void @sydney_map_set_int(ptr %s, i64 %s, i64 %s)", result, key, val)
+		e.emit(line)
+	}
+
+	return result, IrPtr
 }
 
 func llvmEscapeString(s string) (string, int) {
