@@ -115,6 +115,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 		isConst := c.env.IsConst(name)
 		if !ok {
 			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", name))
+			return types.Unit
 		}
 		if isConst {
 			c.errors = append(c.errors, fmt.Sprintf("cannot assign to constant variable %s", name))
