@@ -28,7 +28,7 @@ func New(program *ast.Program) *Loader {
 	for _, stmt := range program.Stmts {
 		if imp, ok := stmt.(*ast.ImportStatement); ok {
 			imports = append(imports, imp)
-		} else if _, ok := stmt.(*ast.ModuleStatement); ok {
+		} else if _, ok := stmt.(*ast.ModuleDeclarationStmt); ok {
 			continue
 		} else {
 			break // done with imports
@@ -93,7 +93,7 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 	var module string
 	for _, prog := range pkg.Programs {
 		for _, stmt := range prog.Stmts {
-			if mod, ok := stmt.(*ast.ModuleStatement); ok {
+			if mod, ok := stmt.(*ast.ModuleDeclarationStmt); ok {
 				if module == "" {
 					module = mod.Name.Value
 					continue

@@ -18,7 +18,8 @@ type Precedence int
 
 const (
 	LOWEST Precedence = iota + 1
-	ANDOR             // I think this is right
+	SCOPEACCESS
+	ANDOR // I think this is right
 	EQUALS
 	LESSGREATEREQUAL
 	LESSGREATER
@@ -47,6 +48,7 @@ var precedences = map[token.TokenType]Precedence{
 	token.LeftParen:          CALL,
 	token.LeftSquareBracket:  INDEX,
 	token.Dot:                SELECTOR,
+	token.Colon:              SCOPEACCESS,
 }
 
 type Parser struct {
@@ -62,6 +64,7 @@ type Parser struct {
 
 	definedStructs    map[string]types.Type
 	definedInterfaces map[string]types.Type
+	doneImports       bool
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -106,6 +109,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.LeftParen, p.parseCallExpr)
 	p.registerInfix(token.LeftSquareBracket, p.parseIndexExpr)
 	p.registerInfix(token.Dot, p.parseSelectorExpr)
+	p.registerInfix(token.Colon, p.parseScopeAccessExpr)
 
 	p.definedStructs = make(map[string]types.Type)
 	p.definedInterfaces = make(map[string]types.Type)
@@ -183,7 +187,16 @@ func (p *Parser) ParseProgram() *ast.Program {
 	for !p.currTokenIs(token.EOF) {
 		stmt := p.parseStatement()
 		if stmt != nil {
+			_, ok := stmt.(*ast.ImportStatement)
 			program.Stmts = append(program.Stmts, stmt)
+			if ok && p.doneImports {
+				p.errors = append(p.errors, "import statements must be top level")
+			}
+
+			if _, isMod := stmt.(*ast.ModuleDeclarationStmt); !isMod && !ok {
+				p.doneImports = true
+			}
+
 		}
 		p.nextToken()
 	}
@@ -197,6 +210,32 @@ func (p *Parser) parseStatement() ast.Stmt {
 		fallthrough
 	case token.Const:
 		return p.parseVarDeclarationStmt()
+	case token.Public:
+		pubStmt := &ast.PubStatement{Token: p.currToken}
+		p.nextToken()
+		switch p.currToken.Type {
+		case token.Mut:
+			fallthrough
+		case token.Const:
+			pubStmt.Stmt = p.parseVarDeclarationStmt()
+			break
+		case token.Func:
+			pubStmt.Stmt = p.parseFunctionDeclarationStmt()
+			break
+		case token.Define:
+			p.nextToken()
+			if p.currTokenIs(token.Struct) {
+				pubStmt.Stmt = p.parseStructDefinitionStmt()
+				break
+			} else if p.currTokenIs(token.Interface) {
+				pubStmt.Stmt = p.parseInterfaceDefinitionStmt()
+				break
+			}
+		default:
+			p.errors = append(p.errors, fmt.Sprintf("cannot define pub for token: %s", p.currToken.Type))
+			return nil
+		}
+		return pubStmt
 	case token.Return:
 		return p.parseReturnStmt()
 	case token.For:
@@ -218,8 +257,30 @@ func (p *Parser) parseStatement() ast.Stmt {
 		}
 		p.errors = append(p.errors, fmt.Sprintf("expected interface or struct, got %s instead", p.currToken.Literal))
 		return nil
+	case token.Import:
+		return p.parseImportStatement()
+	case token.Module:
+		return p.parseModuleStatement()
 	default:
 		return p.parseExpressionOrAssignmentStmt()
+	}
+}
+
+func (p *Parser) parseImportStatement() *ast.ImportStatement {
+	p.nextToken()
+	name := &ast.StringLiteral{Token: p.currToken, Value: p.currToken.Literal}
+	return &ast.ImportStatement{
+		Token: p.currToken,
+		Name:  name,
+	}
+}
+
+func (p *Parser) parseModuleStatement() *ast.ModuleDeclarationStmt {
+	p.nextToken()
+	name := &ast.StringLiteral{Token: p.currToken, Value: p.currToken.Literal}
+	return &ast.ModuleDeclarationStmt{
+		Token: p.currToken,
+		Name:  name,
 	}
 }
 
@@ -721,7 +782,7 @@ func (p *Parser) parseHashLiteral() ast.Expr {
 
 	for !p.peekTokenIs(token.RightCurlyBracket) {
 		p.nextToken()
-		key := p.parseExpression(LOWEST)
+		key := p.parseExpression(SCOPEACCESS) // this is required since colon is an infix parse function for scope accesses
 		if !p.expectPeek(token.Colon) {
 			return nil
 		}
@@ -1118,6 +1179,17 @@ func (p *Parser) parseSelectorExpr(left ast.Expr) ast.Expr {
 	expr.Value = p.parseIdentifier()
 
 	return expr
+}
+
+func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
+	ident, ok := left.(*ast.Identifier)
+	if !ok {
+		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		return nil
+	}
+	p.nextToken()
+	member := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	return &ast.ScopeAccessExpr{Member: member, Module: ident}
 }
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {

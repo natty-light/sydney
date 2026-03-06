@@ -136,6 +136,21 @@ type (
 		StructName     *Identifier
 		InterfaceNames []*Identifier
 	}
+
+	ImportStatement struct {
+		Token token.Token
+		Name  *StringLiteral
+	}
+
+	ModuleDeclarationStmt struct {
+		Token token.Token
+		Name  *StringLiteral
+	}
+
+	PubStatement struct {
+		Token token.Token
+		Stmt  Stmt
+	}
 )
 
 // Expressions and literals
@@ -275,6 +290,14 @@ type (
 		resolvable
 		castable
 	}
+
+	ScopeAccessExpr struct {
+		Token  token.Token
+		Module *Identifier
+		Member *Identifier
+		resolvable
+		noCast
+	}
 )
 
 // Node interfaces
@@ -400,6 +423,22 @@ func (i *InterfaceDefinitionStmt) TokenLiteral() string {
 
 func (i *InterfaceImplementationStmt) TokenLiteral() string {
 	return i.Token.Literal
+}
+
+func (i *ImportStatement) TokenLiteral() string {
+	return i.Token.Literal
+}
+
+func (m *ModuleDeclarationStmt) TokenLiteral() string {
+	return m.Token.Literal
+}
+
+func (p *PubStatement) TokenLiteral() string {
+	return p.Token.Literal
+}
+
+func (s *ScopeAccessExpr) TokenLiteral() string {
+	return s.Token.Literal
 }
 
 // Statements
@@ -556,6 +595,22 @@ func (i *InterfaceImplementationStmt) String() string {
 		out.WriteString(")")
 	}
 
+	return out.String()
+}
+
+func (m *ModuleDeclarationStmt) String() string {
+	return fmt.Sprintf("module %s", m.Name.String())
+}
+
+func (i *ImportStatement) String() string {
+	return fmt.Sprintf("import %s", i.Name.String())
+}
+
+func (p *PubStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("pub ")
+	out.WriteString(p.Stmt.String())
+	out.WriteString(";")
 	return out.String()
 }
 
@@ -754,6 +809,14 @@ func (s *StructLiteral) String() string {
 	return out.String()
 }
 
+func (s *ScopeAccessExpr) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Module.String())
+	out.WriteString(":")
+	out.WriteString(s.Member.String())
+	return out.String()
+}
+
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
 func (r *ReturnStmt) statementNode()                  {}
@@ -767,6 +830,9 @@ func (s *StructDefinitionStmt) statementNode()        {}
 func (s *SelectorAssignmentStmt) statementNode()      {}
 func (i *InterfaceDefinitionStmt) statementNode()     {}
 func (i *InterfaceImplementationStmt) statementNode() {}
+func (m *ModuleDeclarationStmt) statementNode()       {}
+func (i *ImportStatement) statementNode()             {}
+func (p *PubStatement) statementNode()                {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}
@@ -786,3 +852,4 @@ func (f *FloatLiteral) expressionNode()    {}
 func (m *MacroLiteral) expressionNode()    {}
 func (s *StructLiteral) expressionNode()   {}
 func (s *SelectorExpr) expressionNode()    {}
+func (s *ScopeAccessExpr) expressionNode() {}

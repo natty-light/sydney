@@ -1734,6 +1734,78 @@ const r = Rect { w: 10, h: 20, x: 0, y: 0 };`
 	testStructLiteral(t, stLit, expectedFields, "Rect")
 }
 
+func TestModuleDeclaration(t *testing.T) {
+	source := "module \"math\""
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ModuleDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ModuleDeclarationStmt. got=%T", stmt)
+	}
+
+	if stmt.Name.Value != "math" {
+		t.Fatalf("stmt.Name wrong. want math, got=%q", stmt.Name.Value)
+	}
+}
+
+func TestImportStatement(t *testing.T) {
+	source := "import \"math\""
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ImportStatement)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ImportStmt. got=%T", stmt)
+	}
+
+	if stmt.Name.Value != "math" {
+		t.Fatalf("stmt.Name wrong. want math, got=%q", stmt.Name.Value)
+	}
+}
+
+func TestScopeAccessExpression(t *testing.T) {
+	source := "math:sqrt"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", stmt)
+	}
+
+	expr, ok := stmt.Expr.(*ast.ScopeAccessExpr)
+	if !ok {
+		t.Fatalf("stmt.Expression is not *ast.ScopeAccessExpr. got=%T", stmt.Expr)
+	}
+
+	if expr.Module.Value != "math" {
+		t.Fatalf("expr.Module wrong. want math, got=%q", expr.Module.Value)
+	}
+
+	if expr.Member.Value != "sqrt" {
+		t.Fatalf("expr.Member wrong. want sqrt, got=%q", expr.Member.Value)
+	}
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {
