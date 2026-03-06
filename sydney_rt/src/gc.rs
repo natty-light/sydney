@@ -2,11 +2,12 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::cmp::{max, min};
 use std::collections::HashMap;
 
-struct GcState {
+pub struct GcState {
     allocations: HashMap<usize, Allocation>,  // ptr address → index in allocations
     global_roots: Vec<*const *mut u8>,
     bytes_allocated: usize,
     threshold: usize,
+    pub maps: Vec<*mut dyn TraceableMap>
 }
 
 impl GcState {
@@ -16,6 +17,7 @@ impl GcState {
             bytes_allocated: 0,
             threshold: 1024 * 1024,
             allocations: HashMap::new(),
+            maps: Vec::new()
         }
     }
 }
@@ -26,8 +28,25 @@ struct Allocation {
     marked: bool,
 }
 
+pub trait TraceableMap {
+    /// Return all i64 values that might be pointers to GC-allocated objects.
+    fn trace_values(&self) -> Vec<i64>;
+}
 
-static mut GC: Option<GcState> = None;
+impl TraceableMap for HashMap<i64, i64> {
+    fn trace_values(&self) -> Vec<i64> {
+        self.values().copied().collect()
+    }
+}
+
+impl TraceableMap for HashMap<String, i64> {
+    fn trace_values(&self) -> Vec<i64> {
+        self.values().copied().collect()
+    }
+}
+
+
+pub static mut GC: Option<GcState> = None;
 
 #[no_mangle]
 pub extern "C" fn sydney_gc_init() {
@@ -134,6 +153,11 @@ pub extern "C" fn sydney_gc_shutdown() {
             let layout = Layout::from_size_align(alloc.size as usize, 8).unwrap();
             dealloc(alloc.ptr, layout);
         }
+
+        for map in gc.maps.drain(..) {
+            drop(Box::from_raw(map));
+        }
+
         gc.global_roots.clear();
         gc.bytes_allocated = 0;
     }
