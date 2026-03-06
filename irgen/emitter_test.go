@@ -930,6 +930,139 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestRecursiveClosure(t *testing.T) {
+	source := `const countDown = func(int x) -> int {
+    if (x == 0) { return 0; }
+    return countDown(x - 1);
+};
+print(countDown(5));`
+
+	expected := `@countDown = global ptr null
+define i32 @main() {
+entry:
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_gc_alloc(i64 16)
+  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
+  store ptr @anon.0, ptr %t1
+  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
+  store ptr null, ptr %t2
+  store ptr %t0, ptr @countDown
+  call void @sydney_gc_add_global_root(ptr @countDown)
+  %t3 = load ptr, ptr @countDown
+  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
+  %t5 = load ptr, ptr %t4
+  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
+  %t7 = load ptr, ptr %t6
+  %t8 = call i64 %t5(ptr %t7, i64 5)
+  call void @sydney_print_int(i64 %t8)
+  call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
+  ret i32 0
+}
+define i64 @anon.0(ptr %env, i64 %x) {
+entry:
+  %x.addr = alloca i64
+  %self = alloca { ptr, ptr }
+  store i64 %x, ptr %x.addr
+%t0 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+store ptr @anon.0, ptr %t0
+%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+store ptr %env, ptr %t1
+  %t2 = load i64, ptr %x.addr
+  %t3 = icmp eq i64 %t2, 0
+  br i1 %t3, label %then.0, label %merge.1
+then.0:
+    ret i64 0
+  br label %merge.1
+merge.1:
+  %t4 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+  %t5 = load ptr, ptr %t4
+  %t6 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+  %t7 = load ptr, ptr %t6
+  %t8 = load i64, ptr %x.addr
+  %t9 = sub i64 %t8, 1
+  %t10 = call i64 %t5(ptr %t7, i64 %t9)
+  ret i64 %t10
+}
+
+`
+
+	runEmitterTest(t, source, expected)
+}
+
+func TestLocalRecursiveClosure(t *testing.T) {
+	source := `func callCountDown() -> int {
+    const countDown = func(int x) -> int {
+        print(x);
+        if (x == 0) { return 0; }
+        return countDown(x - 1);
+    };
+    return countDown(5);
+}
+print(callCountDown());`
+
+	expected := `define i64 @callCountDown() {
+entry:
+  %countDown.addr = alloca ptr
+  %t0 = call ptr @sydney_gc_alloc(i64 16)
+  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
+  store ptr @anon.0, ptr %t1
+  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
+  store ptr null, ptr %t2
+  store ptr %t0, ptr %countDown.addr
+  %t3 = load ptr, ptr %countDown.addr
+  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
+  %t5 = load ptr, ptr %t4
+  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
+  %t7 = load ptr, ptr %t6
+  %t8 = call i64 %t5(ptr %t7, i64 5)
+  ret i64 %t8
+  }
+
+
+define i32 @main() {
+entry:
+  call void @sydney_gc_init()
+  %t0 = call i64 @callCountDown()
+  call void @sydney_print_int(i64 %t0)
+  call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
+  ret i32 0
+}
+define i64 @anon.0(ptr %env, i64 %x) {
+entry:
+  %x.addr = alloca i64
+  %self = alloca { ptr, ptr }
+  store i64 %x, ptr %x.addr
+%t0 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+store ptr @anon.0, ptr %t0
+%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+store ptr %env, ptr %t1
+  %t2 = load i64, ptr %x.addr
+  call void @sydney_print_int(i64 %t2)
+  call void @sydney_print_newline()
+  %t3 = load i64, ptr %x.addr
+  %t4 = icmp eq i64 %t3, 0
+  br i1 %t4, label %then.0, label %merge.1
+then.0:
+    ret i64 0
+  br label %merge.1
+merge.1:
+  %t5 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+  %t6 = load ptr, ptr %t5
+  %t7 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+  %t8 = load ptr, ptr %t7
+  %t9 = load i64, ptr %x.addr
+  %t10 = sub i64 %t9, 1
+  %t11 = call i64 %t6(ptr %t8, i64 %t10)
+  ret i64 %t11
+}
+
+`
+
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }

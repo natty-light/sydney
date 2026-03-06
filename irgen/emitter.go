@@ -737,11 +737,11 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 		}
 		local, exists := e.locals[ident.Value]
 		if exists {
-			return e.emitClosureCall(expr, local.alloca)
+			return e.emitClosureCall(expr, local.alloca, local.typ)
 		}
 		global, gExists := e.globals[e.global(ident.Value)]
 		if gExists {
-			return e.emitClosureCall(expr, global.name)
+			return e.emitClosureCall(expr, global.name, global.typ)
 		}
 	}
 
@@ -1171,6 +1171,23 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	}
 	e.depth = 0
 
+	// self-reference for recursive closures
+	if expr.Name != "" && e.containsIdentifier(expr.Body, expr.Name) {
+		selfAlloca := "%self"
+		e.emitAlloca(selfAlloca, IrFatPtr)
+		selfFnSlot := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", selfFnSlot, selfAlloca)
+		e.emit(line)
+		line = fmt.Sprintf("store ptr %s, ptr %s", anon, selfFnSlot)
+		e.emit(line)
+		selfEnvSlot := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", selfEnvSlot, selfAlloca)
+		e.emit(line)
+		line = fmt.Sprintf("store ptr %%env, ptr %s", selfEnvSlot)
+		e.emit(line)
+		e.locals[expr.Name] = irLocal{selfAlloca, IrFatPtr}
+	}
+
 	val, valType, hasReturn := e.emitBlock(expr.Body)
 
 	e.depth = 1
@@ -1321,13 +1338,18 @@ func (e *Emitter) emitStructLiteral(lit *ast.StructLiteral) (string, IrType) {
 	return result, IrPtr
 }
 
-func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string) (string, IrType) {
-	closurePtr := e.tmp()
-	line := fmt.Sprintf("%s = load ptr, ptr %s", closurePtr, name)
-	e.emit(line)
+func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string, typ IrType) (string, IrType) {
+	var closurePtr string
+	if typ == IrFatPtr {
+		closurePtr = name
+	} else {
+		closurePtr = e.tmp()
+		line := fmt.Sprintf("%s = load ptr, ptr %s", closurePtr, name)
+		e.emit(line)
+	}
 
 	fnAddr := e.tmp()
-	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnAddr, closurePtr)
+	line := fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnAddr, closurePtr)
 	e.emit(line)
 	fnPtr := e.tmp()
 	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnAddr)
@@ -1520,7 +1542,9 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 		case *ast.IfExpr:
 			walk(n.Condition)
 			walk(n.Consequence)
-			walk(n.Alternative)
+			if n.Alternative != nil {
+				walk(n.Alternative)
+			}
 		case *ast.CallExpr:
 			walk(n.Function)
 			for _, arg := range n.Arguments {
@@ -1762,4 +1786,54 @@ func (e *Emitter) emitIntToPtr(val string) string {
 	line := fmt.Sprintf("%s = inttoptr i64 %s to ptr", asPtr, val)
 	e.emit(line)
 	return asPtr
+}
+
+func (e *Emitter) containsIdentifier(node ast.Node, name string) bool {
+	if node == nil {
+		return false
+	}
+	if ident, ok := node.(*ast.Identifier); ok {
+		return ident.Value == name
+	}
+	switch node := node.(type) {
+	case *ast.BlockStmt:
+		for _, stmt := range node.Stmts {
+			if e.containsIdentifier(stmt, name) {
+				return true
+			}
+		}
+	case *ast.ExpressionStmt:
+		return e.containsIdentifier(node.Expr, name)
+	case *ast.ReturnStmt:
+		return e.containsIdentifier(node.ReturnValue, name)
+	case *ast.CallExpr:
+		if e.containsIdentifier(node.Function, name) {
+			return true
+		}
+		for _, arg := range node.Arguments {
+			if e.containsIdentifier(arg, name) {
+				return true
+			}
+		}
+	case *ast.PrefixExpr:
+		return e.containsIdentifier(node.Right, name)
+	case *ast.InfixExpr:
+		return e.containsIdentifier(node.Left, name) || e.containsIdentifier(node.Right, name)
+	case *ast.IfExpr:
+		return e.containsIdentifier(node.Condition, name) || e.containsIdentifier(node.Consequence, name) || (node.Alternative != nil && e.containsIdentifier(node.Alternative, name))
+	case *ast.ForStmt:
+		return e.containsIdentifier(node.Body, name) || e.containsIdentifier(node.Condition, name)
+	case *ast.VarDeclarationStmt:
+		return e.containsIdentifier(node.Value, name)
+	case *ast.VarAssignmentStmt:
+		return e.containsIdentifier(node.Value, name)
+	case *ast.IndexExpr:
+		return e.containsIdentifier(node.Left, name) || e.containsIdentifier(node.Index, name)
+	case *ast.SelectorExpr:
+		return e.containsIdentifier(node.Left, name)
+	case *ast.FunctionLiteral:
+		return e.containsIdentifier(node.Body, name)
+	}
+
+	return false
 }
