@@ -10,3 +10,4 @@ quonk
 sydney_rt/target
 CLAUDE.md
 *.ll
+/module

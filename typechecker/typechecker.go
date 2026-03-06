@@ -42,12 +42,15 @@ func (c *Checker) Errors() []string {
 	return c.errors
 }
 
-func (c *Checker) Check(node ast.Node) []string {
+func (c *Checker) Check(node ast.Node, packages []*loader.Package) []string {
+	if packages != nil {
+		c.checkPackages(packages)
+	}
 	c.check(node)
 	return c.errors
 }
 
-func (c *Checker) CheckWithPackages(packages []*loader.Package) []string {
+func (c *Checker) checkPackages(packages []*loader.Package) []string {
 	registry := make(map[string]*TypeEnv)
 
 	for _, pkg := range packages {
@@ -56,7 +59,7 @@ func (c *Checker) CheckWithPackages(packages []*loader.Package) []string {
 		pkgChecker.packages = registry
 
 		for _, program := range pkg.Programs {
-			pkgChecker.Check(program)
+			pkgChecker.Check(program, nil)
 		}
 		c.errors = append(c.errors, pkgChecker.Errors()...)
 
@@ -69,7 +72,7 @@ func (c *Checker) CheckWithPackages(packages []*loader.Package) []string {
 				}
 			}
 		}
-		registry[pkg.Name] = pkgEnv
+		registry[pkg.Name] = exportEnv
 	}
 	c.packages = registry
 	return c.errors
@@ -98,6 +101,8 @@ func (c *Checker) check(n ast.Node) types.Type {
 			c.check(stmt)
 		}
 		return types.Unit
+	case *ast.PubStatement:
+		return c.check(node.Stmt)
 	case *ast.ExpressionStmt:
 		return c.typeOf(node.Expr, nil)
 	case *ast.ReturnStmt:
@@ -209,6 +214,8 @@ func (c *Checker) check(n ast.Node) types.Type {
 
 func (c *Checker) hoistBase(n ast.Node) {
 	switch node := n.(type) {
+	case *ast.PubStatement:
+		c.hoistBase(node.Stmt)
 	case *ast.StructDefinitionStmt:
 		c.definedStructs[node.Name.Value] = node.Type
 	case *ast.InterfaceDefinitionStmt:
@@ -235,6 +242,12 @@ func (c *Checker) hoistBase(n ast.Node) {
 }
 
 func (c *Checker) hoistFunctions(n ast.Node) {
+	if pub, ok := n.(*ast.PubStatement); ok {
+		if fdecl, ok := pub.Stmt.(*ast.FunctionDeclarationStmt); ok {
+			c.hoistFunctions(fdecl)
+		}
+	}
+
 	if node, ok := n.(*ast.FunctionDeclarationStmt); ok {
 		fType := node.Type.(types.FunctionType)
 		name := node.Name.Value

@@ -34,7 +34,7 @@ func StartEval(in io.Reader, out io.Writer) {
 
 		program := p.ParseProgram()
 		c := typechecker.New(env)
-		c.Check(program)
+		c.Check(program, nil)
 
 		if len(c.Errors()) != 0 {
 			printErrors(out, c.Errors())
@@ -84,7 +84,7 @@ func StartVM(in io.Reader, out io.Writer) {
 		}
 
 		c := typechecker.New(typeEnv)
-		errs := c.Check(program)
+		errs := c.Check(program, nil)
 
 		if len(errs) != 0 {
 			printErrors(out, errs)

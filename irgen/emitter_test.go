@@ -1075,12 +1075,12 @@ func runEmitterTest(t *testing.T, source string, expected string) {
 		t.Fatalf("parser errors not empty: %v", p.Errors())
 	}
 	c := typechecker.New(nil)
-	c.Check(program)
+	c.Check(program, nil)
 	if len(c.Errors()) != 0 {
 		t.Fatalf("typechecker errors not empty: %v", c.Errors())
 	}
 	e := New()
-	err := e.Emit(program)
+	err := e.Emit(program, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

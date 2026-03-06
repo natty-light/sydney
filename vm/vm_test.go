@@ -659,7 +659,7 @@ func runVmTests(t *testing.T, tests []vmTestCase) {
 		program := parse(tt.source)
 
 		c := typechecker.New(nil)
-		errors := c.Check(program)
+		errors := c.Check(program, nil)
 		if len(errors) != 0 {
 			t.Fatal(errors)
 		}

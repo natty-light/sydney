@@ -118,7 +118,7 @@ func TestValidTypeChecking(t *testing.T) {
 		p := parser.New(l)
 		program := p.ParseProgram()
 		c := New(nil)
-		c.Check(program)
+		c.Check(program, nil)
 
 		errors := c.Errors()
 		if len(errors) != 0 {
@@ -136,7 +136,7 @@ func TestFirstClassFunctions(t *testing.T) {
 	p := parser.New(l)
 	program := p.ParseProgram()
 	c := New(nil)
-	c.Check(program)
+	c.Check(program, nil)
 	errors := c.Errors()
 	if len(errors) != 0 {
 		t.Fatalf("typechecker errors: %v", errors)
@@ -483,7 +483,7 @@ nested[0][1] = 10;
 	p := parser.New(l)
 	program := p.ParseProgram()
 	c := New(nil)
-	c.Check(program)
+	c.Check(program, nil)
 
 	errors := c.Errors()
 	if len(errors) != 0 {
@@ -498,7 +498,7 @@ func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 		p := parser.New(l)
 		program := p.ParseProgram()
 		c := New(nil)
-		errors := c.Check(program)
+		errors := c.Check(program, nil)
 		if len(c.Errors()) == 0 {
 			t.Fatalf("input %q expected error but got none", tt.input)
 		}
