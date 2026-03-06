@@ -254,9 +254,9 @@ func (e *Emitter) preamble() {
 	e.emit("declare ptr @sydney_map_create_int()")
 	e.emit("declare ptr @sydney_map_create_string()")
 	e.emit("declare void @sydney_map_set_str(ptr, ptr, i64)")
-	e.emit("declare ptr @sydney_map_get_str(ptr, ptr)")
+	e.emit("declare i64 @sydney_map_get_str(ptr, ptr)")
 	e.emit("declare void @sydney_map_set_int(ptr, i64, i64)")
-	e.emit("declare ptr @sydney_map_get_int(ptr, i64)")
+	e.emit("declare i64 @sydney_map_get_int(ptr, i64)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -469,10 +469,11 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 	case *ast.SelectorAssignmentStmt:
 		val, valType = e.emitSelectorAssignment(s)
 	case *ast.IndexAssignmentStmt:
-		if _, ok := s.Left.ContainerType.(types.MapType); ok {
-			val, valType = e.emitMapIndexAssignment(s)
-		} else {
+		t := s.Left.Left.GetResolvedType()
+		if _, ok := t.(types.ArrayType); ok {
 			val, valType = e.emitArrayIndexAssignment(s)
+		} else if _, ok := t.(types.MapType); ok {
+			val, valType = e.emitMapIndexAssignment(s)
 		}
 	}
 	return val, valType, hasReturn
@@ -571,11 +572,14 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	case *ast.SelectorExpr:
 		return e.emitSelectorExpr(expr)
 	case *ast.IndexExpr:
-		if _, ok := expr.ContainerType.(types.MapType); ok {
-			return e.emitMapIndexExpr(expr)
+		lt := expr.Left.GetResolvedType()
+		if _, ok := lt.(types.ArrayType); ok {
+			return e.emitArrayIndexExpr(expr)
 		}
 
-		return e.emitArrayIndexExpr(expr)
+		if _, ok := lt.(types.MapType); ok {
+			return e.emitMapIndexExpr(expr)
+		}
 	}
 	return "", IrUnit
 }
@@ -1558,8 +1562,17 @@ func (e *Emitter) emitMapIndexAssignment(stmt *ast.IndexAssignmentStmt) (string,
 	mapPtr, _ := e.emitExpr(stmt.Left.Left)
 	idx, _ := e.emitExpr(stmt.Left.Index)
 
-	val, _ := e.emitExpr(stmt.Value)
-	line := fmt.Sprintf("call void @sydney_map_set_int(ptr %s, i64 %s, i64 %s)", mapPtr, idx, val)
+	val, valType := e.emitExpr(stmt.Value)
+	if valType == IrPtr {
+		val = e.emitPtrToInt(val)
+	}
+
+	var line string
+	if stmt.Left.Index.GetResolvedType() == types.String {
+		line = fmt.Sprintf("call void @sydney_map_set_str(ptr %s, ptr %s, i64 %s)", mapPtr, idx, val)
+	} else {
+		line = fmt.Sprintf("call void @sydney_map_set_int(ptr %s, i64 %s, i64 %s)", mapPtr, idx, val)
+	}
 	e.emit(line)
 
 	return "", IrUnit
@@ -1603,14 +1616,30 @@ func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 }
 
 func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
-
 	mapPtr, _ := e.emitExpr(expr.Left)
 
-	key := expr.Index.(*ast.IntegerLiteral).Value
-
+	var line string
+	key, keyType := e.emitExpr(expr.Index)
 	val := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_map_get_int(ptr %s, i64 %d)", val, mapPtr, key)
+	if expr.Index.GetResolvedType() == types.String {
+		line = fmt.Sprintf("%s = call i64 @sydney_map_get_str(ptr %s, ptr %s)", val, mapPtr, key)
+	} else {
+		line = fmt.Sprintf("%s = call i64 @sydney_map_get_int(ptr %s, %s %s)", val, mapPtr, keyType, key)
+	}
 	e.emit(line)
+
+	switch t := expr.GetResolvedType().(type) {
+	case types.BasicType:
+		if t == types.String {
+			val = e.emitIntToPtr(val)
+		}
+	case types.MapType:
+		val = e.emitIntToPtr(val)
+	case types.ArrayType:
+		val = e.emitIntToPtr(val)
+	case types.StructType:
+		val = e.emitIntToPtr(val)
+	}
 
 	return val, IrInt
 }
@@ -1676,15 +1705,23 @@ func (e *Emitter) emitHashLiteral(lit *ast.HashLiteral) (string, IrType) {
 	case types.Bool:
 		line = fmt.Sprintf("%s = call ptr @sydney_map_create_int()", result)
 	case types.String:
-		line = fmt.Sprintf("%s = call ptr @sydney_map_create_str()", result)
+		line = fmt.Sprintf("%s = call ptr @sydney_map_create_string()", result)
 	}
 	e.emit(line)
 
 	for k, v := range lit.Pairs {
 		key, _ := e.emitExpr(k)
-		val, _ := e.emitExpr(v)
+		val, valType := e.emitExpr(v)
+		if valType == IrPtr {
+			val = e.emitPtrToInt(val)
+		}
 
-		line = fmt.Sprintf("call void @sydney_map_set_int(ptr %s, i64 %s, i64 %s)", result, key, val)
+		if t.KeyType == types.String {
+			line = fmt.Sprintf("call void @sydney_map_set_str(ptr %s, ptr %s, i64 %s)", result, key, val)
+		} else {
+			line = fmt.Sprintf("call void @sydney_map_set_int(ptr %s, i64 %s, i64 %s)", result, key, val)
+		}
+
 		e.emit(line)
 	}
 
@@ -1706,4 +1743,18 @@ func llvmEscapeString(s string) (string, int) {
 	}
 	buf.WriteString("\\00")
 	return buf.String(), len(s) + 1 // byte count including null
+}
+
+func (e *Emitter) emitPtrToInt(val string) string {
+	asInt := e.tmp()
+	line := fmt.Sprintf("%s = ptrtoint ptr %s to i64", asInt, val)
+	e.emit(line)
+	return asInt
+}
+
+func (e *Emitter) emitIntToPtr(val string) string {
+	asPtr := e.tmp()
+	line := fmt.Sprintf("%s = inttoptr i64 %s to ptr", asPtr, val)
+	e.emit(line)
+	return asPtr
 }

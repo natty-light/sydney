@@ -1172,6 +1172,7 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 
 		expr.ResolvedType = mt.ValueType
 		expr.ContainerType = mt
+		expr.Index.SetResolvedType(idxT)
 		e = expr
 		return mt.ValueType
 	}

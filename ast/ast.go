@@ -21,12 +21,21 @@ type (
 		statementNode()
 	}
 
-	Expr interface {
-		Node
-		expressionNode()
+	Resolvable interface {
+		SetResolvedType(t types.Type)
+		GetResolvedType() types.Type
+	}
+
+	Castable interface {
 		SetCastTo(it *types.InterfaceType)
 		GetCastTo() *types.InterfaceType
-		GetResolvedType() types.Type
+	}
+
+	Expr interface {
+		Node
+		Resolvable
+		Castable
+		expressionNode()
 	}
 )
 
@@ -49,7 +58,8 @@ func (n *noCast) GetCastTo() *types.InterfaceType  { return nil }
 
 type resolvable struct{ ResolvedType types.Type }
 
-func (r *resolvable) GetResolvedType() types.Type { return r.ResolvedType }
+func (r *resolvable) GetResolvedType() types.Type  { return r.ResolvedType }
+func (r *resolvable) SetResolvedType(t types.Type) { r.ResolvedType = t }
 
 // Statements
 type (
