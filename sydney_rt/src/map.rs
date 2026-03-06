@@ -14,7 +14,7 @@ pub extern "C" fn sydney_map_get_int(map: *const HashMap<i64, i64>, key: i64) ->
   unsafe { *(*map).get(&key).unwrap_or(&0) }
 }
 #[no_mangle]
-pub extern "C" fn sydney_map_create_str() -> *mut HashMap<String, i64> {
+pub extern "C" fn sydney_map_create_string() -> *mut HashMap<String, i64> {
   Box::into_raw(Box::new(HashMap::new()))
 }
 #[no_mangle]

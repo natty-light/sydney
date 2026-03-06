@@ -22,9 +22,9 @@ declare i64 @sydney_strlen(ptr)
 declare ptr @sydney_map_create_int()
 declare ptr @sydney_map_create_string()
 declare void @sydney_map_set_str(ptr, ptr, i64)
-declare ptr @sydney_map_get_str(ptr, ptr)
+declare i64 @sydney_map_get_str(ptr, ptr)
 declare void @sydney_map_set_int(ptr, i64, i64)
-declare ptr @sydney_map_get_int(ptr, i64)`
+declare i64 @sydney_map_get_int(ptr, i64)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
