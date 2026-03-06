@@ -35,6 +35,10 @@ func TestNextToken(t *testing.T) {
 	define struct Person { age int, name string }
 	define interface Pointer { getX() -> int, setX(int x) }
 	define implementation Point -> Pointer
+
+	import "math"
+	pub mut int x
+	module "math"
 	`
 
 	tests := []struct {
@@ -228,6 +232,17 @@ func TestNextToken(t *testing.T) {
 		{token.Identifier, "Point"},
 		{token.Arrow, "->"},
 		{token.Identifier, "Pointer"},
+
+		{token.Import, "import"},
+		{token.String, "math"},
+
+		{token.Public, "pub"},
+		{token.Mut, "mut"},
+		{token.IntType, "int"},
+		{token.Identifier, "x"},
+
+		{token.Module, "module"},
+		{token.String, "math"},
 
 		{token.EOF, ""},
 	}

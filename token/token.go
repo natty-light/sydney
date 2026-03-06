@@ -26,6 +26,9 @@ const (
 	Struct         TokenType = "Struct"
 	Interface      TokenType = "Interface"
 	Implementation TokenType = "Implementation"
+	Import         TokenType = "Import"
+	Module         TokenType = "Module"
+	Public         TokenType = "Public"
 
 	// Types
 	IntType    TokenType = "IntegerType"
