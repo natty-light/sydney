@@ -854,6 +854,82 @@ entry:
 	runEmitterTest(t, source, expected)
 }
 
+func TestNestedCollections(t *testing.T) {
+	source := `const map<string, array<int>> M = { "hello": [1, 2, 3], "world": [3, 4, 5] };
+print(M["hello"][0]);
+M["world"][0] = 6;
+print(M["world"][0]);`
+
+	expected := `@.str.0 = private unnamed_addr constant [6 x i8] c"hello\00"
+@.str.1 = private unnamed_addr constant [6 x i8] c"world\00"
+@M = global ptr null
+define i32 @main() {
+entry:
+  call void @sydney_gc_init()
+  %t0 = call ptr @sydney_map_create_string()
+  %t1 = call ptr @sydney_gc_alloc(i64 24)
+  %t2 = getelementptr i64, ptr %t1, i32 0
+  store i64 1, ptr %t2
+  %t3 = getelementptr i64, ptr %t1, i32 1
+  store i64 2, ptr %t3
+  %t4 = getelementptr i64, ptr %t1, i32 2
+  store i64 3, ptr %t4
+  %t5 = call ptr @sydney_gc_alloc(i64 16)
+  %t6 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 0
+  store i64 3, ptr %t6
+  %t7 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 1
+  store ptr %t1, ptr %t7
+  %t8 = ptrtoint ptr %t5 to i64
+  call void @sydney_map_set_str(ptr %t0, ptr @.str.0, i64 %t8)
+  %t9 = call ptr @sydney_gc_alloc(i64 24)
+  %t10 = getelementptr i64, ptr %t9, i32 0
+  store i64 3, ptr %t10
+  %t11 = getelementptr i64, ptr %t9, i32 1
+  store i64 4, ptr %t11
+  %t12 = getelementptr i64, ptr %t9, i32 2
+  store i64 5, ptr %t12
+  %t13 = call ptr @sydney_gc_alloc(i64 16)
+  %t14 = getelementptr { i64, ptr }, ptr %t13, i32 0, i32 0
+  store i64 3, ptr %t14
+  %t15 = getelementptr { i64, ptr }, ptr %t13, i32 0, i32 1
+  store ptr %t9, ptr %t15
+  %t16 = ptrtoint ptr %t13 to i64
+  call void @sydney_map_set_str(ptr %t0, ptr @.str.1, i64 %t16)
+  store ptr %t0, ptr @M
+  call void @sydney_gc_add_global_root(ptr @M)
+  %t17 = load ptr, ptr @M
+  %t18 = call i64 @sydney_map_get_str(ptr %t17, ptr @.str.0)
+  %t19 = inttoptr i64 %t18 to ptr
+  %t20 = getelementptr { i64, ptr }, ptr %t19, i32 0, i32 1
+  %t21 = load ptr, ptr %t20
+  %t22 = getelementptr i64, ptr %t21, i64 0
+  %t23 = load i64, ptr %t22
+  call void @sydney_print_int(i64 %t23)
+  call void @sydney_print_newline()
+  %t24 = load ptr, ptr @M
+  %t25 = call i64 @sydney_map_get_str(ptr %t24, ptr @.str.1)
+  %t26 = inttoptr i64 %t25 to ptr
+  %t27 = getelementptr { i64, ptr }, ptr %t26, i32 0, i32 1
+  %t28 = load ptr, ptr %t27
+  %t29 = getelementptr i64, ptr %t28, i64 0
+  store i64 6, ptr %t29
+  %t30 = load ptr, ptr @M
+  %t31 = call i64 @sydney_map_get_str(ptr %t30, ptr @.str.1)
+  %t32 = inttoptr i64 %t31 to ptr
+  %t33 = getelementptr { i64, ptr }, ptr %t32, i32 0, i32 1
+  %t34 = load ptr, ptr %t33
+  %t35 = getelementptr i64, ptr %t34, i64 0
+  %t36 = load i64, ptr %t35
+  call void @sydney_print_int(i64 %t36)
+  call void @sydney_print_newline()
+  call void @sydney_gc_shutdown()
+  ret i32 0
+}
+`
+
+	runEmitterTest(t, source, expected)
+}
+
 func buildExpected(expected string) string {
 	return declarations + "\n\n" + expected
 }

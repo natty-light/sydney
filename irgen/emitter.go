@@ -1621,6 +1621,7 @@ func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	var line string
 	key, keyType := e.emitExpr(expr.Index)
 	val := e.tmp()
+	valType := IrInt
 	if expr.Index.GetResolvedType() == types.String {
 		line = fmt.Sprintf("%s = call i64 @sydney_map_get_str(ptr %s, ptr %s)", val, mapPtr, key)
 	} else {
@@ -1632,16 +1633,20 @@ func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	case types.BasicType:
 		if t == types.String {
 			val = e.emitIntToPtr(val)
+			valType = IrPtr
 		}
 	case types.MapType:
 		val = e.emitIntToPtr(val)
+		valType = IrPtr
 	case types.ArrayType:
 		val = e.emitIntToPtr(val)
+		valType = IrPtr
 	case types.StructType:
 		val = e.emitIntToPtr(val)
+		valType = IrPtr
 	}
 
-	return val, IrInt
+	return val, valType
 }
 
 func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
