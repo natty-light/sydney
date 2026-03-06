@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sydney/ast"
+	"sydney/loader"
 	"sydney/types"
 )
 
@@ -57,13 +58,14 @@ type Emitter struct {
 	vtables        map[string]map[string][]string // vtables[struct][iface] → @vtable global
 	stringConsts   map[string]int                 // string value → index (@.str.0, ...)
 	stringIdx      int
-	topLevelFuncs  map[string]bool
 
 	funcSigs   map[string]funcSig   // function name → { retType, paramTypes }
 	scopeStack []map[string]irLocal // stack of local scopes for nested functions
 
 	allocaBuf *bytes.Buffer
 	bodyBuf   *bytes.Buffer
+
+	currentModule string
 }
 
 func New() *Emitter {
@@ -74,7 +76,6 @@ func New() *Emitter {
 		stringIdx:      0,
 		vtables:        make(map[string]map[string][]string),
 		locals:         make(map[string]irLocal),
-		topLevelFuncs:  make(map[string]bool),
 		globals:        make(map[string]irGlobal),
 		funcSigs:       make(map[string]funcSig),
 		scopeStack:     make([]map[string]irLocal, 0),
@@ -84,7 +85,13 @@ func New() *Emitter {
 	}
 }
 
-func (e *Emitter) Emit(n ast.Node) error {
+func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
+	for _, pkg := range packages {
+		err := e.EmitPackage(pkg)
+		if err != nil {
+			return err
+		}
+	}
 	program := e.collect(n)
 	e.preamble()
 	e.functions(program)
@@ -97,6 +104,17 @@ func (e *Emitter) Emit(n ast.Node) error {
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (e *Emitter) EmitPackage(pkg *loader.Package) error {
+	e.currentModule = pkg.Name
+	for _, program := range pkg.Programs {
+		e.collect(program)
+		e.functions(program)
+	}
+	e.currentModule = ""
 
 	return nil
 }
@@ -123,8 +141,14 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 			e.collect(stmt)
 		}
 		return node
+	case *ast.PubStatement:
+		return e.collect(node.Stmt)
 	case *ast.StructDefinitionStmt:
-		e.structTypes[node.Name.Value] = node.Type
+		name := node.Name.Value
+		if e.currentModule != "" {
+			name = e.moduleMangle(e.currentModule, name)
+		}
+		e.structTypes[name] = node.Type
 	case *ast.InterfaceDefinitionStmt:
 		t := node.Type
 		if t.MethodIndices == nil {
@@ -133,8 +157,12 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 				t.MethodIndices[mn] = i
 			}
 		}
+		name := node.Name.Value
+		if e.currentModule != "" {
+			name = e.moduleMangle(e.currentModule, name)
+		}
 
-		e.interfaceTypes[node.Name.Value] = node.Type
+		e.interfaceTypes[name] = node.Type
 	case *ast.InterfaceImplementationStmt:
 		sname := node.StructName.Value
 		if e.vtables[sname] == nil {
@@ -143,10 +171,11 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 		for _, iname := range node.InterfaceNames {
 			e.vtables[sname][iname.Value] = nil
 		}
-	case *ast.FunctionDeclarationStmt:
-		e.topLevelFuncs[node.Name.Value] = true
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
+		if e.currentModule != "" {
+			name = e.moduleMangle(e.currentModule, name)
+		}
 		globalName := e.global(name)
 		e.globals[globalName] = irGlobal{
 			name: globalName,
@@ -310,7 +339,11 @@ func (e *Emitter) preamble() {
 
 func (e *Emitter) functions(node *ast.Program) {
 	for _, stmt := range node.Stmts {
-		if fdecl, ok := stmt.(*ast.FunctionDeclarationStmt); ok {
+		if pub, ok := stmt.(*ast.PubStatement); ok {
+			if fdecl, ok := pub.Stmt.(*ast.FunctionDeclarationStmt); ok {
+				e.emitFunction(fdecl)
+			}
+		} else if fdecl, ok := stmt.(*ast.FunctionDeclarationStmt); ok {
 			e.emitFunction(fdecl)
 		}
 	}
@@ -580,6 +613,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		if _, ok := lt.(types.MapType); ok {
 			return e.emitMapIndexExpr(expr)
 		}
+	case *ast.ScopeAccessExpr:
+		return e.emitScopeAccessExpr(expr)
 	}
 	return "", IrUnit
 }
@@ -742,6 +777,14 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 		global, gExists := e.globals[e.global(ident.Value)]
 		if gExists {
 			return e.emitClosureCall(expr, global.name, global.typ)
+		}
+	}
+
+	if scope, ok := expr.Function.(*ast.ScopeAccessExpr); ok {
+		mangled := scope.Module.Value + "__" + scope.Member.Value
+		sig, exists := e.funcSigs[mangled]
+		if exists {
+			return e.emitFunctionCall(expr, sig)
 		}
 	}
 
@@ -1050,6 +1093,9 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	name := decl.Name.Value
 	if decl.MangledName != "" {
 		name = decl.MangledName
+	}
+	if e.currentModule != "" {
+		name = e.moduleMangle(e.currentModule, name)
 	}
 
 	ret := SydneyTypeToIrType(fType.Return)
@@ -1836,4 +1882,24 @@ func (e *Emitter) containsIdentifier(node ast.Node, name string) bool {
 	}
 
 	return false
+}
+
+func (e *Emitter) emitScopeAccessExpr(expr *ast.ScopeAccessExpr) (string, IrType) {
+	mangled := expr.Module.Value + "__" + expr.Member.Value
+	if g, ok := e.globals[e.global(mangled)]; ok {
+		val := e.tmp()
+		line := fmt.Sprintf("%s = load %s, ptr %s", val, g.typ, g.name)
+		e.emit(line)
+		return val, g.typ
+	}
+
+	if sig, ok := e.funcSigs[mangled]; ok {
+		return sig.name, IrPtr
+	}
+
+	return "", IrUnit
+}
+
+func (e *Emitter) moduleMangle(module, name string) string {
+	return module + "__" + name
 }

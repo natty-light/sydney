@@ -118,7 +118,11 @@ func (l *Loader) Load(visited map[string]bool) ([]*Package, error) {
 			return nil, fmt.Errorf("circular import: %s", name)
 		}
 		visited[name] = true
-		pkg, err := l.LoadPackage(name)
+		dir, err := l.resolveDir(name)
+		if err != nil {
+			return nil, err
+		}
+		pkg, err := l.LoadPackage(dir)
 		if err != nil {
 			return nil, err
 		}

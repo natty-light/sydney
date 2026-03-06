@@ -1856,7 +1856,7 @@ func parse(source string) *ast.Program {
 	p := parser.New(l)
 	program := p.ParseProgram()
 	c := typechecker.New(nil)
-	c.Check(program)
+	c.Check(program, nil)
 
 	return program
 }

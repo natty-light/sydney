@@ -27,3 +27,9 @@ compile:
 compile-opt:
     just build-smoke-opt
     just clean-smoke
+
+compile-native base:
+    ./sydney compile {{base}}.sy
+    llc -filetype=obj {{base}}.ll -o {{base}}.o
+    clang {{base}}.o -Lsydney_rt/target/release -lsydney_rt -o {{base}}
+    rm {{base}}.o

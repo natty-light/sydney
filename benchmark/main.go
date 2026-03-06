@@ -39,7 +39,7 @@ func main() {
 	p := parser.New(l)
 	prog := p.ParseProgram()
 	c := typechecker.New(nil)
-	c.Check(prog)
+	c.Check(prog, nil)
 
 	if *engine == "vm" {
 		comp := compiler.New()
