@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sydney/ast"
 	"sydney/code"
+	"sydney/loader"
 	"sydney/object"
 	"sydney/types"
 )
@@ -24,6 +25,8 @@ type Compiler struct {
 	structTypes    map[string]types.StructType
 	interfaceTypes map[string]types.InterfaceType
 	itabMapping    map[ItabKey]int
+
+	currentModule string
 }
 
 type Bytecode struct {
@@ -78,14 +81,24 @@ func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
 		for _, stmt := range node.Stmts { // set interface types and populate method indices map
+			if pub, ok := stmt.(*ast.PubStatement); ok {
+				stmt = pub.Stmt
+			}
 			if def, ok := stmt.(*ast.InterfaceDefinitionStmt); ok {
-				c.setInterface(def.Name.Value, def.Type)
+				name := def.Name.Value
+				if c.currentModule != "" {
+					name = c.mangleModule(c.currentModule, name)
+				}
+				c.setInterface(name, def.Type)
 			}
 
 			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok { // hoist functions for interfaces
 				name := fn.Name.Value
 				if fn.MangledName != "" {
 					name = fn.MangledName
+				}
+				if c.currentModule != "" {
+					name = c.mangleModule(c.currentModule, name)
 				}
 				c.symbolTable.DefineImmutable(name)
 			}
@@ -103,6 +116,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 				return err
 			}
 		}
+	case *ast.PubStatement:
+		err := c.Compile(node.Stmt)
+		if err != nil {
+			return err
+		}
 	case *ast.ExpressionStmt:
 		err := c.Compile(node.Expr)
 		if err != nil {
@@ -116,6 +134,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 				if fn.MangledName != "" {
 					name = fn.MangledName
 				}
+				if c.currentModule != "" {
+					name = c.mangleModule(c.currentModule, name)
+				}
 				c.symbolTable.DefineImmutable(name)
 			}
 		}
@@ -127,11 +148,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 	case *ast.VarDeclarationStmt:
-		sym, fromOuter, ok := c.symbolTable.Resolve(node.Name.Value)
+		name := node.Name.Value
+		if c.currentModule != "" {
+			name = c.mangleModule(c.currentModule, name)
+		}
+		sym, fromOuter, ok := c.symbolTable.Resolve(name)
 
 		// if the variable exists in this scope, cannot redeclare
 		if ok && !fromOuter && sym.Scope != FunctionScope {
-			return fmt.Errorf("variable %s already declared", node.Name.Value)
+			return fmt.Errorf("variable %s already declared", name)
 		}
 
 		if node.Value == nil {
@@ -151,7 +176,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		if node.Constant {
-			symbol := c.symbolTable.DefineImmutable(node.Name.Value)
+			symbol := c.symbolTable.DefineImmutable(name)
 			cde := code.OpSetImmutableLocal
 
 			if symbol.Scope == GlobalScope {
@@ -160,7 +185,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 			c.emit(cde, symbol.Index)
 		} else {
-			symbol := c.symbolTable.DefineMutable(node.Name.Value)
+			symbol := c.symbolTable.DefineMutable(name)
 			cde := code.OpSetMutableLocal
 			if symbol.Scope == GlobalScope {
 				cde = code.OpSetMutableGlobal
@@ -443,6 +468,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.MangledName != "" {
 			name = node.MangledName
 		}
+		if c.currentModule != "" {
+			name = c.mangleModule(c.currentModule, name)
+		}
 
 		symbol, _, ok := c.symbolTable.Resolve(name)
 		if !ok {
@@ -576,6 +604,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 		idx := slices.Index(t.Fields, fieldIdent.Value)
 
 		c.emit(code.OpSetField, idx)
+	case *ast.ScopeAccessExpr:
+		mangled := c.mangleModule(node.Module.Value, node.Member.Value)
+		symbol, _, ok := c.symbolTable.Resolve(mangled)
+		if !ok {
+			return fmt.Errorf("undefined %s", mangled)
+		}
+		c.loadSymbol(symbol)
 	}
 
 	if expr, ok := node.(ast.Expr); ok {
@@ -590,6 +625,21 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 	}
+	return nil
+}
+
+func (c *Compiler) CompilePackages(packages []*loader.Package) error {
+	for _, pkg := range packages {
+		c.currentModule = pkg.Name
+		for _, program := range pkg.Programs {
+			err := c.Compile(program)
+			if err != nil {
+				return err
+			}
+		}
+		c.currentModule = ""
+	}
+
 	return nil
 }
 
@@ -884,4 +934,8 @@ func (c *Compiler) compileInterfaceMethodCall(node *ast.CallExpr) error {
 	}
 
 	return nil
+}
+
+func (c *Compiler) mangleModule(module, name string) string {
+	return module + "__" + name
 }

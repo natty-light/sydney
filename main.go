@@ -62,16 +62,19 @@ func Run(filename string) int {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
 	}
-	sourceDir := filepath.Dir(filename)
+
 	ld := loader.New(program)
-	ld.SetPaths("", sourceDir)
-	_, err = ld.Load(make(map[string]bool))
+	sourceDir := filepath.Dir(filename)
+	stdLib := filepath.Join(sourceDir, "stdlib")
+	ld.SetPaths(stdLib, sourceDir)
+	packages, err := ld.Load(make(map[string]bool))
 	if err != nil {
-		os.Stdout.WriteString(err.Error() + "\n")
+		fmt.Printf("loader error: %s\n", err)
+		return 1
 	}
 
 	c := typechecker.New(typeEnv)
-	typeErrs := c.Check(program, nil)
+	typeErrs := c.Check(program, packages)
 
 	if len(typeErrs) != 0 {
 		printParserErrors(os.Stdout, typeErrs)
@@ -79,9 +82,13 @@ func Run(filename string) int {
 	}
 
 	comp := compiler.NewWithState(symbolTable, constants)
+	err = comp.CompilePackages(packages)
+	if err != nil {
+		fmt.Printf("compiler error: %s\n", err)
+	}
 	err = comp.Compile(program)
 	if err != nil {
-		fmt.Printf("Compiler error: %s\n", err)
+		fmt.Printf("compiler error: %s\n", err)
 		return 1
 	}
 
