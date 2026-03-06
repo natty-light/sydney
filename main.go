@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sydney/compiler"
 	"sydney/irgen"
 	"sydney/lexer"
+	"sydney/loader"
 	"sydney/object"
 	"sydney/parser"
 	"sydney/repl"
@@ -59,6 +61,13 @@ func Run(filename string) int {
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
+	}
+	sourceDir := filepath.Dir(filename)
+	ld := loader.New(program)
+	ld.SetPaths("", sourceDir)
+	_, err = ld.Load(make(map[string]bool))
+	if err != nil {
+		os.Stdout.WriteString(err.Error() + "\n")
 	}
 
 	c := typechecker.New(typeEnv)

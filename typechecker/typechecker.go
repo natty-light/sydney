@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"sydney/ast"
+	"sydney/loader"
 	"sydney/object"
 	"sydney/types"
 )
@@ -14,6 +15,7 @@ type Checker struct {
 	errors            []string
 	currentReturnType types.Type
 	definedStructs    map[string]types.StructType
+	packages          map[string]*TypeEnv
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -32,6 +34,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		errors,
 		nil,
 		make(map[string]types.StructType),
+		make(map[string]*TypeEnv),
 	}
 }
 
@@ -41,6 +44,34 @@ func (c *Checker) Errors() []string {
 
 func (c *Checker) Check(node ast.Node) []string {
 	c.check(node)
+	return c.errors
+}
+
+func (c *Checker) CheckWithPackages(packages []*loader.Package) []string {
+	registry := make(map[string]*TypeEnv)
+
+	for _, pkg := range packages {
+		pkgEnv := NewTypeEnv(nil)
+		pkgChecker := New(pkgEnv)
+		pkgChecker.packages = registry
+
+		for _, program := range pkg.Programs {
+			pkgChecker.Check(program)
+		}
+		c.errors = append(c.errors, pkgChecker.Errors()...)
+
+		exportEnv := NewTypeEnv(nil)
+		for _, program := range pkg.Programs {
+			for _, stmt := range program.Stmts {
+				if pub, ok := stmt.(*ast.PubStatement); ok {
+					name, typ := c.extractDeclNameAndType(pub.Stmt, pkgEnv)
+					exportEnv.Set(name, typ)
+				}
+			}
+		}
+		registry[pkg.Name] = pkgEnv
+	}
+	c.packages = registry
 	return c.errors
 }
 
@@ -456,6 +487,19 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		e = expr
 
 		return structType
+	case *ast.ScopeAccessExpr:
+		pkgEnv, ok := c.packages[expr.Module.Value]
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("module %s not found", expr.Module.Value))
+			return types.Unit
+		}
+		typ, _, found := pkgEnv.Get(expr.Member.Value)
+		if !found {
+			c.errors = append(c.errors, fmt.Sprintf("%s is not exported from module %s", expr.Member.Value, expr.Module.Value))
+			return types.Unit
+		}
+
+		return typ
 	}
 	return nil
 }
@@ -1179,4 +1223,19 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 	c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
 
 	return nil
+}
+
+func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, env *TypeEnv) (string, types.Type) {
+	switch stmt := stmt.(type) {
+	case *ast.VarDeclarationStmt:
+		return stmt.Name.Value, stmt.Type
+	case *ast.StructDefinitionStmt:
+		return stmt.Name.Value, stmt.Type
+	case *ast.FunctionDeclarationStmt:
+		return stmt.Name.Value, stmt.Type
+	case *ast.InterfaceDefinitionStmt:
+		return stmt.Name.Value, stmt.Type
+	}
+
+	return "", nil
 }
