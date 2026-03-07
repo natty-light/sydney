@@ -11,7 +11,7 @@ func TestNextToken(t *testing.T) {
 	mut add = func (x, y) {
 		 x + y;
 	};
-	mut result = add(five, ten);
+	mut r = add(five, ten);
 	!-/*5;
 	5 < 10 > 5;
 	if (5 < 10) {
@@ -77,7 +77,7 @@ func TestNextToken(t *testing.T) {
 		{token.Semicolon, ";"},
 
 		{token.Mut, "mut"},
-		{token.Identifier, "result"},
+		{token.Identifier, "r"},
 		{token.Assign, "="},
 		{token.Identifier, "add"},
 		{token.LeftParen, "("},

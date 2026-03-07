@@ -132,6 +132,10 @@ func (c *Checker) check(n ast.Node) types.Type {
 			node.Type = valType
 		}
 
+		if node.Value == nil && !node.Constant {
+			valType = varType
+		}
+
 		if ok && !outer {
 			if !c.typesMatch(valType, varType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()))
@@ -435,7 +439,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		e = expr
 		return cType
 	case *ast.CallExpr:
-		t := c.typeOfCallExpr(expr)
+		t := c.typeOfCallExpr(expr, expectedType)
 		e = expr // this is fucky -- side effects :(
 		return t
 	case *ast.IndexExpr:
@@ -661,7 +665,7 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type) types.Type {
 	return nil
 }
 
-func (c *Checker) typeOfCallExpr(expr *ast.CallExpr) types.Type {
+func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.Type {
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
 		if len(expr.Arguments) > 0 {
 			receiverType := c.typeOf(expr.Arguments[0], nil)
@@ -692,7 +696,6 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr) types.Type {
 		}
 	}
 
-	fnTypeRaw := c.typeOf(expr.Function, nil)
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
 		switch ident.Value {
 		case "len":
@@ -713,9 +716,15 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr) types.Type {
 			return c.checkKeysBuiltIn(expr)
 		case "values":
 			return c.checkValuesBuiltIn(expr)
+		case "ok":
 
+			return c.checkOkBuiltIn(expr)
+		case "err":
+			return c.checkErrBuiltIn(expr, expected)
 		}
 	}
+
+	fnTypeRaw := c.typeOf(expr.Function, nil)
 
 	return c.validateFunctionCall(expr, fnTypeRaw)
 }
@@ -835,8 +844,11 @@ func (c *Checker) checkSliceBuiltIn(expr *ast.CallExpr) types.Type {
 	return arrType
 }
 
-func (c *Checker) checkKeysBuiltIn(expr ast.Expr) types.Type {
-	t := c.typeOf(expr, nil)
+func (c *Checker) checkKeysBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("keys() expects exactly 1 argument"))
+	}
+	t := c.typeOf(expr.Arguments[0], nil)
 	mapType, ok := t.(types.MapType)
 	if !ok {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
@@ -845,14 +857,47 @@ func (c *Checker) checkKeysBuiltIn(expr ast.Expr) types.Type {
 	return &types.ArrayType{ElemType: mapType.KeyType}
 }
 
-func (c *Checker) checkValuesBuiltIn(expr ast.Expr) types.Type {
-	t := c.typeOf(expr, nil)
+func (c *Checker) checkValuesBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("values() expects exactly 1 argument"))
+	}
+	t := c.typeOf(expr.Arguments[0], nil)
 	mapType, ok := t.(types.MapType)
 	if !ok {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
 	}
 
 	return &types.ArrayType{ElemType: mapType.ValueType}
+}
+
+func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("ok() expects exactly 1 argument"))
+	}
+
+	t := c.typeOf(expr.Arguments[0], nil)
+
+	return &types.ResultType{T: t}
+}
+
+func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, fmt.Sprintf("err() expects exactly 1 argument"))
+	}
+
+	t := c.typeOf(expr.Arguments[0], nil)
+	if t != types.String {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for err()", t.Signature()))
+	}
+
+	if contextType == nil {
+		c.errors = append(c.errors, "cannot infer result type for err()")
+		return &types.ResultType{T: types.Unit}
+	}
+	if rt, ok := contextType.(types.ResultType); ok {
+		return &types.ResultType{T: rt.T}
+	}
+	return &types.ResultType{T: contextType}
 }
 
 func (c *Checker) registerImplementation(node *ast.InterfaceImplementationStmt) {
@@ -1095,6 +1140,11 @@ func toArray(t types.Type) (types.ArrayType, bool) {
 
 func toMap(t types.Type) (types.MapType, bool) {
 	typ, ok := t.(types.MapType)
+	return typ, ok
+}
+
+func isResult(t types.Type) (types.ResultType, bool) {
+	typ, ok := t.(types.ResultType)
 	return typ, ok
 }
 
