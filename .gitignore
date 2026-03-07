@@ -11,3 +11,4 @@ sydney_rt/target
 CLAUDE.md
 *.ll
 /module
+/.error-handling
