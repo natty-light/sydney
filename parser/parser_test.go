@@ -1834,6 +1834,54 @@ func TestResultTypeParsing(t *testing.T) {
 	testVarDeclarationStmt(t, stmt, "x", false)
 }
 
+func TestMatchExpr(t *testing.T) {
+	source := `match x {
+		ok(val) -> { val * 2; },
+		err(msg) -> { 0; },
+	}`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.MatchExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.MatchExpr. got=%T", stmt.Expr)
+	}
+
+	testIdentifier(t, expr.Subject, "x")
+	testMatchArm(t, expr.OkArm, "val", true)
+	testMatchArm(t, expr.ErrArm, "msg", false)
+
+	// check ok arm body: val * 2
+	if len(expr.OkArm.Body.Stmts) != 1 {
+		t.Fatalf("ok arm body should have 1 statement, got %d", len(expr.OkArm.Body.Stmts))
+	}
+	okBody, ok := expr.OkArm.Body.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("ok arm body stmt is not *ast.ExpressionStmt. got=%T", expr.OkArm.Body.Stmts[0])
+	}
+	testInfixExpr(t, okBody.Expr, "val", "*", 2)
+
+	// check err arm body: 0
+	if len(expr.ErrArm.Body.Stmts) != 1 {
+		t.Fatalf("err arm body should have 1 statement, got %d", len(expr.ErrArm.Body.Stmts))
+	}
+	errBody, ok := expr.ErrArm.Body.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("err arm body stmt is not *ast.ExpressionStmt. got=%T", expr.ErrArm.Body.Stmts[0])
+	}
+	testIntegerLiteral(t, errBody.Expr, 0)
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {
@@ -2047,4 +2095,16 @@ func testFunctionType(t *testing.T, ty types.FunctionType, expectedParams []stri
 			t.Fatalf("Return.Signature() not %s. got=%s", ty.Return.Signature(), asStr)
 		}
 	}
+}
+
+func testMatchArm(t *testing.T, arm *ast.MatchArm, binding string, isOk bool) bool {
+	if arm.Pattern.IsOk != isOk {
+		t.Errorf("arm.Pattern.IsOk wrong, want %t, got %t", isOk, arm.Pattern.IsOk)
+		return false
+	}
+	if arm.Pattern.Binding.Value != binding {
+		t.Errorf("arm.Pattern.Binding wrong, want %s, got %s", binding, arm.Pattern.Binding.Value)
+		return false
+	}
+	return true
 }

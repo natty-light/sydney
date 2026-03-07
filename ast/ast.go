@@ -61,6 +61,16 @@ type resolvable struct{ ResolvedType types.Type }
 func (r *resolvable) GetResolvedType() types.Type  { return r.ResolvedType }
 func (r *resolvable) SetResolvedType(t types.Type) { r.ResolvedType = t }
 
+type MatchArm struct {
+	Pattern *MatchPattern
+	Body    *BlockStmt
+}
+
+type MatchPattern struct {
+	IsOk    bool
+	Binding *Identifier
+}
+
 // Statements
 type (
 	VarDeclarationStmt struct {
@@ -298,6 +308,15 @@ type (
 		resolvable
 		noCast
 	}
+
+	MatchExpr struct {
+		Token   token.Token
+		Subject Expr
+		OkArm   *MatchArm
+		ErrArm  *MatchArm
+		noCast
+		resolvable
+	}
 )
 
 // Node interfaces
@@ -439,6 +458,10 @@ func (p *PubStatement) TokenLiteral() string {
 
 func (s *ScopeAccessExpr) TokenLiteral() string {
 	return s.Token.Literal
+}
+
+func (m *MatchExpr) TokenLiteral() string {
+	return m.Token.Literal
 }
 
 // Statements
@@ -817,6 +840,33 @@ func (s *ScopeAccessExpr) String() string {
 	return out.String()
 }
 
+func (m *MatchExpr) String() string {
+	var out bytes.Buffer
+	out.WriteString("match")
+	out.WriteString(m.Subject.String())
+	out.WriteString(" {\n")
+	out.WriteString("\t")
+	if m.OkArm.Pattern.IsOk {
+		out.WriteString("ok(")
+		out.WriteString(m.OkArm.Pattern.Binding.String())
+		out.WriteString(")")
+		out.WriteString(" -> ")
+		out.WriteString(m.OkArm.Body.String())
+		out.WriteString(",\n")
+	}
+	if m.ErrArm.Pattern.IsOk {
+		out.WriteString("err(")
+		out.WriteString(m.ErrArm.Pattern.Binding.String())
+		out.WriteString(")")
+		out.WriteString(" -> ")
+		out.WriteString(m.ErrArm.Body.String())
+		out.WriteString(",\n")
+	}
+	out.WriteString("}")
+
+	return out.String()
+}
+
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
 func (r *ReturnStmt) statementNode()                  {}
@@ -853,3 +903,4 @@ func (m *MacroLiteral) expressionNode()    {}
 func (s *StructLiteral) expressionNode()   {}
 func (s *SelectorExpr) expressionNode()    {}
 func (s *ScopeAccessExpr) expressionNode() {}
+func (m *MatchExpr) expressionNode()       {}
