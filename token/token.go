@@ -29,7 +29,6 @@ const (
 	Import         TokenType = "Import"
 	Module         TokenType = "Module"
 	Public         TokenType = "Public"
-	Result         TokenType = "Result"
 
 	// Types
 	IntType    TokenType = "IntegerType"
@@ -40,6 +39,7 @@ const (
 	ArrayType    TokenType = "ArrayType"
 	MapType      TokenType = "MapType"
 	FunctionType TokenType = "FunctionType"
+	ResultType   TokenType = "ResultType"
 
 	// Grouping
 	LeftParen          TokenType = "LeftParen"
