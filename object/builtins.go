@@ -231,6 +231,24 @@ var Builtins = []struct {
 			T: types.FunctionType{Params: []types.Type{types.MapType{KeyType: types.Any, ValueType: types.Any}}, Return: types.ArrayType{ElemType: types.Infer}},
 		},
 	},
+	{
+		"ok",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				return &Result{Value: args[0], Error: nil, IsOk: true}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Infer}, Return: types.ResultType{T: types.Infer}},
+		},
+	},
+	{
+		"err",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				return &Result{Value: nil, Error: args[0].(*String), IsOk: false}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Infer}, Return: types.ResultType{T: types.Infer}},
+		},
+	},
 }
 
 var BuiltInMap = map[string]bool{
@@ -243,6 +261,8 @@ var BuiltInMap = map[string]bool{
 	"slice":  true,
 	"keys":   true,
 	"values": true,
+	"ok":     true,
+	"err":    true,
 }
 
 func GetBuiltInByName(name string) *BuiltIn {
