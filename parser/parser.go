@@ -91,6 +91,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.LeftCurlyBracket, p.parseHashLiteral)
 	p.registerPrefix(token.Float, p.parseFloatLiteral)
 	p.registerPrefix(token.Macro, p.parseMacroLiteral)
+	p.registerPrefix(token.Match, p.parseMatchExpr)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.Plus, p.parseInfixExpr)
@@ -1209,6 +1210,112 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 	p.nextToken()
 	member := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 	return &ast.ScopeAccessExpr{Member: member, Module: ident}
+}
+
+func (p *Parser) parseMatchExpr() ast.Expr {
+	m := &ast.MatchExpr{Token: p.currToken}
+	if !p.expectPeek(token.Identifier) {
+		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	subject := p.parseIdentifier()
+	if p.peekTokenIs(token.LeftParen) {
+		p.nextToken()
+		subject = p.parseCallExpr(subject)
+	}
+	m.Subject = subject
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		return nil
+	}
+	if !p.expectPeek(token.Identifier) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ok or err, got %s", p.currToken.Literal))
+		return nil
+	}
+	okArm := &ast.MatchArm{}
+	errArm := &ast.MatchArm{}
+
+	if p.currToken.Literal == "ok" {
+		err := p.parseMatchArm(okArm, true)
+		if err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+		if !p.expectPeek(token.Identifier) {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			return nil
+		}
+		if p.currToken.Literal != "err" {
+			p.errors = append(p.errors, fmt.Sprintf("expected err, got %s", p.currToken.Literal))
+			return nil
+		}
+		err = p.parseMatchArm(errArm, false)
+		if err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+	} else if p.currToken.Literal == "err" {
+		err := p.parseMatchArm(errArm, false)
+		if err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+		if !p.expectPeek(token.Identifier) {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			return nil
+		}
+		if p.currToken.Literal != "ok" {
+			p.errors = append(p.errors, fmt.Sprintf("expected ok, got %s", p.currToken.Literal))
+			return nil
+		}
+		err = p.parseMatchArm(okArm, true)
+		if err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+	} else {
+		p.errors = append(p.errors, fmt.Sprintf("expected ok or err, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	m.OkArm = okArm
+	m.ErrArm = errArm
+
+	if !p.expectPeek(token.RightCurlyBracket) {
+		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		return nil
+	}
+
+	return m
+}
+
+func (p *Parser) parseMatchArm(a *ast.MatchArm, isOk bool) error {
+	pattern := &ast.MatchPattern{IsOk: isOk}
+	if !p.expectPeek(token.LeftParen) {
+		return fmt.Errorf("expected (, got %s", p.currToken.Literal)
+	}
+	if !p.expectPeek(token.Identifier) {
+		return fmt.Errorf("expected identifier, got %s", p.currToken.Literal)
+	}
+	binding := p.parseIdentifier()
+	pattern.Binding = binding.(*ast.Identifier)
+	a.Pattern = pattern
+	if !p.expectPeek(token.RightParen) {
+		return fmt.Errorf("expected ), got %s", p.currToken.Literal)
+	}
+	if !p.expectPeek(token.Arrow) {
+		return fmt.Errorf("expected ->, got %s", p.currToken.Literal)
+	}
+	p.nextToken() // advance past ->
+
+	body := p.parseBlockStmt()
+	a.Body = body
+	if !p.expectPeek(token.Comma) {
+		return fmt.Errorf("expected ,  got %s", p.currToken.Literal)
+	}
+
+	return nil
 }
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {
