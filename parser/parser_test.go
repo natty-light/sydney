@@ -1806,6 +1806,34 @@ func TestScopeAccessExpression(t *testing.T) {
 	}
 }
 
+func TestResultTypeParsing(t *testing.T) {
+	source := "mut result<int> x;"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.VarDeclarationStmt. got=%T", stmt)
+	}
+
+	typ := stmt.Type
+	rTyp, ok := typ.(types.ResultType)
+	if !ok {
+		t.Fatalf("stmt.Type is not types.ResultType. got=%T", typ)
+	}
+	if rTyp.Signature() != "result<int>" {
+		t.Fatalf("stmt.Type wrong. want result<int>, got=%q", rTyp.Signature())
+	}
+
+	testVarDeclarationStmt(t, stmt, "x", false)
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {

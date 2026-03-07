@@ -861,6 +861,8 @@ func (p *Parser) isPeekTokenType() bool {
 		fallthrough
 	case token.MapType:
 		fallthrough
+	case token.ResultType:
+		fallthrough
 	case token.ArrayType:
 		return true
 	}
@@ -888,6 +890,8 @@ func (p *Parser) parseType() types.Type {
 		return p.parseArrayType()
 	case token.FunctionType:
 		return p.parseFunctionType()
+	case token.ResultType:
+		return p.parseResultType()
 	case token.Identifier:
 		var t types.Type = nil
 		t, ok := p.definedStructs[p.currToken.Literal]
@@ -922,7 +926,7 @@ func (p *Parser) parseInterfaceMethod() types.Type {
 
 func (p *Parser) parseFunctionType() types.Type {
 	if !p.expectPeek(token.LessThan) {
-		p.errors = append(p.errors, getTypeParseError("function", token.GreaterThan, p.peekToken.Type))
+		p.errors = append(p.errors, getTypeParseError("function", token.LessThan, p.peekToken.Type))
 		return nil
 	}
 	if !p.expectPeek(token.LeftParen) {
@@ -962,7 +966,22 @@ func (p *Parser) parseFunctionType() types.Type {
 	}
 
 	return types.FunctionType{Params: params, Return: r}
+}
 
+func (p *Parser) parseResultType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("result", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	t := p.parseType()
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("result", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.ResultType{T: t}
 }
 
 func (p *Parser) parseArrayType() types.Type {

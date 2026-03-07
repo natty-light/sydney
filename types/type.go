@@ -49,7 +49,6 @@ type InterfaceType struct {
 
 type ResultType struct {
 	T Type
-	E string
 }
 
 const (
@@ -127,7 +126,7 @@ func (s InterfaceType) Signature() string {
 	return out.String()
 }
 
-func (r *ResultType) Signature() string {
+func (r ResultType) Signature() string {
 	var out bytes.Buffer
 	out.WriteString("result<")
 	out.WriteString(r.T.Signature())

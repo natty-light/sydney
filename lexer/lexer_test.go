@@ -325,7 +325,7 @@ func TestTypeLexing(t *testing.T) {
 		{token.Identifier, "f"},
 		{token.Semicolon, ";"},
 
-		{token.Result, "result"},
+		{token.ResultType, "result"},
 		{token.LessThan, "<"},
 		{token.IntType, "int"},
 		{token.GreaterThan, ">"},
