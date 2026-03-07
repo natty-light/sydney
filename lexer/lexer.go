@@ -269,6 +269,7 @@ var types = map[string]token.TokenType{
 	"array":  token.ArrayType,
 	"map":    token.MapType,
 	"fn":     token.FunctionType,
+	"result": token.Result,
 }
 
 func LookupIdent(ident string) token.TokenType {
