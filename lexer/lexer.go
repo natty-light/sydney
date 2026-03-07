@@ -259,6 +259,7 @@ var keywords = map[string]token.TokenType{
 	"pub":            token.Public,
 	"module":         token.Module,
 	"import":         token.Import,
+	"match":          token.Match,
 }
 
 var types = map[string]token.TokenType{
