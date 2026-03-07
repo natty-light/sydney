@@ -378,13 +378,44 @@ func (vm *VM) Run() error {
 				return err
 			}
 			for _, arg := range args { // push args
-				vm.push(arg)
+				err = vm.push(arg)
+				if err != nil {
+					return err
+				}
 			}
 
 			// account for receiver we pushed on to stack before args
 			err = vm.executeCall(numArgs + 1)
 			if err != nil {
 				return err
+			}
+		case code.OpResultTag:
+			obj := vm.pop()
+			r := obj.(*object.Result)
+			if r.IsOk {
+				err := vm.push(True)
+				if err != nil {
+					return err
+				}
+			} else {
+				err := vm.push(False)
+				if err != nil {
+					return err
+				}
+			}
+		case code.OpResultValue:
+			obj := vm.pop()
+			r := obj.(*object.Result)
+			if r.IsOk {
+				err := vm.push(r.Value)
+				if err != nil {
+					return err
+				}
+			} else {
+				err := vm.push(r.Error)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}

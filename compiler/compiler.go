@@ -611,6 +611,63 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("undefined %s", mangled)
 		}
 		c.loadSymbol(symbol)
+	case *ast.MatchExpr:
+		err := c.Compile(node.Subject)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpResultTag)
+		notTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+		// ok arm
+		err = c.Compile(node.Subject)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpResultValue)
+
+		sym := c.symbolTable.DefineImmutable(node.OkArm.Pattern.Binding.Value)
+		if sym.Scope == GlobalScope {
+			c.emit(code.OpSetImmutableGlobal, sym.Index)
+		} else {
+			c.emit(code.OpSetImmutableLocal, sym.Index)
+		}
+
+		err = c.Compile(node.OkArm.Body)
+		if err != nil {
+			return err
+		}
+		// this makes sure the value at the end of the block is what is pushed into the expr result
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		jumpPos := c.emit(code.OpJump, 9999)
+		afterOkPos := len(c.currentInstructions())
+		c.changeOperand(notTruthyPos, afterOkPos)
+
+		err = c.Compile(node.Subject)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpResultValue)
+		sym = c.symbolTable.DefineImmutable(node.ErrArm.Pattern.Binding.Value)
+		if sym.Scope == GlobalScope {
+			c.emit(code.OpSetImmutableGlobal, sym.Index)
+		} else {
+			c.emit(code.OpSetImmutableLocal, sym.Index)
+		}
+
+		err = c.Compile(node.ErrArm.Body)
+		if err != nil {
+			return err
+		}
+		// this makes sure the value at the end of the block is what is pushed into the expr result
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		afterErrPos := len(c.currentInstructions())
+		c.changeOperand(jumpPos, afterErrPos)
 	}
 
 	if expr, ok := node.(ast.Expr); ok {
