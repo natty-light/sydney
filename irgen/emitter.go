@@ -65,7 +65,8 @@ type Emitter struct {
 	allocaBuf *bytes.Buffer
 	bodyBuf   *bytes.Buffer
 
-	currentModule string
+	currentModule  string
+	emittedModules []string
 }
 
 func New() *Emitter {
@@ -82,6 +83,8 @@ func New() *Emitter {
 
 		buf:     &bytes.Buffer{},
 		funcBuf: &bytes.Buffer{},
+
+		emittedModules: make([]string, 0),
 	}
 }
 
@@ -110,10 +113,12 @@ func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
 
 func (e *Emitter) EmitPackage(pkg *loader.Package) error {
 	e.currentModule = pkg.Name
+	e.emittedModules = append(e.emittedModules, pkg.Name)
 	for _, program := range pkg.Programs {
 		e.collect(program)
 		e.functions(program)
 	}
+	e.emitPackageInit(pkg)
 	e.currentModule = ""
 
 	return nil
@@ -357,6 +362,7 @@ func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.depth = 1
 
 	e.emit("call void @sydney_gc_init()")
+	e.emitPackageInits()
 	e.main(node)
 	e.emit("call void @sydney_gc_shutdown()")
 	e.emit("ret i32 0")
@@ -884,6 +890,12 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	name := stmt.Name.Value
 	if isGlobal {
 		name = global.name
+		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
+		e.emit(line)
+		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
+		e.emit(line)
+	} else if e.currentModule != "" {
+		name = e.global(e.moduleMangle(e.currentModule, name))
 		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
 		e.emit(line)
 		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
@@ -1902,4 +1914,41 @@ func (e *Emitter) emitScopeAccessExpr(expr *ast.ScopeAccessExpr) (string, IrType
 
 func (e *Emitter) moduleMangle(module, name string) string {
 	return module + "__" + name
+}
+
+func (e *Emitter) emitPackageInit(pkg *loader.Package) {
+	line := fmt.Sprintf("define void @%s__init() {", e.currentModule)
+	e.emit(line)
+	e.depth = 1
+	for _, program := range pkg.Programs {
+		e.emitPackageInitInner(program)
+	}
+	line = fmt.Sprintf("ret void")
+	e.emit(line)
+	e.depth = 0
+	line = fmt.Sprintf("}\n")
+	e.emit(line)
+}
+
+func (e *Emitter) emitPackageInitInner(node ast.Node) {
+	if node == nil {
+		return
+	}
+	switch node := node.(type) {
+	case *ast.Program:
+		for _, stmt := range node.Stmts {
+			e.emitPackageInitInner(stmt)
+		}
+	case *ast.PubStatement:
+		e.emitPackageInitInner(node.Stmt)
+	case *ast.VarDeclarationStmt:
+		e.emitVarDecl(node)
+	}
+}
+
+func (e *Emitter) emitPackageInits() {
+	for _, m := range e.emittedModules {
+		line := fmt.Sprintf("call void @%s__init()", m)
+		e.emit(line)
+	}
 }
