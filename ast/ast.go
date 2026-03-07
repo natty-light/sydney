@@ -121,6 +121,7 @@ type (
 		Body        *BlockStmt
 		Type        types.Type
 		MangledName string
+		IsExtern    bool
 	}
 
 	StructDefinitionStmt struct {
@@ -310,10 +311,11 @@ type (
 	}
 
 	MatchExpr struct {
-		Token   token.Token
-		Subject Expr
-		OkArm   *MatchArm
-		ErrArm  *MatchArm
+		Token       token.Token
+		Subject     Expr
+		OkArm       *MatchArm
+		ErrArm      *MatchArm
+		SubjectType types.Type
 		noCast
 		resolvable
 	}

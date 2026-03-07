@@ -228,7 +228,9 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		e.collectStrings(node.Condition)
 		e.collectStrings(node.Body)
 	case *ast.FunctionDeclarationStmt:
-		e.collectStrings(node.Body)
+		if !node.IsExtern {
+			e.collectStrings(node.Body)
+		}
 	case *ast.SelectorAssignmentStmt:
 		e.collectStrings(node.Value)
 
@@ -291,6 +293,11 @@ func (e *Emitter) preamble() {
 	e.emit("declare i64 @sydney_map_get_str(ptr, ptr)")
 	e.emit("declare void @sydney_map_set_int(ptr, i64, i64)")
 	e.emit("declare i64 @sydney_map_get_int(ptr, i64)")
+	e.emit("declare i64 @sydney_file_open(ptr)")
+	e.emit("declare ptr @sydney_file_read(i64)")
+	e.emit("declare i64 @sydney_file_write(i64, ptr)")
+	e.emit("declare i64 @sydney_file_close(i64)")
+	e.emit("declare ptr @sydney_get_last_error()")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -781,6 +788,19 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitResultConstructorCall(false, expr)
 		}
 
+		if fn, ok := runtimeBuiltins[ident.Value]; ok {
+			switch fn {
+			case "sydney_file_open":
+				return e.emitFileOpen(expr)
+			case "sydney_file_read":
+				return e.emitFileRead(expr)
+			case "sydney_file_write":
+				return e.emitFileWrite(expr)
+			case "sydney_file_close":
+				return e.emitFileClose(expr)
+			}
+		}
+
 		sig, exists := e.funcSigs[ident.Value]
 		if exists {
 			return e.emitFunctionCall(expr, sig)
@@ -797,6 +817,20 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 
 	if scope, ok := expr.Function.(*ast.ScopeAccessExpr); ok {
 		mangled := scope.Module.Value + "__" + scope.Member.Value
+
+		if fn, ok := runtimeBuiltins[mangled]; ok {
+			switch fn {
+			case "sydney_file_open":
+				return e.emitFileOpen(expr)
+			case "sydney_file_read":
+				return e.emitFileRead(expr)
+			case "sydney_file_write":
+				return e.emitFileWrite(expr)
+			case "sydney_file_close":
+				return e.emitFileClose(expr)
+			}
+		}
+
 		sig, exists := e.funcSigs[mangled]
 		if exists {
 			return e.emitFunctionCall(expr, sig)
@@ -1122,6 +1156,9 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	ret := SydneyTypeToIrType(fType.Return)
 
 	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
+	if decl.IsExtern {
+		return "", IrUnit
+	}
 
 	state := e.beginFunction()
 
@@ -1449,24 +1486,6 @@ func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string, typ IrType) (
 	e.emit(line)
 
 	return result, retType
-}
-
-func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
-	for _, a := range expr.Arguments {
-		arg, argType := e.emitExpr(a)
-		switch argType {
-		case IrInt:
-			e.emit(fmt.Sprintf("call void @sydney_print_int(i64 %s)", arg))
-		case IrFloat:
-			e.emit(fmt.Sprintf("call void @sydney_print_float(double %s)", arg))
-		case IrPtr:
-			e.emit(fmt.Sprintf("call void @sydney_print_string(ptr %s)", arg))
-		case IrBool:
-			e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", arg))
-		}
-	}
-	e.emit("call void @sydney_print_newline()")
-	return "", IrUnit
 }
 
 func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrType) {
@@ -1907,6 +1926,7 @@ func (e *Emitter) containsIdentifier(node ast.Node, name string) bool {
 
 func (e *Emitter) emitScopeAccessExpr(expr *ast.ScopeAccessExpr) (string, IrType) {
 	mangled := expr.Module.Value + "__" + expr.Member.Value
+
 	if g, ok := e.globals[e.global(mangled)]; ok {
 		val := e.tmp()
 		line := fmt.Sprintf("%s = load %s, ptr %s", val, g.typ, g.name)
@@ -2021,7 +2041,8 @@ func (e *Emitter) emitResultConstructorCall(isOk bool, expr *ast.CallExpr) (stri
 func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	subj, _ := e.emitExpr(expr.Subject)
 	rt := SydneyTypeToIrType(expr.ResolvedType)
-	ut := GetResultTaggedUnion(rt)
+	innerType := SydneyTypeToIrType(expr.SubjectType)
+	ut := GetResultTaggedUnion(innerType)
 
 	// load tag
 	tagPtr := e.tmp()
@@ -2049,14 +2070,14 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, subj)
 	e.emit(line)
 	val := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", val, rt, valPtr)
+	line = fmt.Sprintf("%s = load %s, ptr %s", val, innerType, valPtr)
 	e.emit(line)
 	// bind
 	bindAlloca := e.tmp() + ".addr"
-	e.emitAlloca(bindAlloca, rt)
-	line = fmt.Sprintf("store %s %s, ptr %s", rt, val, bindAlloca)
+	e.emitAlloca(bindAlloca, innerType)
+	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
 	e.emit(line)
-	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: rt}
+	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	// emit block
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
 	line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)

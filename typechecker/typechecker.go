@@ -1250,19 +1250,20 @@ func (c *Checker) checkFunctionDeclaration(n ast.Node, node *ast.FunctionDeclara
 		c.errors = append(c.errors, fmt.Sprintf("cannot use function declaration of %s", node.Name.Value))
 	}
 
-	oldReturnType := c.currentReturnType
-	c.currentReturnType = fType.Return
-	oldEnv := c.env
-	c.env = NewTypeEnv(oldEnv)
+	if !node.IsExtern {
+		oldReturnType := c.currentReturnType
+		c.currentReturnType = fType.Return
+		oldEnv := c.env
+		c.env = NewTypeEnv(oldEnv)
 
-	for i, param := range node.Params {
-		c.env.Set(param.Value, fType.Params[i])
+		for i, param := range node.Params {
+			c.env.Set(param.Value, fType.Params[i])
+		}
+
+		c.check(node.Body)
+		c.env = oldEnv
+		c.currentReturnType = oldReturnType
 	}
-
-	c.check(node.Body)
-
-	c.env = oldEnv
-	c.currentReturnType = oldReturnType
 
 	return types.Unit
 }
@@ -1317,6 +1318,7 @@ func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, env *TypeEnv) (string, t
 func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	subType := c.typeOf(expr.Subject, nil)
 	result, ok := subType.(types.ResultType)
+	expr.SubjectType = result.T
 	if !ok {
 		c.errors = append(c.errors, fmt.Sprintf("can only match on result type"))
 		return nil

@@ -221,8 +221,13 @@ func (p *Parser) parseStatement() ast.Stmt {
 			pubStmt.Stmt = p.parseVarDeclarationStmt()
 			break
 		case token.Func:
-			pubStmt.Stmt = p.parseFunctionDeclarationStmt()
+			pubStmt.Stmt = p.parseFunctionDeclarationStmt(false)
 			break
+		case token.Extern:
+			if !p.expectPeek(token.Func) {
+				p.errors = append(p.errors, "expected function declaration")
+			}
+			pubStmt.Stmt = p.parseFunctionDeclarationStmt(true)
 		case token.Define:
 			p.nextToken()
 			if p.currTokenIs(token.Struct) {
@@ -241,9 +246,12 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseReturnStmt()
 	case token.For:
 		return p.parseForStmt()
+	case token.Extern:
+		p.errors = append(p.errors, fmt.Sprintf("cannot extern for token: %s", p.currToken.Type))
+		return nil
 	case token.Func:
 		if p.peekTokenIs(token.Identifier) {
-			return p.parseFunctionDeclarationStmt()
+			return p.parseFunctionDeclarationStmt(false)
 		}
 
 		return p.parseExpressionOrAssignmentStmt()
@@ -600,7 +608,7 @@ func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []types.Type) {
 	return idents, tt
 }
 
-func (p *Parser) parseFunctionDeclarationStmt() ast.Stmt {
+func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 	stmt := &ast.FunctionDeclarationStmt{Token: p.currToken}
 
 	if !p.expectPeek(token.Identifier) {
@@ -628,6 +636,13 @@ func (p *Parser) parseFunctionDeclarationStmt() ast.Stmt {
 	}
 
 	stmt.Type = fType
+	if extern {
+		stmt.IsExtern = true
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+		return stmt
+	}
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		p.errors = append(p.errors, fmt.Sprintf("expected body for function %s declaration", stmt.Name.String()))
