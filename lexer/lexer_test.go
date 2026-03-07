@@ -269,6 +269,7 @@ func TestTypeLexing(t *testing.T) {
 	mut map<int, string> m;
 	const array<int> a;
 	const fn<(int) -> int> f;
+	result<int>
 	`
 
 	tests := []struct {
@@ -323,6 +324,11 @@ func TestTypeLexing(t *testing.T) {
 		{token.GreaterThan, ">"},
 		{token.Identifier, "f"},
 		{token.Semicolon, ";"},
+
+		{token.Result, "result"},
+		{token.LessThan, "<"},
+		{token.IntType, "int"},
+		{token.GreaterThan, ">"},
 
 		{token.EOF, ""},
 	}

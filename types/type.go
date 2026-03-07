@@ -47,6 +47,11 @@ type InterfaceType struct {
 	Types         []Type
 }
 
+type ResultType struct {
+	T Type
+	E string
+}
+
 const (
 	Int    BasicType = "int"
 	Float  BasicType = "float"
@@ -119,5 +124,13 @@ func (s InterfaceType) Signature() string {
 	}
 	out.WriteString(" }")
 
+	return out.String()
+}
+
+func (r *ResultType) Signature() string {
+	var out bytes.Buffer
+	out.WriteString("result<")
+	out.WriteString(r.T.Signature())
+	out.WriteString(">")
 	return out.String()
 }
