@@ -621,6 +621,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		}
 	case *ast.ScopeAccessExpr:
 		return e.emitScopeAccessExpr(expr)
+	case *ast.MatchExpr:
+		return e.emitMatchExpr(expr)
 	}
 	return "", IrUnit
 }
@@ -2014,4 +2016,77 @@ func (e *Emitter) emitResultConstructorCall(isOk bool, expr *ast.CallExpr) (stri
 	}
 
 	return result, IrPtr
+}
+
+func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
+	subj, _ := e.emitExpr(expr.Subject)
+	rt := SydneyTypeToIrType(expr.ResolvedType)
+	ut := GetResultTaggedUnion(rt)
+
+	// load tag
+	tagPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, subj)
+	e.emit(line)
+	tag := e.tmp()
+	line = fmt.Sprintf("%s = load i1, ptr %s", tag, tagPtr)
+	e.emit(line)
+
+	// set up label
+	okLab := e.label("match.ok")
+	errLab := e.label("match.err")
+	endLab := e.label("match.end")
+
+	// emit result alloca, replace with phi node later
+	result := e.tmp()
+	e.emitAlloca(result, rt)
+
+	// emit branches
+	e.emitBranch(tag, okLab, errLab)
+
+	// ok branch
+	e.emitLabel(okLab)
+	valPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, subj)
+	e.emit(line)
+	val := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", val, rt, valPtr)
+	e.emit(line)
+	// bind
+	bindAlloca := e.tmp() + ".addr"
+	e.emitAlloca(bindAlloca, rt)
+	line = fmt.Sprintf("store %s %s, ptr %s", rt, val, bindAlloca)
+	e.emit(line)
+	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: rt}
+	// emit block
+	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
+	line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)
+	e.emit(line)
+	e.emitJmp(endLab)
+
+	// err branch
+	e.emitLabel(errLab)
+	errPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, ut, subj)
+	e.emit(line)
+	err := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", err, IrPtr, errPtr)
+	e.emit(line)
+	// bind
+	bindAlloca = e.tmp() + ".addr"
+	e.emitAlloca(bindAlloca, IrPtr)
+	line = fmt.Sprintf("store ptr %s, ptr %s", err, bindAlloca)
+	e.emit(line)
+	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
+	// emit block
+	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
+	line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
+	e.emit(line)
+	e.emitJmp(endLab)
+
+	e.emitLabel(endLab)
+	finalVal := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
+	e.emit(line)
+
+	return finalVal, rt
 }
