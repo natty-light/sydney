@@ -36,6 +36,7 @@ const (
 	TypeObj             ObjectType = "TypeObject"
 	InterfaceObj        ObjectType = "Interface"
 	ItabObj             ObjectType = "Itab"
+	ResultObj           ObjectType = "Result"
 )
 
 type (
@@ -151,6 +152,12 @@ type (
 		ConcreteName   string
 		MethodsIndices []int // indices into constant pool
 	}
+
+	Result struct {
+		IsOk  bool
+		Value Object
+		Error *String
+	}
 )
 
 func (i *Integer) Type() ObjectType {
@@ -231,6 +238,10 @@ func (i *Interface) Type() ObjectType {
 
 func (i *Itab) Type() ObjectType {
 	return ItabObj
+}
+
+func (r *Result) Type() ObjectType {
+	return ResultObj
 }
 
 func (i *Integer) Inspect() string {
@@ -385,6 +396,18 @@ func (i *Itab) Inspect() string {
 	out.WriteString(" -> ")
 	out.WriteString(i.ConcreteName)
 
+	return out.String()
+}
+
+func (r *Result) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString("result {\n")
+	if r.IsOk {
+		out.WriteString(r.Value.Inspect())
+	} else {
+		out.WriteString(r.Error.Inspect())
+	}
+	out.WriteString("\n}")
 	return out.String()
 }
 
