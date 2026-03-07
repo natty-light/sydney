@@ -29,6 +29,7 @@ const (
 	Import         TokenType = "Import"
 	Module         TokenType = "Module"
 	Public         TokenType = "Public"
+	Match          TokenType = "Match"
 
 	// Types
 	IntType    TokenType = "IntegerType"
