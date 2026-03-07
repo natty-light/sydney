@@ -52,6 +52,8 @@ const (
 	OpSetField
 	OpBox
 	OpCallInterface
+	OpResultTag
+	OpResultValue
 )
 
 type (
@@ -103,6 +105,8 @@ var definitions = map[Opcode]*Definition{
 	OpSetField:           {"OpSetField", []int{1}},
 	OpBox:                {"OpBox", []int{2}},              // itab idx
 	OpCallInterface:      {"OpCallInterface", []int{2, 1}}, // methodIdx, numArgs
+	OpResultTag:          {"OpResultTag", []int{}},
+	OpResultValue:        {"OpResultValue", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

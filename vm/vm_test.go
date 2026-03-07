@@ -652,6 +652,59 @@ func TestInterfacesAsParams(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestMatchExpression(t *testing.T) {
+	tests := []vmTestCase{
+		{ // match ok arm
+			source: `func f() -> result<int> { return ok(42); }
+			const r = f();
+			match r {
+				ok(val) -> { val + 1; },
+				err(msg) -> { 0; },
+			};`,
+			expected: 43,
+		},
+		{ // match err arm
+			source: `func f() -> result<int> { return err("bad"); }
+			const r = f();
+			match r {
+				ok(val) -> { val + 1; },
+				err(msg) -> { 0; },
+			};`,
+			expected: 0,
+		},
+		{ // match as value in variable
+			source: `func f() -> result<int> { return ok(10); }
+			const r = f();
+			const x = match r {
+				ok(val) -> { val * 2; },
+				err(msg) -> { 0; },
+			};
+			x;`,
+			expected: 20,
+		},
+		{ // match err arm with string
+			source: `func f() -> result<int> { return err("oops"); }
+			const r = f();
+			match r {
+				ok(val) -> { "success"; },
+				err(msg) -> { msg; },
+			};`,
+			expected: "oops",
+		},
+		{ // match with err first
+			source: `func f() -> result<int> { return ok(5); }
+			const r = f();
+			match r {
+				err(msg) -> { 0; },
+				ok(val) -> { val + 5; },
+			};`,
+			expected: 10,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 
