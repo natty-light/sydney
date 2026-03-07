@@ -5,10 +5,14 @@ use std::os::raw::c_char;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
+use crate::error::LAST_ERROR;
 
 #[no_mangle]
 pub extern "C" fn sydney_file_open(path: *const c_char) -> i64 {
     if path.is_null() {
+        LAST_ERROR.with(|e| {
+            *e.borrow_mut() = Some(CString::new("could not open file").unwrap());
+        });
         return -1;
     }
 
@@ -22,7 +26,12 @@ pub extern "C" fn sydney_file_open(path: *const c_char) -> i64 {
             use std::os::unix::io::IntoRawFd;
             file.into_raw_fd() as i64
         }
-        Err(_) => -1,
+        Err(err) => {
+            LAST_ERROR.with(|e| {
+                *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
+            });
+            -1
+        },
     }
 }
 
@@ -36,10 +45,18 @@ pub extern "C" fn sydney_file_read(fd: i64) -> *const c_char {
             std::mem::forget(file);
             match CString::new(contents.as_str()) {
                 Ok(cs) => cs.into_raw(),
-                Err(_) => std::ptr::null(),
+                Err(err) => {
+                    LAST_ERROR.with(|e| {
+                        *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
+                    });
+                    std::ptr::null()
+                },
             }
         }
-        Err(_) => {
+        Err(err) => {
+            LAST_ERROR.with(|e| {
+                *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
+            });
             std::mem::forget(file);
             std::ptr::null()
         },
@@ -50,13 +67,21 @@ pub extern "C" fn sydney_file_read(fd: i64) -> *const c_char {
 pub extern "C" fn sydney_file_write(fd: i64, data: *const c_char) -> i64 {
     use std::io::Write;
     if data.is_null() {
+        LAST_ERROR.with(|e| {
+            *e.borrow_mut() = Some(CString::new("could not write file").unwrap());
+        });
         return -1;
     }
     let s = unsafe { CStr::from_ptr(data) }.to_bytes();
     let mut file = unsafe { std::fs::File::from_raw_fd(fd as i32) };
     let result = match file.write_all(s) {
         Ok(_) => 0,
-        Err(_) => -1,
+        Err(err) => {
+            LAST_ERROR.with(|e| {
+                *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
+            });
+            -1
+        },
     };
     std::mem::forget(file);
     result

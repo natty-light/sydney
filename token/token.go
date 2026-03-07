@@ -30,6 +30,7 @@ const (
 	Module         TokenType = "Module"
 	Public         TokenType = "Public"
 	Match          TokenType = "Match"
+	Extern         TokenType = "Extern"
 
 	// Types
 	IntType    TokenType = "IntegerType"

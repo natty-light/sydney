@@ -260,6 +260,7 @@ var keywords = map[string]token.TokenType{
 	"module":         token.Module,
 	"import":         token.Import,
 	"match":          token.Match,
+	"extern":         token.Extern,
 }
 
 var types = map[string]token.TokenType{
