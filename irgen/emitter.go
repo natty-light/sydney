@@ -261,9 +261,16 @@ func (e *Emitter) collectStrings(n ast.Node) {
 
 		}
 	case *ast.HashLiteral:
-		for key, value := range node.Pairs {
+		keys := make([]ast.Expr, 0, len(node.Pairs))
+		for key := range node.Pairs {
+			keys = append(keys, key)
+		}
+		slices.SortFunc(keys, func(a, b ast.Expr) int {
+			return strings.Compare(a.String(), b.String())
+		})
+		for _, key := range keys {
 			e.collectStrings(key)
-			e.collectStrings(value)
+			e.collectStrings(node.Pairs[key])
 		}
 	case *ast.FunctionLiteral:
 		e.collectStrings(node.Body)
@@ -272,6 +279,7 @@ func (e *Emitter) collectStrings(n ast.Node) {
 			e.collectStrings(val)
 		}
 	}
+
 }
 
 func (e *Emitter) preamble() {
@@ -1824,7 +1832,15 @@ func (e *Emitter) emitHashLiteral(lit *ast.HashLiteral) (string, IrType) {
 	}
 	e.emit(line)
 
-	for k, v := range lit.Pairs {
+	sortedKeys := make([]ast.Expr, 0, len(lit.Pairs))
+	for k := range lit.Pairs {
+		sortedKeys = append(sortedKeys, k)
+	}
+	slices.SortFunc(sortedKeys, func(a, b ast.Expr) int {
+		return strings.Compare(a.String(), b.String())
+	})
+	for _, k := range sortedKeys {
+		v := lit.Pairs[k]
 		key, _ := e.emitExpr(k)
 		val, valType := e.emitExpr(v)
 		if valType == IrPtr {
