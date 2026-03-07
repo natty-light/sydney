@@ -227,13 +227,13 @@ escape.2:
 
 func TestFunctions(t *testing.T) {
 	source := `func addFive(int i) -> int {
-    const int result = i + 5;
-    result;
+    const int r = i + 5;
+    r;
 }
 
 func addSix(int i) -> int {
-    const int result = i + 6;
-    return result;
+    const int r = i + 6;
+    return r;
 }
 
 const int x = 0;
@@ -253,12 +253,12 @@ print("x + 6 = ", xPlusSix);`
 define i64 @addFive(i64 %i) {
 entry:
   %i.addr = alloca i64
-  %result.addr = alloca i64
+  %r.addr = alloca i64
   store i64 %i, ptr %i.addr
   %t0 = load i64, ptr %i.addr
   %t1 = add i64 %t0, 5
-  store i64 %t1, ptr %result.addr
-  %t2 = load i64, ptr %result.addr
+  store i64 %t1, ptr %r.addr
+  %t2 = load i64, ptr %r.addr
   ret i64 %t2
   }
 
@@ -266,12 +266,12 @@ entry:
 define i64 @addSix(i64 %i) {
 entry:
   %i.addr = alloca i64
-  %result.addr = alloca i64
+  %r.addr = alloca i64
   store i64 %i, ptr %i.addr
   %t0 = load i64, ptr %i.addr
   %t1 = add i64 %t0, 6
-  store i64 %t1, ptr %result.addr
-  %t2 = load i64, ptr %result.addr
+  store i64 %t1, ptr %r.addr
+  %t2 = load i64, ptr %r.addr
   ret i64 %t2
   }
 
