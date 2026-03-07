@@ -1330,7 +1330,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	c.env = oldEnv
 
 	errEnv := NewTypeEnv(c.env)
-	errEnv.Set(expr.ErrArm.Pattern.Binding.Value, result.T)
+	errEnv.Set(expr.ErrArm.Pattern.Binding.Value, types.String)
 	oldEnv = c.env
 	c.env = errEnv
 	errBranch := c.check(expr.ErrArm.Body)
