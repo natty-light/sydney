@@ -13,109 +13,127 @@ type TypeErrorTest struct {
 
 func TestValidTypeChecking(t *testing.T) {
 	source := []string{
-		//"const int x = 5; x;",
-		//"define interface Area { area() -> float }",
-		//`define struct Point { x int, y int }
-		//define struct Circle { p Point, radius float }
-		//
-		//define interface Area { area() -> float }
-		//define implementation Circle -> Area
-		//func area(Circle c) -> float {
-		//	const pi = 3.14;
-		//	return c.radius * c.radius * pi;
-		//};`,
-		//
-		//`define struct Rect { w float, h float }
-		//define struct Point { x float, y float }
-		//define struct Circle { p Point, r float }
-		//
-		//define interface Area { area() -> float }
-		//
-		//define implementation Circle -> Area
-		//define implementation Rect -> Area
-		//
-		//func area(Circle c) -> float {
-		//	const pi = 3.14;
-		//	return c.r * c.r * pi;
-		//}
-		//
-		//func area(Rect r) -> float {
-		//	return r.w * r.h;
-		//}`,
-		//`define struct Rect { w float, h float }
-		//
-		//define interface Area { area() -> float }
-		//
-		//define implementation Rect -> Area
-		//
-		//func area(Rect r) -> float {
-		//	return r.w * r.h;
-		//}
-		//
-		//func getArea(Area a) -> float {
-		//	return a.area();
-		//}
-		//
-		//const Rect r = Rect { w: 2.0, h: 2.0 };
-		//
-		//getArea(r);`,
-		//`func f() -> int { func f() -> int { return 0 }; return f(); }`,
-		//`define struct Dog { name string, bark string }
-		//define interface Pet {
-		//	speak() -> string,
-		//	isSame(Pet p) -> bool,
-		//	name() -> string,
-		//}
-		//
-		//func speak(Dog d) -> string {
-		//	return d.name + " says " + d.bark + "!";
-		//}
-		//
-		//func name(Dog d) -> string {
-		//	return d.name;
-		//}
-		//
-		//func isSame(Dog d, Pet p) -> bool {
-		//	return d.name == p.name();
-		//}
-		//
-		//define implementation Dog -> Pet
-		//
-		//const Dog fido = Dog { name: "Fido", bark: "Woof" };
-		//const Dog rover = Dog { name: "Rover", bark: "Awoo" };
-		//
-		//print("--- Are they the same? ---");
-		//print(fido.name + " and " + rover.name)
-		//print(fido.isSame(rover));
-		//`,
-		//`define struct Dog { name string, bark string }
-		//define interface Pet { name() -> string }
-		//define implementation Dog -> Pet
-		//func name(Dog d) -> string { return d.name }
-		//func getPet() -> Pet {
-		//		return Dog { name: "Fido", bark: "Woof" };
-		//}`,
-		//`define struct Dog { name string, bark string }
-		//define struct Cat { name string, purr string }
-		//define interface Pet { name() -> string }
-		//define implementation Dog -> Pet
-		//define implementation Cat -> Pet
-		//
-		//func name(Cat c) -> string {
-		//	return c.name;
-		//}
-		//
-		//func name(Dog d) -> string {
-		//	return d.name;
-		//}
-		//
-		//const array<Pet> pets = [Dog { name: "A", bark: "B" }, Cat { name: "C", purr: "D" }];`,
-		//`const r = ok(5);`,
-		//`const r = err("some error")`,
-		//`mut result<int> x;`,
+		"const int x = 5; x;",
+		"define interface Area { area() -> float }",
+		`define struct Point { x int, y int }
+		define struct Circle { p Point, radius float }
+		
+		define interface Area { area() -> float }
+		define implementation Circle -> Area
+		func area(Circle c) -> float {
+			const pi = 3.14;
+			return c.radius * c.radius * pi;
+		};`,
+
+		`define struct Rect { w float, h float }
+		define struct Point { x float, y float }
+		define struct Circle { p Point, r float }
+		
+		define interface Area { area() -> float }
+		
+		define implementation Circle -> Area
+		define implementation Rect -> Area
+		
+		func area(Circle c) -> float {
+			const pi = 3.14;
+			return c.r * c.r * pi;
+		}
+		
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}`,
+		`define struct Rect { w float, h float }
+		
+		define interface Area { area() -> float }
+		
+		define implementation Rect -> Area
+		
+		func area(Rect r) -> float {
+			return r.w * r.h;
+		}
+		
+		func getArea(Area a) -> float {
+			return a.area();
+		}
+		
+		const Rect r = Rect { w: 2.0, h: 2.0 };
+		
+		getArea(r);`,
+		`func f() -> int { func f() -> int { return 0 }; return f(); }`,
+		`define struct Dog { name string, bark string }
+		define interface Pet {
+			speak() -> string,
+			isSame(Pet p) -> bool,
+			name() -> string,
+		}
+		
+		func speak(Dog d) -> string {
+			return d.name + " says " + d.bark + "!";
+		}
+		
+		func name(Dog d) -> string {
+			return d.name;
+		}
+		
+		func isSame(Dog d, Pet p) -> bool {
+			return d.name == p.name();
+		}
+		
+		define implementation Dog -> Pet
+		
+		const Dog fido = Dog { name: "Fido", bark: "Woof" };
+		const Dog rover = Dog { name: "Rover", bark: "Awoo" };
+		
+		print("--- Are they the same? ---");
+		print(fido.name + " and " + rover.name)
+		print(fido.isSame(rover));
+		`,
+		`define struct Dog { name string, bark string }
+		define interface Pet { name() -> string }
+		define implementation Dog -> Pet
+		func name(Dog d) -> string { return d.name }
+		func getPet() -> Pet {
+				return Dog { name: "Fido", bark: "Woof" };
+		}`,
+		`define struct Dog { name string, bark string }
+		define struct Cat { name string, purr string }
+		define interface Pet { name() -> string }
+		define implementation Dog -> Pet
+		define implementation Cat -> Pet
+		
+		func name(Cat c) -> string {
+			return c.name;
+		}
+		
+		func name(Dog d) -> string {
+			return d.name;
+		}
+		
+		const array<Pet> pets = [Dog { name: "A", bark: "B" }, Cat { name: "C", purr: "D" }];`,
+		`const r = ok(5);`,
+		`const result<int> e = err("some error")`,
+		`mut result<int> x;`,
 		`func f() -> result<int> { return err("some error") }
 		const r = f();
 		`,
+		`func f() -> result<int> { return ok(5); }
+		const r = f();
+		const x = match r {
+			ok(val) -> { val + 1; },
+			err(msg) -> { 0; },
+		};`,
+		`func f() -> result<int> { return ok(5); }
+		const r = f();
+		match r {
+			ok(val) -> { print(val); },
+			err(msg) -> { print(msg); },
+		};`,
+		`func f() -> result<int> { return ok(5); }
+		const r = f();
+		const x = match r {
+			err(msg) -> { 0; },
+			ok(val) -> { val * 2; },
+		};`,
 	}
 
 	for _, s := range source {
@@ -506,6 +524,30 @@ func TestErrConstructorTypeErrorChecking(t *testing.T) {
 		{
 			input:         "mut r = err(\"some error\")",
 			expectedError: "cannot infer result type for err()",
+		},
+	}
+
+	testTypeErrors(t, tt)
+}
+
+func TestMatchExprTypeErrorChecking(t *testing.T) {
+	tt := []TypeErrorTest{
+		{
+			input: `const x = 5;
+			match x {
+				ok(val) -> { val; },
+				err(msg) -> { 0; },
+			};`,
+			expectedError: "can only match on result type",
+		},
+		{
+			input: `func f() -> result<int> { return ok(5); }
+			const r = f();
+			const x = match r {
+				ok(val) -> { val + 1; },
+				err(msg) -> { "error"; },
+			};`,
+			expectedError: `type mismatch: match arms must result in same type, got int and string`,
 		},
 	}
 

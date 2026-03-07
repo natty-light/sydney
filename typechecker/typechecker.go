@@ -517,6 +517,11 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		}
 
 		return typ
+	case *ast.MatchExpr:
+		resolved := c.checkMatchExpr(expr)
+		expr.ResolvedType = resolved
+		e = expr
+		return resolved
 	}
 	return nil
 }
@@ -1307,4 +1312,32 @@ func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, env *TypeEnv) (string, t
 	}
 
 	return "", nil
+}
+
+func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
+	subType := c.typeOf(expr.Subject, nil)
+	result, ok := subType.(types.ResultType)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("can only match on result type"))
+		return nil
+	}
+
+	okEnv := NewTypeEnv(c.env)
+	okEnv.Set(expr.OkArm.Pattern.Binding.Value, result.T)
+	oldEnv := c.env
+	c.env = okEnv
+	okBranch := c.check(expr.OkArm.Body)
+	c.env = oldEnv
+
+	errEnv := NewTypeEnv(c.env)
+	errEnv.Set(expr.ErrArm.Pattern.Binding.Value, result.T)
+	oldEnv = c.env
+	c.env = errEnv
+	errBranch := c.check(expr.ErrArm.Body)
+	if !c.typesMatch(errBranch, okBranch) {
+		c.errors = append(c.errors, fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", okBranch.Signature(), errBranch.Signature()))
+	}
+	c.env = oldEnv
+
+	return okBranch
 }
