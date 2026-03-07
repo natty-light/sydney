@@ -769,9 +769,16 @@ func (e *Emitter) emitPrefixExpr(expr *ast.PrefixExpr) (string, IrType) {
 
 func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
-		if ident.Value == "print" {
+
+		switch ident.Value {
+		case "print":
 			return e.emitPrintCall(expr)
+		case "ok":
+			return e.emitResultConstructorCall(true, expr)
+		case "err":
+			return e.emitResultConstructorCall(false, expr)
 		}
+
 		sig, exists := e.funcSigs[ident.Value]
 		if exists {
 			return e.emitFunctionCall(expr, sig)
@@ -1951,4 +1958,60 @@ func (e *Emitter) emitPackageInits() {
 		line := fmt.Sprintf("call void @%s__init()", m)
 		e.emit(line)
 	}
+}
+
+func (e *Emitter) emitResultConstructorCall(isOk bool, expr *ast.CallExpr) (string, IrType) {
+	arg, argTyp := e.emitExpr(expr.Arguments[0])
+
+	var typ IrType
+	if !isOk {
+		rt := expr.ResolvedType.(*types.ResultType)
+		argTyp = SydneyTypeToIrType(rt.T)
+	}
+
+	typ = GetResultTaggedUnion(argTyp)
+
+	result := e.tmp()
+	e.emitAlloca(result, typ)
+	okPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", okPtr, typ, result)
+	e.emit(line)
+
+	if isOk {
+		line = fmt.Sprintf("store i1 %d, ptr %s", 1, okPtr)
+		e.emit(line)
+
+		valPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, typ, result)
+		e.emit(line)
+
+		line = fmt.Sprintf("store %s %s, ptr %s", argTyp, arg, valPtr)
+		e.emit(line)
+
+		errPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, typ, result)
+		e.emit(line)
+
+		line = fmt.Sprintf("store ptr null, ptr %s", errPtr)
+		e.emit(line)
+	} else {
+		line = fmt.Sprintf("store i1 %d, ptr %s", 0, okPtr)
+		e.emit(line)
+
+		valPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, typ, result)
+		e.emit(line)
+
+		line = fmt.Sprintf("store %s %s, ptr %s", argTyp, e.getZeroValueFromIrType(argTyp), valPtr)
+		e.emit(line)
+
+		errPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, typ, result)
+		e.emit(line)
+
+		line = fmt.Sprintf("store ptr %s, ptr %s", arg, errPtr)
+		e.emit(line)
+	}
+
+	return result, IrPtr
 }

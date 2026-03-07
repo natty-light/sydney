@@ -877,7 +877,9 @@ func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {
 
 	t := c.typeOf(expr.Arguments[0], nil)
 
-	return &types.ResultType{T: t}
+	resolved := &types.ResultType{T: t}
+	expr.ResolvedType = resolved
+	return resolved
 }
 
 func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) types.Type {
@@ -894,10 +896,14 @@ func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) ty
 		c.errors = append(c.errors, "cannot infer result type for err()")
 		return &types.ResultType{T: types.Unit}
 	}
+	var resolved *types.ResultType
 	if rt, ok := contextType.(types.ResultType); ok {
-		return &types.ResultType{T: rt.T}
+		resolved = &types.ResultType{T: rt.T}
+	} else {
+		resolved = &types.ResultType{T: contextType}
 	}
-	return &types.ResultType{T: contextType}
+	expr.ResolvedType = resolved
+	return resolved
 }
 
 func (c *Checker) registerImplementation(node *ast.InterfaceImplementationStmt) {

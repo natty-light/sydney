@@ -2,6 +2,7 @@ package irgen
 
 import (
 	"bytes"
+	"fmt"
 	"sydney/types"
 )
 
@@ -74,6 +75,12 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrPtr
 	case types.MapType:
 		return IrPtr
+	case types.ResultType:
+		return IrPtr // tagged union ptr
 	}
 	return IrUnit
+}
+
+func GetResultTaggedUnion(t IrType) IrType {
+	return BasicIrType(fmt.Sprintf("{ i1 , %s, ptr }", t))
 }
