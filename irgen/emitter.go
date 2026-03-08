@@ -90,13 +90,24 @@ func New() *Emitter {
 
 func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
 	for _, pkg := range packages {
-		err := e.EmitPackage(pkg)
-		if err != nil {
-			return err
+		e.currentModule = pkg.Name
+		for _, program := range pkg.Programs {
+			e.collect(program)
 		}
+		e.currentModule = ""
 	}
 	program := e.collect(n)
 	e.preamble()
+
+	for _, pkg := range packages {
+		e.currentModule = pkg.Name
+		for _, program := range pkg.Programs {
+			e.functions(program)
+		}
+		e.emitPackageInit(pkg)
+		e.currentModule = ""
+	}
+
 	e.functions(program)
 
 	err := e.mainWrapper(n)
@@ -107,19 +118,6 @@ func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
 	if err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func (e *Emitter) EmitPackage(pkg *loader.Package) error {
-	e.currentModule = pkg.Name
-	e.emittedModules = append(e.emittedModules, pkg.Name)
-	for _, program := range pkg.Programs {
-		e.collect(program)
-		e.functions(program)
-	}
-	e.emitPackageInit(pkg)
-	e.currentModule = ""
 
 	return nil
 }
@@ -279,6 +277,10 @@ func (e *Emitter) collectStrings(n ast.Node) {
 			e.collectStrings(val)
 		}
 	}
+
+}
+
+func (e *Emitter) CollectPackage() {
 
 }
 
@@ -472,6 +474,7 @@ func (e *Emitter) emitJmp(label string) {
 }
 
 func (e *Emitter) beginFunction() funcState {
+	e.inFunc = true
 	state := funcState{
 		locals:    e.locals,
 		tmpIdx:    e.tmpIdx,
@@ -496,6 +499,7 @@ func (e *Emitter) endFunction(state funcState) {
 	e.depth = state.depth
 	e.allocaBuf = state.allocaBuf
 	e.bodyBuf = state.bodyBuf
+	e.inFunc = false
 }
 
 func (e *Emitter) assembleFunction(target *bytes.Buffer) {
@@ -786,38 +790,42 @@ func (e *Emitter) emitPrefixExpr(expr *ast.PrefixExpr) (string, IrType) {
 
 func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
+		name := ident.Value
 
-		switch ident.Value {
+		if e.currentModule != "" {
+			mangled := e.moduleMangle(e.currentModule, name)
+			if fn, ok := runtimeBuiltins[mangled]; ok {
+				return e.emitRuntimeCall(fn, expr)
+			}
+			if sig, ok := e.funcSigs[mangled]; ok {
+				return e.emitFunctionCall(expr, sig)
+			}
+		}
+
+		switch name {
 		case "print":
 			return e.emitPrintCall(expr)
+		case "len":
+			return e.emitLenCall(expr)
 		case "ok":
 			return e.emitResultConstructorCall(true, expr)
 		case "err":
 			return e.emitResultConstructorCall(false, expr)
 		}
 
-		if fn, ok := runtimeBuiltins[ident.Value]; ok {
-			switch fn {
-			case "sydney_file_open":
-				return e.emitFileOpen(expr)
-			case "sydney_file_read":
-				return e.emitFileRead(expr)
-			case "sydney_file_write":
-				return e.emitFileWrite(expr)
-			case "sydney_file_close":
-				return e.emitFileClose(expr)
-			}
+		if fn, ok := runtimeBuiltins[name]; ok {
+			return e.emitRuntimeCall(fn, expr)
 		}
 
-		sig, exists := e.funcSigs[ident.Value]
+		sig, exists := e.funcSigs[name]
 		if exists {
 			return e.emitFunctionCall(expr, sig)
 		}
-		local, exists := e.locals[ident.Value]
+		local, exists := e.locals[name]
 		if exists {
 			return e.emitClosureCall(expr, local.alloca, local.typ)
 		}
-		global, gExists := e.globals[e.global(ident.Value)]
+		global, gExists := e.globals[e.global(name)]
 		if gExists {
 			return e.emitClosureCall(expr, global.name, global.typ)
 		}
@@ -847,7 +855,7 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 
 	// Check for interface method call via mangled name
 	if expr.MangledName != "" {
-		e.emitStructMethodCall(expr)
+		return e.emitStructMethodCall(expr)
 	}
 
 	if sel, ok := expr.Function.(*ast.SelectorExpr); ok {
@@ -945,7 +953,7 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 		e.emit(line)
 		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
 		e.emit(line)
-	} else if e.currentModule != "" {
+	} else if e.currentModule != "" && !e.inFunc {
 		name = e.global(e.moduleMangle(e.currentModule, name))
 		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
 		e.emit(line)
@@ -2126,4 +2134,19 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emit(line)
 
 	return finalVal, rt
+}
+
+func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType) {
+	switch fn {
+	case "sydney_file_open":
+		return e.emitFileOpen(expr)
+	case "sydney_file_read":
+		return e.emitFileRead(expr)
+	case "sydney_file_write":
+		return e.emitFileWrite(expr)
+	case "sydney_file_close":
+		return e.emitFileClose(expr)
+	}
+
+	return "", IrUnit
 }

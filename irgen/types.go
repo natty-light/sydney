@@ -77,6 +77,8 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrPtr
 	case types.ResultType:
 		return IrPtr // tagged union ptr
+	case *types.ResultType:
+		return IrPtr // this is indicative of an issue where type structs are not pointers consistently
 	}
 	return IrUnit
 }

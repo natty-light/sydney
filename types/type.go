@@ -34,6 +34,7 @@ type MapType struct {
 
 type StructType struct {
 	Name                string
+	Module              string
 	Fields              []string
 	Types               []Type
 	Interfaces          []Type
@@ -42,6 +43,7 @@ type StructType struct {
 
 type InterfaceType struct {
 	Name          string
+	Module        string
 	Methods       []string
 	MethodIndices map[string]int
 	Types         []Type
@@ -49,6 +51,11 @@ type InterfaceType struct {
 
 type ResultType struct {
 	T Type
+}
+
+type ScopeType struct {
+	Module string
+	Name   string
 }
 
 const (
@@ -132,4 +139,8 @@ func (r ResultType) Signature() string {
 	out.WriteString(r.T.Signature())
 	out.WriteString(">")
 	return out.String()
+}
+
+func (s ScopeType) Signature() string {
+	return s.Module + ":" + s.Name
 }

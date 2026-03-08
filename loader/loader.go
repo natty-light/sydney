@@ -8,6 +8,7 @@ import (
 	"sydney/ast"
 	"sydney/lexer"
 	"sydney/parser"
+	"sydney/types"
 )
 
 type Loader struct {
@@ -110,30 +111,36 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 	return pkg, nil
 }
 
-func (l *Loader) Load(visited map[string]bool) ([]*Package, error) {
+func (l *Loader) Load(visited map[string]bool) ([]*Package, map[string]map[string]types.Type, error) {
 	packages := make([]*Package, 0)
+	moduleTypes := make(map[string]map[string]types.Type)
 	for _, imp := range l.imports {
 		name := imp.Name.Value
 		if visited[name] {
-			return nil, fmt.Errorf("circular import: %s", name)
+			return nil, nil, fmt.Errorf("circular import: %s", name)
 		}
 		visited[name] = true
 		dir, err := l.resolveDir(name)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		pkg, err := l.LoadPackage(dir)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		pkgTypes := l.ExtractTypes(pkg)
+		moduleTypes[name] = pkgTypes
 
 		for _, program := range pkg.Programs {
 			child := New(program)
 			child.stdLib = l.stdLib
 			child.sourceDir = l.sourceDir
-			childPkgs, err := child.Load(visited)
+			childPkgs, childPkgTypes, err := child.Load(visited)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
+			}
+			for mod, tt := range childPkgTypes {
+				moduleTypes[mod] = tt
 			}
 
 			packages = append(packages, childPkgs...)
@@ -142,7 +149,7 @@ func (l *Loader) Load(visited map[string]bool) ([]*Package, error) {
 		packages = append(packages, pkg)
 	}
 
-	return packages, nil
+	return packages, moduleTypes, nil
 }
 
 func (l *Loader) resolveDir(name string) (string, error) {
@@ -156,4 +163,21 @@ func (l *Loader) resolveDir(name string) (string, error) {
 func (l *Loader) SetPaths(stdlib, sourceDir string) {
 	l.stdLib = stdlib
 	l.sourceDir = sourceDir
+}
+
+func (l *Loader) ExtractTypes(pkg *Package) map[string]types.Type {
+	tt := map[string]types.Type{}
+	for _, prog := range pkg.Programs {
+		for _, stmt := range prog.Stmts {
+			if pub, ok := stmt.(*ast.PubStatement); ok {
+				if sd, ok := pub.Stmt.(*ast.StructDefinitionStmt); ok {
+					tt[sd.Name.Value] = sd.Type
+				}
+				if id, ok := pub.Stmt.(*ast.InterfaceDefinitionStmt); ok {
+					tt[id.Name.Value] = id.Type
+				}
+			}
+		}
+	}
+	return tt
 }
