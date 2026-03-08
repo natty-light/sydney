@@ -349,6 +349,11 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 		}
 
 		c.env.Set(name, node.Type)
+		if name != node.Name.Value {
+			if _, ok := c.isInterfaceMethod(fType.Params[0], node.Name.Value); !ok {
+				c.env.Set(node.Name.Value, node.Type)
+			}
+		}
 	}
 }
 

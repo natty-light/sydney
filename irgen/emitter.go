@@ -1172,6 +1172,10 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	ret := SydneyTypeToIrType(fType.Return)
 
 	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
+	if decl.MangledName != "" {
+		e.funcSigs[decl.Name.Value] = e.funcSigs[name]
+	}
+
 	if decl.IsExtern {
 		return "", IrUnit
 	}
