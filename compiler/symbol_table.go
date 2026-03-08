@@ -105,3 +105,7 @@ func (s *SymbolTable) DefineFunctionName(name string) Symbol {
 	s.store[name] = symbol
 	return symbol
 }
+
+func (s *SymbolTable) DefineAlias(name string, original Symbol) {
+	s.store[name] = original
+}

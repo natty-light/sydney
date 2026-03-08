@@ -100,7 +100,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 				if c.currentModule != "" {
 					name = c.mangleModule(c.currentModule, name)
 				}
-				c.symbolTable.DefineImmutable(name)
+				sym := c.symbolTable.DefineImmutable(name)
+				if fn.MangledName != "" {
+					c.symbolTable.DefineAlias(fn.Name.Value, sym)
+				}
+
 			}
 		}
 
@@ -137,7 +141,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 				if c.currentModule != "" {
 					name = c.mangleModule(c.currentModule, name)
 				}
-				c.symbolTable.DefineImmutable(name)
+				sym := c.symbolTable.DefineImmutable(name)
+				if fn.MangledName != "" {
+					c.symbolTable.DefineAlias(fn.Name.Value, sym)
+				}
 			}
 		}
 
