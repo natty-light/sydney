@@ -3,13 +3,14 @@ package irgen
 import (
 	"fmt"
 	"sydney/ast"
+	"sydney/types"
 )
 
 var runtimeBuiltins = map[string]string{
-	"io__open":  "sydney_file_open",
-	"io__read":  "sydney_file_read",
-	"io__write": "sydney_file_write",
-	"io__close": "sydney_file_close",
+	"io__fopen":  "sydney_file_open",
+	"io__fread":  "sydney_file_read",
+	"io__fwrite": "sydney_file_write",
+	"io__fclose": "sydney_file_close",
 }
 
 func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
@@ -28,6 +29,29 @@ func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
 	}
 	e.emit("call void @sydney_print_newline()")
 	return "", IrUnit
+}
+
+func (e *Emitter) emitLenCall(expr *ast.CallExpr) (string, IrType) {
+	arg, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	sydneyType := expr.Arguments[0].GetResolvedType()
+
+	var line string
+	switch sydneyType.(type) {
+	case types.ArrayType:
+		// length is first field of { i64, ptr }
+		lenPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, arg)
+		e.emit(line)
+		line = fmt.Sprintf("%s = load i64, ptr %s", result, lenPtr)
+	case types.MapType:
+		// no op
+	default:
+		line = fmt.Sprintf("%s = call i64 @sydney_strlen(ptr %s)", result, arg)
+	}
+	e.emit(line)
+
+	return result, IrInt
 }
 
 func (e *Emitter) emitFileOpen(expr *ast.CallExpr) (string, IrType) {

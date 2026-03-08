@@ -67,13 +67,13 @@ func Run(filename string) int {
 	sourceDir := filepath.Dir(filename)
 	stdLib := filepath.Join(sourceDir, "stdlib")
 	ld.SetPaths(stdLib, sourceDir)
-	packages, err := ld.Load(make(map[string]bool))
+	packages, tt, err := ld.Load(make(map[string]bool))
 	if err != nil {
 		fmt.Printf("loader error: %s\n", err)
 		return 1
 	}
 
-	c := typechecker.New(typeEnv)
+	c := typechecker.NewWithModuleTypes(typeEnv, tt)
 	typeErrs := c.Check(program, packages)
 
 	if len(typeErrs) != 0 {
@@ -124,13 +124,13 @@ func Compile(filename string) int {
 	sourceDir := filepath.Dir(filename)
 	stdLib := filepath.Join(sourceDir, "stdlib")
 	ld.SetPaths(stdLib, sourceDir)
-	packages, err := ld.Load(make(map[string]bool))
+	packages, tt, err := ld.Load(make(map[string]bool))
 	if err != nil {
 		fmt.Printf("loader error: %s\n", err)
 		return 1
 	}
 
-	c := typechecker.New(nil)
+	c := typechecker.NewWithModuleTypes(nil, tt)
 	errs := c.Check(program, packages)
 	if len(errs) != 0 {
 		printParserErrors(os.Stdout, errs)

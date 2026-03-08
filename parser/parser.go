@@ -910,7 +910,17 @@ func (p *Parser) parseType() types.Type {
 		return p.parseResultType()
 	case token.Identifier:
 		var t types.Type = nil
-		t, ok := p.definedStructs[p.currToken.Literal]
+		var ok bool
+		if p.peekTokenIs(token.Colon) {
+			module := p.currToken.Literal
+			p.nextToken()
+			p.nextToken()
+			name := p.currToken.Literal
+
+			return types.ScopeType{Module: module, Name: name}
+		}
+
+		t, ok = p.definedStructs[p.currToken.Literal]
 		if !ok {
 			t, ok = p.definedInterfaces[p.currToken.Literal]
 			if !ok {

@@ -11,11 +11,14 @@ import (
 )
 
 type Checker struct {
-	env               *TypeEnv
-	errors            []string
-	currentReturnType types.Type
-	definedStructs    map[string]types.StructType
-	packages          map[string]*TypeEnv
+	env                    *TypeEnv
+	errors                 []string
+	currentReturnType      types.Type
+	currentMatchResultType types.Type
+	definedStructs         map[string]types.StructType
+	packages               map[string]*TypeEnv
+
+	moduleTypes map[string]map[string]types.Type
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -33,8 +36,32 @@ func New(globalEnv *TypeEnv) *Checker {
 		env,
 		errors,
 		nil,
+		nil,
 		make(map[string]types.StructType),
 		make(map[string]*TypeEnv),
+		map[string]map[string]types.Type{},
+	}
+}
+
+func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]types.Type) *Checker {
+	env := globalEnv
+	if env == nil {
+		env = NewTypeEnv(nil)
+	}
+	for _, v := range object.Builtins {
+		env.Set(v.Name, v.BuiltIn.T)
+	}
+
+	errors := make([]string, 0)
+
+	return &Checker{
+		env,
+		errors,
+		nil,
+		nil,
+		make(map[string]types.StructType),
+		make(map[string]*TypeEnv),
+		moduleTypes,
 	}
 }
 
@@ -67,15 +94,149 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 		for _, program := range pkg.Programs {
 			for _, stmt := range program.Stmts {
 				if pub, ok := stmt.(*ast.PubStatement); ok {
-					name, typ := c.extractDeclNameAndType(pub.Stmt, pkgEnv)
+					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
 					exportEnv.Set(name, typ)
 				}
 			}
 		}
+
+		// Export methods on pub structs
+		for key, typ := range pkgEnv.store {
+			if ft, ok := typ.(types.FunctionType); ok {
+				if len(ft.Params) > 0 {
+					if st, ok := ft.Params[0].(types.StructType); ok {
+						if _, exported := exportEnv.store[st.Name]; exported {
+							exportEnv.Set(key, typ)
+						}
+					}
+				}
+			}
+		}
+
 		registry[pkg.Name] = exportEnv
 	}
 	c.packages = registry
+	for _, env := range registry {
+		for name, typ := range env.store {
+			c.env.Set(name, typ)
+		}
+	}
 	return c.errors
+}
+
+func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
+	if c.currentReturnType == nil {
+		c.errors = append(c.errors, "return statement outside of function body")
+	}
+
+	valType := c.typeOf(node.ReturnValue, c.currentReturnType)
+
+	if !c.typesMatch(valType, c.currentReturnType) {
+		c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
+	} else {
+		c.boxIfNecessary(node.ReturnValue, valType, c.currentReturnType)
+	}
+	return valType
+}
+
+func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
+	conditionType := c.typeOf(node.Condition, types.Bool)
+	if conditionType != types.Bool {
+		c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()))
+	}
+	return c.check(node.Body)
+}
+
+func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
+	name := node.Name.Value
+	varType, outer, ok := c.env.Get(name)
+	valType := c.typeOf(node.Value, varType)
+	if node.Type == nil {
+		node.Type = valType
+	}
+
+	if node.Value == nil && !node.Constant {
+		valType = varType
+	}
+
+	if ok && !outer {
+		if !c.typesMatch(valType, varType) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()))
+		}
+	} else {
+		c.boxIfNecessary(node.Value, valType, varType)
+		c.env.Set(name, valType)
+		if node.Constant {
+			c.env.SetConst(name)
+		}
+	}
+
+	return types.Unit
+}
+
+func (c *Checker) checkVarAssignmentStmt(node *ast.VarAssignmentStmt) types.Type {
+	name := node.Identifier.Value
+	varType, _, ok := c.env.Get(name)
+	valType := c.typeOf(node.Value, varType)
+	isConst := c.env.IsConst(name)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", name))
+		return types.Unit
+	}
+	if isConst {
+		c.errors = append(c.errors, fmt.Sprintf("cannot assign to constant variable %s", name))
+	}
+
+	if !c.typesMatch(varType, valType) {
+		c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), name, varType.Signature()))
+	}
+	c.boxIfNecessary(node.Value, valType, varType)
+
+	return types.Unit
+}
+
+func (c *Checker) checkBlockStmt(node *ast.BlockStmt) types.Type {
+	oldEnv := c.env
+	c.env = NewTypeEnv(oldEnv)
+	var lastType types.Type = types.Unit
+	for _, stmt := range node.Stmts {
+		lastType = c.check(stmt)
+	}
+
+	c.env = oldEnv
+
+	return lastType
+}
+
+func (c *Checker) checkSelectorAssignmentStmt(node *ast.SelectorAssignmentStmt) types.Type {
+	str := c.typeOf(node.Left.Left, nil)
+
+	structType, ok := toStruct(str)
+	if !ok {
+		c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value of type %s", str.Signature()))
+		return types.Unit
+	}
+
+	field, ok := node.Left.Value.(*ast.Identifier)
+	if !ok {
+		return types.Unit
+	}
+
+	idx := slices.Index(structType.Fields, field.Value)
+	if idx == -1 {
+		c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", structType.Name, structType.Name, field.Value))
+		return types.Unit
+	}
+
+	valType := c.typeOf(node.Value, structType.Types[idx])
+
+	if !c.typesMatch(valType, structType.Types[idx]) {
+		c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
+	}
+
+	node.Left.ResolvedType = structType
+
+	return types.Unit
 }
 
 func (c *Checker) check(n ast.Node) types.Type {
@@ -106,111 +267,21 @@ func (c *Checker) check(n ast.Node) types.Type {
 	case *ast.ExpressionStmt:
 		return c.typeOf(node.Expr, nil)
 	case *ast.ReturnStmt:
-		if c.currentReturnType == nil {
-			c.errors = append(c.errors, "return statement outside of function body")
-		}
-
-		valType := c.typeOf(node.ReturnValue, c.currentReturnType)
-
-		if !c.typesMatch(valType, c.currentReturnType) {
-			c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
-		} else {
-			c.boxIfNecessary(node.ReturnValue, valType, c.currentReturnType)
-		}
-		return valType
+		return c.checkReturnStmt(node)
 	case *ast.ForStmt:
-		conditionType := c.typeOf(node.Condition, types.Bool)
-		if conditionType != types.Bool {
-			c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()))
-		}
-		return c.check(node.Body)
+		return c.checkForStmt(node)
 	case *ast.VarDeclarationStmt:
-		name := node.Name.Value
-		varType, outer, ok := c.env.Get(name)
-		valType := c.typeOf(node.Value, varType)
-		if node.Type == nil {
-			node.Type = valType
-		}
-
-		if node.Value == nil && !node.Constant {
-			valType = varType
-		}
-
-		if ok && !outer {
-			if !c.typesMatch(valType, varType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()))
-			}
-		} else {
-			c.boxIfNecessary(node.Value, valType, varType)
-			c.env.Set(name, valType)
-			if node.Constant {
-				c.env.SetConst(name)
-			}
-		}
-		n = node
+		return c.checkVarDeclStmt(node)
 	case *ast.VarAssignmentStmt:
-		name := node.Identifier.Value
-		varType, _, ok := c.env.Get(name)
-		valType := c.typeOf(node.Value, varType)
-		isConst := c.env.IsConst(name)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", name))
-			return types.Unit
-		}
-		if isConst {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to constant variable %s", name))
-		}
-
-		if !c.typesMatch(varType, valType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), name, varType.Signature()))
-		}
-		c.boxIfNecessary(node.Value, valType, varType)
-
-		return types.Unit
+		return c.checkVarAssignmentStmt(node)
 	case *ast.IndexAssignmentStmt:
 		return c.checkIndexAssignment(node)
 	case *ast.BlockStmt:
-		oldEnv := c.env
-		c.env = NewTypeEnv(oldEnv)
-		var lastType types.Type = types.Unit
-		for _, stmt := range node.Stmts {
-			lastType = c.check(stmt)
-		}
-
-		c.env = oldEnv
-
-		return lastType
+		return c.checkBlockStmt(node)
 	case *ast.FunctionDeclarationStmt:
-		return c.checkFunctionDeclaration(n, node)
+		return c.checkFunctionDeclaration(node)
 	case *ast.SelectorAssignmentStmt:
-		str := c.typeOf(node.Left.Left, nil)
-
-		structType, ok := toStruct(str)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value of type %s", str.Signature()))
-			return types.Unit
-		}
-
-		field := node.Left.Value.(*ast.Identifier)
-		if !ok {
-			return types.Unit
-		}
-
-		idx := slices.Index(structType.Fields, field.Value)
-		if idx == -1 {
-			c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", structType.Name, structType.Name, field.Value))
-			return types.Unit
-		}
-
-		valType := c.typeOf(node.Value, structType.Types[idx])
-
-		if !c.typesMatch(valType, structType.Types[idx]) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
-		}
-
-		n.(*ast.SelectorAssignmentStmt).Left.ResolvedType = structType
-
-		return types.Unit
+		return c.checkSelectorAssignmentStmt(node)
 	}
 
 	return types.Unit
@@ -232,6 +303,7 @@ func (c *Checker) hoistBase(n ast.Node) {
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
 		if node.Type != nil {
+			node.Type = c.resolveType(node.Type)
 			// Only check the current scope's store to allow shadowing
 			if _, exists := c.env.store[name]; !exists {
 				c.env.Set(name, node.Type)
@@ -254,13 +326,20 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 
 	if node, ok := n.(*ast.FunctionDeclarationStmt); ok {
 		fType := node.Type.(types.FunctionType)
+		resolved := c.resolveFunctionType(fType)
+		node.Type = resolved
+		fType = resolved
 		name := node.Name.Value
 		if len(fType.Params) > 0 {
 			receiverType := fType.Params[0]
+			if st, ok := toStruct(receiverType); ok {
+				name = fmt.Sprintf("%s.%s", st.Name, name)
+				node.MangledName = name
+			}
+
 			if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
 				name = fmt.Sprintf("%s.%s", sn, name)
 				node.MangledName = name
-				n = node
 			}
 		}
 		_, fromOuter, exists := c.env.Get(node.Name.Value)
@@ -674,8 +753,11 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
 		if len(expr.Arguments) > 0 {
 			receiverType := c.typeOf(expr.Arguments[0], nil)
+			if receiverType == nil {
+				c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for %s function call", ident.Value))
+				return nil
+			}
 			mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), ident.Value)
-
 			if t, _, ok := c.env.Get(mangled); ok {
 				return c.validateFunctionCall(expr, t)
 			}
@@ -688,6 +770,18 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 		mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), methodName)
 		if t, _, ok := c.env.Get(mangled); ok {
 			expr.Arguments = append([]ast.Expr{selector.Left}, expr.Arguments...)
+			if st, ok := receiverType.(types.StructType); ok {
+				if st.Module != "" {
+					mangled = st.Module + "__" + mangled
+				} else {
+					for modName, env := range c.packages {
+						if _, ok := env.store[st.Name]; ok {
+							mangled = modName + "__" + mangled
+							break
+						}
+					}
+				}
+			}
 			expr.MangledName = mangled
 			return c.validateFunctionCall(expr, t)
 		}
@@ -897,7 +991,9 @@ func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) ty
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for err()", t.Signature()))
 	}
 
-	if contextType == nil {
+	if contextType == nil && c.currentMatchResultType != nil {
+		contextType = c.currentMatchResultType
+	} else if contextType == nil {
 		c.errors = append(c.errors, "cannot infer result type for err()")
 		return &types.ResultType{T: types.Unit}
 	}
@@ -1227,15 +1323,17 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 	return types.Unit
 }
 
-func (c *Checker) checkFunctionDeclaration(n ast.Node, node *ast.FunctionDeclarationStmt) types.Type {
+func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) types.Type {
 	name := node.Name.Value
 	fTypeRaw := node.Type.(types.FunctionType)
+	resolved := c.resolveFunctionType(fTypeRaw)
+	node.Type = resolved
+	fTypeRaw = resolved
 	if len(fTypeRaw.Params) > 0 {
 		receiverType := fTypeRaw.Params[0]
 		if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
 			name = fmt.Sprintf("%s.%s", sn, name)
 			node.MangledName = name
-			n = node
 		}
 	}
 
@@ -1300,12 +1398,14 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 	return nil
 }
 
-func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, env *TypeEnv) (string, types.Type) {
+func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, pkgName string) (string, types.Type) {
 	switch stmt := stmt.(type) {
 	case *ast.VarDeclarationStmt:
 		return stmt.Name.Value, stmt.Type
 	case *ast.StructDefinitionStmt:
-		return stmt.Name.Value, stmt.Type
+		st := stmt.Type
+		st.Module = pkgName
+		return stmt.Name.Value, st
 	case *ast.FunctionDeclarationStmt:
 		return stmt.Name.Value, stmt.Type
 	case *ast.InterfaceDefinitionStmt:
@@ -1318,28 +1418,88 @@ func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, env *TypeEnv) (string, t
 func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	subType := c.typeOf(expr.Subject, nil)
 	result, ok := subType.(types.ResultType)
-	expr.SubjectType = result.T
 	if !ok {
 		c.errors = append(c.errors, fmt.Sprintf("can only match on result type"))
 		return nil
 	}
+	expr.SubjectType = result.T
 
 	okEnv := NewTypeEnv(c.env)
 	okEnv.Set(expr.OkArm.Pattern.Binding.Value, result.T)
 	oldEnv := c.env
 	c.env = okEnv
 	okBranch := c.check(expr.OkArm.Body)
+	if okBranch == nil {
+		c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for ok branch"))
+		return nil
+	}
 	c.env = oldEnv
 
 	errEnv := NewTypeEnv(c.env)
 	errEnv.Set(expr.ErrArm.Pattern.Binding.Value, types.String)
 	oldEnv = c.env
 	c.env = errEnv
+	oldMatchResultType := c.currentMatchResultType
+	if rt, ok := okBranch.(*types.ResultType); ok {
+		c.currentMatchResultType = rt.T
+	} else {
+		c.currentMatchResultType = okBranch
+	}
 	errBranch := c.check(expr.ErrArm.Body)
+	if errBranch == nil {
+		c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for err branch"))
+		return nil
+	}
 	if !c.typesMatch(errBranch, okBranch) {
 		c.errors = append(c.errors, fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", okBranch.Signature(), errBranch.Signature()))
 	}
 	c.env = oldEnv
+	c.currentMatchResultType = oldMatchResultType
 
 	return okBranch
+}
+
+func (c *Checker) resolveType(t types.Type) types.Type {
+	switch t := t.(type) {
+	case types.ScopeType:
+		tt, ok := c.moduleTypes[t.Module][t.Name]
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("module %s type %s is not declared", t.Module, t.Name))
+			return nil
+		}
+		return tt
+	case types.MapType:
+		kt := c.resolveType(t.KeyType)
+		vt := c.resolveType(t.ValueType)
+
+		return types.MapType{KeyType: kt, ValueType: vt}
+	case types.ArrayType:
+		et := c.resolveType(t.ElemType)
+
+		return types.ArrayType{ElemType: et}
+	case types.StructType:
+		for i, typ := range t.Types {
+			t.Types[i] = c.resolveType(typ)
+		}
+		return t
+	case types.InterfaceType:
+		for i, typ := range t.Types {
+			t.Types[i] = c.resolveType(typ)
+		}
+		return t
+	case types.ResultType:
+		rt := c.resolveType(t.T)
+
+		return types.ResultType{T: rt}
+	}
+
+	return t
+}
+
+func (c *Checker) resolveFunctionType(ft types.FunctionType) types.FunctionType {
+	for i, p := range ft.Params {
+		ft.Params[i] = c.resolveType(p)
+	}
+	ft.Return = c.resolveType(ft.Return)
+	return ft
 }
