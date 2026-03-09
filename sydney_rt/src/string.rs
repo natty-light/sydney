@@ -38,3 +38,12 @@ pub extern "C" fn sydney_byte_to_string(b: u8) -> *mut u8 {
     std::mem::forget(s);
     ptr
 }
+
+#[no_mangle]
+pub extern "C" fn sydney_str_equals(a: *const u8, b: *const u8) -> bool {
+    unsafe {
+        let a = CStr::from_ptr(a as *const i8);
+        let b = CStr::from_ptr(b as *const i8);
+        a == b
+    }
+}

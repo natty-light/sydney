@@ -72,3 +72,121 @@ pub func from_bytes(array<byte> bytes) -> string {
 
     return r;
 }
+
+pub func contains(string str, byte chr) -> bool {
+    mut found = false
+    mut i = 0;
+    for (i < len(str)) {
+        if (str[i] == chr) {
+            found = true
+        }
+        i = i + 1;
+    }
+
+    return found;
+}
+
+pub func index_of(string str, byte chr) -> int {
+    mut i = 0;
+    for (i < len(str)) {
+        if (str[i] == chr) {
+            return i
+        }
+        i = i + 1;
+    }
+
+    return -1;
+}
+
+pub func contains_substr(string str, string substr) -> bool {
+    const substr_len = len(substr);
+    mut window_start = 0;
+    mut window_end = window_start + substr_len;
+
+    mut i = 0;
+    for (i < len(str) - substr_len + 1) {
+        mut cmp_str = ""
+        mut j = 0;
+        for (j < substr_len) {
+            cmp_str = cmp_str + char(str[j + i]);
+            j = j + 1;
+        }
+
+        if (substr == cmp_str) {
+            return true
+        }
+
+        i = i + 1;
+    }
+
+    return false;
+}
+
+pub func substring(string str, int start, int end) -> result<string> {
+    mut r = "";
+    mut i = start;
+
+    if (start < 0) {
+        return err("start out of bounds");
+    }
+
+    if (end > len(str)) {
+        return err("end out of bounds");
+    }
+
+    for (i < end) {
+        r = r + char(str[i]);
+        i = i + 1;
+    }
+
+    return ok(r);
+}
+
+pub func reverse(string str) -> string {
+    mut r = ""
+    mut i = len(str);
+
+    for (i >= 0) {
+        r = r + char(str[i]);
+        i = i - 1;
+    }
+
+    return r;
+}
+
+pub func to_upper(string str) -> string {
+    mut r = "";
+    mut i = 0;
+    for (i < len(str)) {
+        const chr = str[i];
+        if (chr >= 'a' && chr <= 'z') {
+            const uppered = byte(int(chr) - 32);
+            r = r + char(uppered);
+        } else {
+            r = r + char(chr);
+        }
+        i = i + 1;
+    }
+
+    return r;
+}
+pub func trim(string str) -> string {
+    mut r = "";
+    mut i = 0;
+    mut hit = false
+    for (i < len(str)) {
+        const chr = str[i];
+        hit = chr != ' ' && chr != '\t' && chr != '\r' && chr != '\n';
+        if (hit) {
+            const rr = match substring(str, i, len(str)) {
+                ok(v) -> { v; },
+                err(v) -> { "" },
+            }
+
+            return rr;
+        }
+        i = i + 1;
+    }
+
+    return str
+}
