@@ -309,6 +309,7 @@ func (e *Emitter) preamble() {
 	e.emit("declare i64 @sydney_file_write(i64, ptr)")
 	e.emit("declare i64 @sydney_file_close(i64)")
 	e.emit("declare ptr @sydney_get_last_error()")
+	e.emit("declare ptr @sydney_byte_to_string(i8)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -819,6 +820,12 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitResultConstructorCall(true, expr)
 		case "err":
 			return e.emitResultConstructorCall(false, expr)
+		case "int":
+			return e.emitIntConvCall(expr)
+		case "byte":
+			return e.emitByteConvCall(expr)
+		case "char":
+			return e.emitCharConvCall(expr)
 		}
 
 		if fn, ok := runtimeBuiltins[name]; ok {

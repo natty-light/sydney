@@ -160,3 +160,27 @@ func (e *Emitter) wrapIntoResult(val string, typ IrType) (string, IrType) {
 
 	return resultAddr, IrPtr
 }
+
+func (e *Emitter) emitIntConvCall(expr *ast.CallExpr) (string, IrType) {
+	result := e.tmp()
+	arg, _ := e.emitExpr(expr.Arguments[0])
+	line := fmt.Sprintf("%s = zext i8 %s to i64", result, arg)
+	e.emit(line)
+	return result, IrInt
+}
+
+func (e *Emitter) emitByteConvCall(expr *ast.CallExpr) (string, IrType) {
+	result := e.tmp()
+	arg, _ := e.emitExpr(expr.Arguments[0])
+	line := fmt.Sprintf("%s = trunc i64 %s to i8", result, arg)
+	e.emit(line)
+	return result, IrInt8
+}
+
+func (e *Emitter) emitCharConvCall(expr *ast.CallExpr) (string, IrType) {
+	result := e.tmp()
+	arg, _ := e.emitExpr(expr.Arguments[0])
+	line := fmt.Sprintf("%s = call ptr @sydney_byte_to_string(i8 %s)", result, arg)
+	e.emit(line)
+	return result, IrPtr
+}
