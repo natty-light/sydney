@@ -21,6 +21,7 @@ const (
 	dot         = '.'
 	quote       = '"'
 	singleQuote = '\''
+	backSlash   = '\\'
 
 	plus   = '+'
 	star   = '*'
@@ -81,15 +82,36 @@ func (l *Lexer) readNumber() (string, bool) {
 }
 
 func (l *Lexer) readString() string {
-	position := l.position + 1 // advance past ""
-
+	var result []byte
 	for {
 		l.readChar()
 		if l.char == quote || l.char == 0 {
 			break
 		}
+
+		if l.char == '\\' {
+			l.readChar()
+			switch l.char {
+			case 'n':
+				result = append(result, '\n')
+			case 't':
+				result = append(result, '\t')
+			case 'r':
+				result = append(result, '\r')
+			case '\\':
+				result = append(result, '\\')
+			case '"':
+				result = append(result, '"')
+			case '0':
+				result = append(result, 0)
+			default:
+				result = append(result, '\\', l.char)
+			}
+		} else {
+			result = append(result, l.char)
+		}
 	}
-	return l.source[position:l.position]
+	return string(result)
 }
 
 func (l *Lexer) skipWhitespace() {
@@ -138,7 +160,27 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Literal = l.readString()
 	case singleQuote:
 		l.readChar()
-		tok = token.MakeToken(token.Byte, l.char)
+		if l.char == backSlash {
+			l.readChar() // advance past \\
+			switch l.char {
+			case 'n':
+				tok = token.MakeToken(token.Byte, '\n')
+			case 't':
+				tok = token.MakeToken(token.Byte, '\t')
+			case 'r':
+				tok = token.MakeToken(token.Byte, '\r')
+			case backSlash:
+				tok = token.MakeToken(token.Byte, l.char)
+			case '\'':
+				tok = token.MakeToken(token.Byte, '\'')
+			case '0':
+				tok = token.MakeToken(token.Byte, '0')
+			default:
+				tok = token.MakeToken(token.Byte, l.char)
+			}
+		} else {
+			tok = token.MakeToken(token.Byte, l.char)
+		}
 		l.readChar()
 	// Symbols
 	case eqSym:

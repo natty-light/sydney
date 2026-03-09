@@ -311,6 +311,7 @@ func (e *Emitter) preamble() {
 	e.emit("declare ptr @sydney_get_last_error()")
 	e.emit("declare ptr @sydney_byte_to_string(i8)")
 	e.emit("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")
+	e.emit("declare i1 @sydney_str_equals(ptr, ptr)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -702,6 +703,12 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 		}
 	case "==":
 		//%t0 = icmp eq i64 %left, %right    ; ==
+		if expr.Left.GetResolvedType() == types.String {
+			line := fmt.Sprintf("%s = call i1 @sydney_str_equals(ptr %s, ptr %s)", result, left, right)
+			e.emit(line)
+			return result, IrBool
+		}
+
 		if lType == IrFloat {
 			cmpType = fcmp
 			op = "oeq"
@@ -712,6 +719,15 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 		retType = IrBool
 	case "!=":
 		//%t0 = icmp ne i64 %left, %right    ; !=
+		if expr.Left.GetResolvedType() == types.String {
+			eq := e.tmp()
+			line := fmt.Sprintf("%s = call i1 @sydney_str_equals(ptr %s, ptr %s)", eq, left, right)
+			e.emit(line)
+			line = fmt.Sprintf("%s = xor i1 %s, 1", result, eq)
+			e.emit(line)
+			return result, IrBool
+		}
+
 		if lType == IrFloat {
 			cmpType = fcmp
 			op = "one"
