@@ -112,6 +112,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.LeftSquareBracket, p.parseIndexExpr)
 	p.registerInfix(token.Dot, p.parseSelectorExpr)
 	p.registerInfix(token.Colon, p.parseScopeAccessExpr)
+	p.registerPrefix(token.IntType, p.parseTypeCast)
+	p.registerPrefix(token.ByteType, p.parseTypeCast)
 
 	p.definedStructs = make(map[string]types.Type)
 	p.definedInterfaces = make(map[string]types.Type)
@@ -1354,6 +1356,10 @@ func (p *Parser) parseMatchArm(a *ast.MatchArm, isOk bool) error {
 	}
 
 	return nil
+}
+
+func (p *Parser) parseTypeCast() ast.Expr {
+	return &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 }
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {

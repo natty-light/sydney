@@ -421,7 +421,7 @@ func (r *Result) Inspect() string {
 }
 
 func (b *Byte) Inspect() string {
-	return fmt.Sprintf("%d", b.Value)
+	return fmt.Sprintf("%s", string(b.Value))
 }
 
 // HashKey functions
