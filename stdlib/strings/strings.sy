@@ -1,43 +1,36 @@
 module "strings"
 
 pub func repeat(string str, int count) -> string {
-    mut i = 0;
     mut string r = ""
-    for (i < count) {
+    for (mut i = 0; i < count; i = i + 1) {
         r = r + str;
-        i = i + 1;
     }
 
     return r;
 }
 
 pub func join(array<string> strs) -> string {
-    mut i = 0;
     mut r = "";
-    for (i < len(strs)) {
+    for (mut i = 0; i < len(strs); i = i + 1) {
         r = r + strs[i];
-        i = i + 1;
     }
 
     return r;
 }
 
 pub func join_with_delim(array<string> strs, string delim) -> string {
-    mut i = 0;
+
     mut r = "";
-    for (i < len(strs)) {
+    for (mut i = 0; i < len(strs); i = i + 1) {
         r = r + strs[i] + delim;
-        i = i + 1;
     }
     return r + strs[len(strs) - 1];
 }
 
 pub func char_count(string str, byte chr) -> int {
-    mut int i = 0;
     mut int count = 0;
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         count = count + if (str[i] == chr) { 1; } else { 0; }
-        i = i + 1;
     }
 
     return count;
@@ -52,11 +45,9 @@ pub func char_at(string str, int idx) -> result<string> {
 
 pub func to_bytes(string str) -> array<byte> {
     mut array<byte> r = [];
-    mut i = 0;
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         const chr = str[i];
         r = append(r, chr);
-        i = i + 1;
     }
 
     return r;
@@ -64,10 +55,8 @@ pub func to_bytes(string str) -> array<byte> {
 
 pub func from_bytes(array<byte> bytes) -> string {
     mut r = "";
-    mut i = 0;
-    for (i < len(bytes)) {
+    for (mut i = 0; i < len(bytes); i = i + 1) {
         r = r + char(bytes[i]);
-        i = i + 1;
     }
 
     return r;
@@ -75,24 +64,20 @@ pub func from_bytes(array<byte> bytes) -> string {
 
 pub func contains(string str, byte chr) -> bool {
     mut found = false
-    mut i = 0;
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         if (str[i] == chr) {
             found = true
         }
-        i = i + 1;
     }
 
     return found;
 }
 
 pub func index_of(string str, byte chr) -> int {
-    mut i = 0;
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         if (str[i] == chr) {
             return i
         }
-        i = i + 1;
     }
 
     return -1;
@@ -103,20 +88,15 @@ pub func contains_substr(string str, string substr) -> bool {
     mut window_start = 0;
     mut window_end = window_start + substr_len;
 
-    mut i = 0;
-    for (i < len(str) - substr_len + 1) {
+    for (mut i = 0; i < len(str) - substr_len + 1; i = i + 1) {
         mut cmp_str = ""
-        mut j = 0;
-        for (j < substr_len) {
+        for (mut j = 0; j < substr_len; j = j + 1) {
             cmp_str = cmp_str + char(str[j + i]);
-            j = j + 1;
         }
 
         if (substr == cmp_str) {
             return true
         }
-
-        i = i + 1;
     }
 
     return false;
@@ -124,7 +104,6 @@ pub func contains_substr(string str, string substr) -> bool {
 
 pub func substring(string str, int start, int end) -> result<string> {
     mut r = "";
-    mut i = start;
 
     if (start < 0) {
         return err("start out of bounds");
@@ -134,9 +113,8 @@ pub func substring(string str, int start, int end) -> result<string> {
         return err("end out of bounds");
     }
 
-    for (i < end) {
+    for (mut i = start; i < end; i = i + 1) {
         r = r + char(str[i]);
-        i = i + 1;
     }
 
     return ok(r);
@@ -144,11 +122,9 @@ pub func substring(string str, int start, int end) -> result<string> {
 
 pub func reverse(string str) -> string {
     mut r = ""
-    mut i = len(str);
 
-    for (i >= 0) {
+    for (mut i = len(str); i >= 0; i = i - 1) {
         r = r + char(str[i]);
-        i = i - 1;
     }
 
     return r;
@@ -156,8 +132,7 @@ pub func reverse(string str) -> string {
 
 pub func to_upper(string str) -> string {
     mut r = "";
-    mut i = 0;
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         const chr = str[i];
         if (chr >= 'a' && chr <= 'z') {
             const uppered = byte(int(chr) - 32);
@@ -165,16 +140,14 @@ pub func to_upper(string str) -> string {
         } else {
             r = r + char(chr);
         }
-        i = i + 1;
     }
 
     return r;
 }
 pub func trim(string str) -> string {
     mut r = "";
-    mut i = 0;
     mut hit = false
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         const chr = str[i];
         hit = chr != ' ' && chr != '\t' && chr != '\r' && chr != '\n';
         if (hit) {
@@ -185,7 +158,6 @@ pub func trim(string str) -> string {
 
             return rr;
         }
-        i = i + 1;
     }
 
     return str
@@ -194,8 +166,7 @@ pub func trim(string str) -> string {
 pub func split(string str, byte delim) -> array<string> {
     mut array<string> r = [];
     mut rr = "";
-    mut i = 0;
-    for (i < len(str)) {
+    for (mut i = 0; i < len(str); i = i + 1) {
         const chr = str[i];
         if (chr != delim) {
             rr = rr + char(chr);
@@ -203,8 +174,32 @@ pub func split(string str, byte delim) -> array<string> {
             r = append(r, rr);
             rr = ""
         }
-        i = i + 1;
     }
 
     return append(r, rr);
+}
+
+pub func starts_with(string str, string prefix) -> bool {
+    const prefix_len = len(prefix);
+    const substr = substring(str, 0, prefix_len);
+    const r = match substr {
+        ok(s) -> { prefix == s; },
+        err(msg) -> { false },
+    }
+
+    return r;
+}
+
+pub func ends_with(string str, string suffix) -> bool {
+    const suffix_len = len(suffix);
+    const str_len = len(str);
+    const start_idx = str_len - suffix_len;
+    const substr = substring(str, start_idx, str_len);
+
+    const r = match substr {
+        ok(s) -> { suffix == s; },
+        err(msg) -> { false },
+    }
+
+    return r;
 }
