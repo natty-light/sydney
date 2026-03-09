@@ -25,7 +25,7 @@ pub func join(array<string> strs) -> string {
 pub func join_with_delim(array<string> strs, string delim) -> string {
     mut i = 0;
     mut r = "";
-    for (i < len(strs) - 1) {
+    for (i < len(strs)) {
         r = r + strs[i] + delim;
         i = i + 1;
     }
@@ -48,4 +48,16 @@ pub func char_at(string str, int idx) -> result<string> {
         return err("index out of bounds")
     }
     return ok(char(str[idx]));
+}
+
+pub func to_bytes(string str) -> array<byte> {
+    mut array<byte> r = [];
+    mut i = 0;
+    for (i < len(str)) {
+        const chr = str[i];
+        r = append(r, chr);
+        i = i + 1;
+    }
+
+    return r;
 }
