@@ -12,3 +12,5 @@ CLAUDE.md
 *.ll
 /module
 /.error-handling
+sydney
+!stdlib/
