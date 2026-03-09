@@ -565,6 +565,78 @@ func TestMatchExprTypeErrorChecking(t *testing.T) {
 	testTypeErrors(t, tt)
 }
 
+func TestBreakContinueOutsideLoop(t *testing.T) {
+	tests := []TypeErrorTest{
+		{"break;", "break statement cannot be outside of loop"},
+		{"continue;", "continue statement cannot be outside of loop"},
+		{"func foo() -> int { break; }", "break statement cannot be outside of loop"},
+		{"func foo() -> int { continue; }", "continue statement cannot be outside of loop"},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestBreakContinueInsideLoop(t *testing.T) {
+	sources := []string{
+		"for (mut i = 0; i < 10; i = i + 1) { break; }",
+		"for (mut i = 0; i < 10; i = i + 1) { continue; }",
+		"for (mut i = 0; i < 10; i = i + 1) { if (i == 5) { break; } }",
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestThreePartForLoopScoping(t *testing.T) {
+	sources := []string{
+		`for (mut i = 0; i < 10; i = i + 1) { print(i); }
+		 for (mut i = 0; i < 5; i = i + 1) { print(i); }`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestConversionBuiltinErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{`const x = int("hello");`, `invalid argument type string for int(), expected byte`},
+		{`const x = byte("hello");`, `invalid argument type string for byte(), expected int`},
+		{`const x = char(5);`, `invalid argument type int for char(), expected byte`},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestConversionBuiltins(t *testing.T) {
+	sources := []string{
+		`const x = int('a');`,
+		`const x = byte(65);`,
+		`const x = char(byte(65));`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 	for _, tt := range tests {
 		l := lexer.New(tt.input)
