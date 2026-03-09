@@ -10,6 +10,7 @@ import (
 var declarations = `declare void @sydney_print_int(i64)
 declare void @sydney_print_float(double)
 declare void @sydney_print_string(ptr)
+declare void @sydney_print_byte(i8)
 declare ptr @sydney_strcat(ptr, ptr)
 declare void @sydney_print_newline()
 declare void @sydney_gc_init()
