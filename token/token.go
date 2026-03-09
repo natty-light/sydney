@@ -9,6 +9,7 @@ const (
 	Integer    TokenType = "Number"
 	String     TokenType = "String"
 	Float      TokenType = "Float"
+	Byte       TokenType = "Byte"
 
 	// Keywords
 	Mut            TokenType = "Mut"

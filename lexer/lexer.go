@@ -15,11 +15,12 @@ const (
 	leftCurlyBracket   = '{'
 	rightCurlyBracket  = '}'
 
-	semi  = ';'
-	comma = ','
-	colon = ':'
-	dot   = '.'
-	quote = '"'
+	semi        = ';'
+	comma       = ','
+	colon       = ':'
+	dot         = '.'
+	quote       = '"'
+	singleQuote = '\''
 
 	plus   = '+'
 	star   = '*'
@@ -135,6 +136,10 @@ func (l *Lexer) NextToken() token.Token {
 	case quote:
 		tok.Type = token.String
 		tok.Literal = l.readString()
+	case singleQuote:
+		l.readChar()
+		tok = token.MakeToken(token.Byte, l.char)
+		l.readChar()
 	// Symbols
 	case eqSym:
 		if l.peekChar() == eqSym {
