@@ -156,7 +156,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
-		if c.currentModule != "" {
+		if c.currentModule != "" && c.scopeIndex == 0 {
 			name = c.mangleModule(c.currentModule, name)
 		}
 		sym, fromOuter, ok := c.symbolTable.Resolve(name)
@@ -471,6 +471,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpHash, len(node.Pairs)*2)
 	case *ast.FunctionDeclarationStmt:
+		if node.IsExtern {
+			return nil
+		}
+
 		name := node.Name.Value
 		if node.MangledName != "" {
 			name = node.MangledName

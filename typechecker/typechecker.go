@@ -343,7 +343,7 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 			}
 		}
 		_, fromOuter, exists := c.env.Get(node.Name.Value)
-		if exists && !fromOuter {
+		if exists && !fromOuter && !node.IsExtern {
 			c.errors = append(c.errors, fmt.Sprintf("function %s already declared", node.Name.Value))
 			return
 		}
@@ -1090,6 +1090,7 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 	}
 	if len(expr.Arguments) != len(fnType.Params) || fnType.Variadic {
 		c.errors = append(c.errors, fmt.Sprintf("wrong number of arguments for function %s, wanted %d, got %d", expr.Function.String(), len(expr.Arguments), len(fnType.Params)))
+		return nil
 	}
 
 	for i, arg := range expr.Arguments {
