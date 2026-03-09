@@ -310,6 +310,7 @@ func (e *Emitter) preamble() {
 	e.emit("declare i64 @sydney_file_close(i64)")
 	e.emit("declare ptr @sydney_get_last_error()")
 	e.emit("declare ptr @sydney_byte_to_string(i8)")
+	e.emit("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -826,6 +827,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitByteConvCall(expr)
 		case "char":
 			return e.emitCharConvCall(expr)
+		case "append":
+			return e.emitAppendCall(expr)
 		}
 
 		if fn, ok := runtimeBuiltins[name]; ok {
