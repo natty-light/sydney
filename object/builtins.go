@@ -314,6 +314,36 @@ var Builtins = []struct {
 			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
 		},
 	},
+	{
+		"int",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				b := args[0].(*Byte).Value
+				return &Integer{Value: int64(b)}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Byte}, Return: types.Int},
+		},
+	},
+	{
+		"byte",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				i := args[0].(*Integer).Value
+				return &Byte{Value: byte(i)}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.Byte},
+		},
+	},
+	{
+		"char",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				b := args[0].(*Byte).Value
+				return &String{Value: string(b)}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Byte}, Return: types.String},
+		},
+	},
 }
 
 var BuiltInMap = map[string]bool{
