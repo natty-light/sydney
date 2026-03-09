@@ -32,7 +32,8 @@ declare i64 @sydney_file_write(i64, ptr)
 declare i64 @sydney_file_close(i64)
 declare ptr @sydney_get_last_error()
 declare ptr @sydney_byte_to_string(i8)
-declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)`
+declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
+declare i1 @sydney_str_equals(ptr, ptr)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"

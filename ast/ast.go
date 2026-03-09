@@ -104,7 +104,9 @@ type (
 
 	ForStmt struct {
 		Token     token.Token
+		Init      Stmt
 		Condition Expr
+		Post      Stmt
 		Body      *BlockStmt
 	}
 

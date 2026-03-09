@@ -786,13 +786,63 @@ func (p *Parser) parseForStmt() *ast.ForStmt {
 	if !p.expectPeek(token.LeftParen) {
 		return nil
 	}
-	p.nextToken() // advance past for
+	p.nextToken() // advance past (
+	if p.currTokenIs(token.Mut) || p.currTokenIs(token.Const) {
+		forStmt.Init = p.parseVarDeclarationStmt()
+		p.nextToken()
+		forStmt.Condition = p.parseExpression(LOWEST)
+		if !p.expectPeek(token.Semicolon) {
+			p.errors = append(p.errors, fmt.Sprintf("expected ; after condition, got %s", p.currToken.Literal))
+			return nil
+		}
 
-	forStmt.Condition = p.parseExpression(LOWEST)
+		p.nextToken()
+		forStmt.Post = p.parseExpressionOrAssignmentStmt()
+		if !p.expectPeek(token.RightParen) {
+			p.errors = append(p.errors, fmt.Sprintf("expected ) after post, got %s", p.currToken.Literal))
+			return nil
+		}
+	} else {
+		expr := p.parseExpression(LOWEST)
 
-	if !p.expectPeek(token.RightParen) {
-		return nil
+		if p.peekTokenIs(token.Assign) {
+			p.nextToken()
+			assignTok := p.currToken
+			p.nextToken()
+			value := p.parseExpression(LOWEST)
+			if ident, ok := expr.(*ast.Identifier); ok {
+				forStmt.Init = &ast.VarAssignmentStmt{
+					Identifier: ident,
+					Value:      value,
+					Token:      assignTok,
+				}
+			}
+
+			if !p.expectPeek(token.Semicolon) {
+				p.errors = append(p.errors, fmt.Sprintf("expected ; after init, got %s", p.currToken.Literal))
+				return nil
+			}
+			p.nextToken()
+			forStmt.Condition = p.parseExpression(LOWEST)
+			if !p.expectPeek(token.Semicolon) {
+				p.errors = append(p.errors, fmt.Sprintf("expected ; after condition, got %s", p.currToken.Literal))
+				return nil
+			}
+			p.nextToken()
+			forStmt.Post = p.parseExpressionOrAssignmentStmt()
+			if !p.expectPeek(token.RightParen) {
+				p.errors = append(p.errors, fmt.Sprintf("expected ) after post, got %s", p.currToken.Literal))
+				return nil
+			}
+		} else {
+			forStmt.Condition = expr
+			if !p.expectPeek(token.RightParen) {
+				p.errors = append(p.errors, fmt.Sprintf("expected ) after condition, got %s", p.currToken.Literal))
+				return nil
+			}
+		}
 	}
+
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		return nil
 	}
