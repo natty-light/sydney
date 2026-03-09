@@ -386,6 +386,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		afterAlternativePos := len(c.currentInstructions())
+		if node.GetResolvedType() == types.Unit {
+			c.emit(code.OpNull)
+		}
 		c.changeOperand(jumpPos, afterAlternativePos)
 	case *ast.IndexExpr:
 		err := c.Compile(node.Left)

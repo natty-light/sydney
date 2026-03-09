@@ -1260,6 +1260,10 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 	}
 
 	subject := p.parseIdentifier()
+	if p.peekTokenIs(token.Colon) {
+		p.nextToken()
+		subject = p.parseScopeAccessExpr(subject)
+	}
 	if p.peekTokenIs(token.LeftParen) {
 		p.nextToken()
 		subject = p.parseCallExpr(subject)
