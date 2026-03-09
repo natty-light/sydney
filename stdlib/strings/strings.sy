@@ -144,23 +144,30 @@ pub func to_upper(string str) -> string {
 
     return r;
 }
+
 pub func trim(string str) -> string {
-    mut r = "";
-    mut hit = false
+    mut start = 0;
     for (mut i = 0; i < len(str); i = i + 1) {
         const chr = str[i];
-        hit = chr != ' ' && chr != '\t' && chr != '\r' && chr != '\n';
-        if (hit) {
-            const rr = match substring(str, i, len(str)) {
-                ok(v) -> { v; },
-                err(v) -> { "" },
-            }
-
-            return rr;
+        if (chr != '\n' && chr != '\t' && chr != '\r' && chr != ' ') {
+            start = i;
+            break;
         }
     }
 
-    return str
+    mut end = len(str) - 1;
+    for (mut i = end; i >= 0; i = i - 1) {
+        const chr = str[i];
+        if (chr != '\n' && chr != '\t' && chr != '\r' && chr != ' ') {
+            end = i;
+            break;
+        }
+    }
+
+    return match substring(str, start, end + 1) {
+        ok(v) -> { v; },
+        err(v) -> { ""; },
+    }
 }
 
 pub func split(string str, byte delim) -> array<string> {
