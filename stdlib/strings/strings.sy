@@ -22,9 +22,12 @@ pub func join_with_delim(array<string> strs, string delim) -> string {
 
     mut r = "";
     for (mut i = 0; i < len(strs); i = i + 1) {
-        r = r + strs[i] + delim;
+        r = r + strs[i]
+        if (i != len(strs) - 1) {
+            r = r + delim
+        }
     }
-    return r + strs[len(strs) - 1];
+    return r
 }
 
 pub func char_count(string str, byte chr) -> int {
