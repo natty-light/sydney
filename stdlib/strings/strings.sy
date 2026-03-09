@@ -61,3 +61,14 @@ pub func to_bytes(string str) -> array<byte> {
 
     return r;
 }
+
+pub func from_bytes(array<byte> bytes) -> string {
+    mut r = "";
+    mut i = 0;
+    for (i < len(bytes)) {
+        r = r + char(bytes[i]);
+        i = i + 1;
+    }
+
+    return r;
+}
