@@ -1275,7 +1275,11 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 
 	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
 	if decl.MangledName != "" {
-		e.funcSigs[decl.Name.Value] = e.funcSigs[name]
+		e.funcSigs[decl.Name.Value] = e.funcSigs[name] // declare mangled
+		if e.currentModule != "" {
+			e.funcSigs[e.moduleMangle(e.currentModule, decl.Name.Value)] = e.funcSigs[name] // declare non mangled module export
+		}
+
 	}
 
 	if decl.IsExtern {

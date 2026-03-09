@@ -248,6 +248,7 @@ type (
 		Name   string
 		Fields []string
 		Values []Expr
+		Module string
 		resolvable
 		castable
 	}

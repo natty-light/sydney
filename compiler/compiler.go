@@ -115,7 +115,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 				}
 				sym := c.symbolTable.DefineImmutable(name)
 				if fn.MangledName != "" {
+					// register as struct method
 					c.symbolTable.DefineAlias(fn.Name.Value, sym)
+					if c.currentModule != "" {
+						// register as exported function as well
+						c.symbolTable.DefineAlias(c.mangleModule(c.currentModule, fn.Name.Value), sym)
+					}
 				}
 
 			}

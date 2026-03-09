@@ -54,8 +54,9 @@ var precedences = map[token.TokenType]Precedence{
 type Parser struct {
 	lexer *lexer.Lexer
 
-	currToken token.Token
-	peekToken token.Token
+	currToken     token.Token
+	peekToken     token.Token
+	peekPeekToken token.Token
 
 	errors []string
 
@@ -73,6 +74,7 @@ func New(l *lexer.Lexer) *Parser {
 	// peekToken and currToken are initialized to the zero value of token.Token, so we advance twice
 	p.nextToken() // set peek
 	p.nextToken() // set curr and peek
+	p.nextToken() // set curr and peek and peek peek
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 
@@ -140,7 +142,8 @@ func (p *Parser) noPrefixParseFnError(t token.TokenType) {
 // advances current and peek by one
 func (p *Parser) nextToken() {
 	p.currToken = p.peekToken
-	p.peekToken = p.lexer.NextToken()
+	p.peekToken = p.peekPeekToken
+	p.peekPeekToken = p.lexer.NextToken()
 }
 
 // Checks whether current token matches given type
@@ -151,6 +154,10 @@ func (p *Parser) currTokenIs(t token.TokenType) bool {
 // checks whether peek token matches given type
 func (p *Parser) peekTokenIs(t token.TokenType) bool {
 	return p.peekToken.Type == t
+}
+
+func (p *Parser) peekPeekTokenIs(t token.TokenType) bool {
+	return p.peekPeekToken.Type == t
 }
 
 // Checks if peek token matches given type, advances tokens if true
@@ -958,6 +965,10 @@ func (p *Parser) isPeekTokenType() bool {
 		return true
 	}
 
+	if p.peekTokenIs(token.Identifier) && p.peekPeekTokenIs(token.Colon) {
+		return true
+	}
+
 	_, ok := p.definedStructs[p.peekToken.Literal]
 
 	return ok
@@ -1311,6 +1322,15 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 	}
 	p.nextToken()
 	member := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+
+	if p.peekTokenIs(token.LeftCurlyBracket) {
+		expr := p.parseStructLiteral()
+		if sl, ok := expr.(*ast.StructLiteral); ok {
+			sl.Module = ident.Value
+		}
+		return expr
+	}
+
 	return &ast.ScopeAccessExpr{Member: member, Module: ident}
 }
 

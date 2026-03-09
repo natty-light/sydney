@@ -107,17 +107,13 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 				if pub, ok := stmt.(*ast.PubStatement); ok {
 					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
 					exportEnv.Set(name, typ)
-				}
-			}
-		}
 
-		// Export methods on pub structs
-		for key, typ := range pkgEnv.store {
-			if ft, ok := typ.(types.FunctionType); ok {
-				if len(ft.Params) > 0 {
-					if st, ok := ft.Params[0].(types.StructType); ok {
-						if _, exported := exportEnv.store[st.Name]; exported {
-							exportEnv.Set(key, typ)
+					if ft, ok := typ.(types.FunctionType); ok {
+						if st, ok := ft.Params[0].(types.StructType); ok {
+							if _, _, exported := exportEnv.Get(st.Name); exported {
+								mn := st.Name + "." + name
+								exportEnv.Set(mn, typ)
+							}
 						}
 					}
 				}
@@ -592,10 +588,25 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		e = expr
 		return structType.Types[i]
 	case *ast.StructLiteral:
-		structType, ok := c.definedStructs[expr.Name]
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("unknown type %s", expr.Name))
-			return types.Unit
+		var structType types.StructType
+		var ok bool
+		if expr.Module != "" {
+			if mt, found := c.moduleTypes[expr.Module]; found {
+				if t, found := mt[expr.Name]; found {
+					structType, ok = t.(types.StructType)
+				}
+			}
+
+			if !ok {
+				c.errors = append(c.errors, fmt.Sprintf("unknown type %s:%s", expr.Module, expr.Name))
+				return types.Unit
+			}
+		} else {
+			structType, ok = c.definedStructs[expr.Name]
+			if !ok {
+				c.errors = append(c.errors, fmt.Sprintf("unknown type %s", expr.Name))
+				return types.Unit
+			}
 		}
 
 		providedFields := make(map[string]ast.Expr)
@@ -814,6 +825,9 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 
 	if selector, ok := expr.Function.(*ast.SelectorExpr); ok {
 		receiverType := c.typeOf(selector.Left, nil)
+		if st, ok := receiverType.(types.ScopeType); ok {
+			receiverType = c.resolveType(st)
+		}
 		methodName := selector.Value.(*ast.Identifier).Value
 		mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), methodName)
 		if t, _, ok := c.env.Get(mangled); ok {

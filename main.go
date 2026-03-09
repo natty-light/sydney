@@ -118,6 +118,14 @@ func Run(args []string, flags map[Flag]bool) int {
 	}
 
 	c := typechecker.NewWithModuleTypes(typeEnv, tt)
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("typechecker panic:", r)
+			for _, e := range c.Errors() {
+				fmt.Println("  error:", e)
+			}
+		}
+	}()
 	typeErrs := c.Check(program, packages)
 
 	if flags[dumpTypes] {
@@ -185,6 +193,14 @@ func Compile(args []string, flags map[Flag]bool) int {
 	}
 
 	c := typechecker.NewWithModuleTypes(nil, tt)
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("typechecker panic:", r)
+			for _, e := range c.Errors() {
+				fmt.Println("  error:", e)
+			}
+		}
+	}()
 	errs := c.Check(program, packages)
 
 	if flags[dumpTypes] {
