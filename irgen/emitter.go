@@ -1092,7 +1092,9 @@ func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 
 	// set loop body
 	e.emitLabel(loopLabel)
+	e.pushScope()
 	e.emitBlock(stmt.Body)
+	e.popScope()
 
 	// jump back to above condition
 	e.emitJmp(condLabel)
@@ -1132,7 +1134,9 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 
 	// consequence block
 	e.emitLabel(thenLabel)
+	e.pushScope()
 	thenVal, thenType, _ := e.emitBlock(expr.Consequence)
+	e.popScope()
 	// controls whether result is stored
 	isExpr := hasElse && thenType != IrUnit
 	// if there is an else, then there's an expression -- typechecker needs to enforce this more cleanly
@@ -1145,7 +1149,9 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	// alternative block
 	if hasElse {
 		e.emitLabel(elseLabel)
+		e.pushScope()
 		elseVal, _, _ := e.emitBlock(expr.Alternative)
+		e.popScope()
 		if isExpr {
 			line := fmt.Sprintf("store %s %s, ptr %s", thenType, elseVal, resultAddr)
 			e.emit(line)
@@ -1216,9 +1222,10 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	}
 
 	e.depth = 0
-
+	e.pushScope()
 	val, valType, hasReturn := e.emitBlock(decl.Body)
-	e.depth++
+	e.depth = 1
+	e.popScope()
 	if !hasReturn {
 		if ret == IrUnit {
 			e.emit("ret void")
@@ -1329,7 +1336,9 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		e.locals[expr.Name] = irLocal{selfAlloca, IrFatPtr}
 	}
 
+	e.pushScope()
 	val, valType, hasReturn := e.emitBlock(expr.Body)
+	e.popScope()
 
 	e.depth = 1
 	if !hasReturn {
@@ -2117,8 +2126,11 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	endLab := e.label("match.end")
 
 	// emit result alloca, replace with phi node later
-	result := e.tmp()
-	e.emitAlloca(result, rt)
+	result := ""
+	if rt != IrUnit {
+		result = e.tmp()
+		e.emitAlloca(result, rt)
+	}
 
 	// emit branches
 	e.emitBranch(tag, okLab, errLab)
@@ -2136,11 +2148,15 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitAlloca(bindAlloca, innerType)
 	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
 	e.emit(line)
+	e.pushScope()
 	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	// emit block
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
-	line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)
-	e.emit(line)
+	e.popScope()
+	if rt != IrUnit {
+		line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)
+		e.emit(line)
+	}
 	e.emitJmp(endLab)
 
 	// err branch
@@ -2156,17 +2172,24 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitAlloca(bindAlloca, IrPtr)
 	line = fmt.Sprintf("store ptr %s, ptr %s", err, bindAlloca)
 	e.emit(line)
+	e.pushScope()
 	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
 	// emit block
 	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
-	line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
-	e.emit(line)
+	e.popScope()
+	if rt != IrUnit {
+		line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
+		e.emit(line)
+	}
 	e.emitJmp(endLab)
 
 	e.emitLabel(endLab)
-	finalVal := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
-	e.emit(line)
+	finalVal := ""
+	if rt != IrUnit {
+		finalVal = e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
+		e.emit(line)
+	}
 
 	return finalVal, rt
 }
@@ -2184,4 +2207,18 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 	}
 
 	return "", IrUnit
+}
+
+func (e *Emitter) pushScope() {
+	e.scopeStack = append(e.scopeStack, e.locals)
+	newLocals := make(map[string]irLocal)
+	for k, v := range e.locals {
+		newLocals[k] = v
+	}
+	e.locals = newLocals
+}
+
+func (e *Emitter) popScope() {
+	e.locals = e.scopeStack[len(e.scopeStack)-1]
+	e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
 }
