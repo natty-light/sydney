@@ -17,6 +17,7 @@ const (
 	IrUnit   BasicIrType = "void"
 	IrInt32  BasicIrType = "i32"
 	IrFatPtr BasicIrType = "{ ptr, ptr }"
+	IrInt8   BasicIrType = "i8"
 )
 
 type IrStruct struct {
@@ -62,6 +63,8 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrNull
 	case types.Unit:
 		return IrUnit
+	case types.Byte:
+		return IrInt8
 	}
 
 	switch t.(type) {

@@ -23,8 +23,13 @@ func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
 			e.emit(fmt.Sprintf("call void @sydney_print_float(double %s)", arg))
 		case IrPtr:
 			e.emit(fmt.Sprintf("call void @sydney_print_string(ptr %s)", arg))
+		case IrInt8:
+			e.emit(fmt.Sprintf("call void @sydney_print_byte(i8 %s)", arg))
 		case IrBool:
-			e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", arg))
+			zextd := e.tmp()
+			line := fmt.Sprintf("%s = zext i1 %s to i8", zextd, arg)
+			e.emit(line)
+			e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", zextd))
 		}
 	}
 	e.emit("call void @sydney_print_newline()")

@@ -288,6 +288,7 @@ func (e *Emitter) preamble() {
 	e.emit("declare void @sydney_print_int(i64)")
 	e.emit("declare void @sydney_print_float(double)")
 	e.emit("declare void @sydney_print_string(ptr)")
+	e.emit("declare void @sydney_print_byte(i8)")
 	e.emit("declare ptr @sydney_strcat(ptr, ptr)")
 	e.emit("declare void @sydney_print_newline()")
 	e.emit("declare void @sydney_gc_init()")
@@ -581,6 +582,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
 		return fmt.Sprintf("%d", expr.Value), IrInt
+	case *ast.ByteLiteral:
+		return fmt.Sprintf("%d", expr.Value), IrInt8
 	case *ast.FloatLiteral:
 		return fmt.Sprintf("%f", expr.Value), IrFloat
 	case *ast.StringLiteral:
@@ -631,6 +634,11 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitSelectorExpr(expr)
 	case *ast.IndexExpr:
 		lt := expr.Left.GetResolvedType()
+
+		if lt == types.String {
+			return e.emitStringIndexExpr(expr)
+		}
+
 		if _, ok := lt.(types.ArrayType); ok {
 			return e.emitArrayIndexExpr(expr)
 		}
@@ -1008,6 +1016,8 @@ func (e *Emitter) getZeroValueFromIrType(t IrType) string {
 	case IrFloat:
 		return "0.0"
 	case IrBool:
+		return "0"
+	case IrInt8:
 		return "0"
 	}
 
@@ -1777,6 +1787,20 @@ func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	}
 
 	return val, valType
+}
+
+func (e *Emitter) emitStringIndexExpr(expr *ast.IndexExpr) (string, IrType) {
+	str, _ := e.emitExpr(expr.Left)
+	idx, _ := e.emitExpr(expr.Index)
+
+	elemPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr i8, ptr %s, i64 %s", elemPtr, str, idx)
+	e.emit(line)
+
+	b := e.tmp()
+	line = fmt.Sprintf("%s = load i8, ptr %s", b, elemPtr)
+	e.emit(line)
+	return b, IrInt8
 }
 
 func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {

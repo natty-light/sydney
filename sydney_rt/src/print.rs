@@ -34,3 +34,8 @@ pub extern "C" fn sydney_print_string(ptr: *const c_char) {
 pub extern "C" fn sydney_print_newline() {
     println!();
 }
+
+#[no_mangle]
+pub extern "C" fn sydney_print_byte(val: u8) {
+    print!("{}", val as char)
+}
