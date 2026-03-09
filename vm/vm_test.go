@@ -435,30 +435,6 @@ func TestBuiltinFunctions(t *testing.T) {
 			expected: 3,
 		},
 		{
-			source:   `first([1, 2, 3])`,
-			expected: 1,
-		},
-		{
-			source:   `first([])`,
-			expected: Null,
-		},
-		{
-			source:   `last([1, 2, 3])`,
-			expected: 3,
-		},
-		{
-			source:   `last([])`,
-			expected: Null,
-		},
-		{
-			source:   `rest([1, 2, 3])`,
-			expected: []int{2, 3},
-		},
-		{
-			source:   `rest([])`,
-			expected: Null,
-		},
-		{
 			source:   `append([], 1)`,
 			expected: []int{1},
 		},

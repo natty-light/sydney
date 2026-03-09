@@ -184,3 +184,62 @@ func (e *Emitter) emitCharConvCall(expr *ast.CallExpr) (string, IrType) {
 	e.emit(line)
 	return result, IrPtr
 }
+
+func (e *Emitter) emitAppendCall(expr *ast.CallExpr) (string, IrType) {
+	arr, _ := e.emitExpr(expr.Arguments[0])
+	val, valType := e.emitExpr(expr.Arguments[1])
+
+	lenPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, arr)
+	e.emit(line)
+	l := e.tmp()
+	line = fmt.Sprintf("%s = load i64, ptr %s", l, lenPtr)
+	e.emit(line)
+
+	newLen := e.tmp()
+	line = fmt.Sprintf("%s = add i64 %s, 1", newLen, l)
+	e.emit(line)
+
+	dataPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, arr)
+	e.emit(line)
+	data := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr)
+	e.emit(line)
+
+	newBytes := e.tmp()
+	line = fmt.Sprintf("%s = mul i64 %s, 8", newBytes, newLen)
+	e.emit(line)
+	newData := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %s)", newData, newBytes)
+	e.emit(line)
+
+	// copy memory
+	oldBytes := e.tmp()
+	line = fmt.Sprintf("%s = mul i64 %s, 8", oldBytes, l)
+	e.emit(line)
+	line = fmt.Sprintf("call void @llvm.memcpy.p0.p0.i64(ptr %s, ptr %s, i64 %s, i1 false)", newData, data, oldBytes)
+	e.emit(line)
+
+	newElemPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", newElemPtr, valType, newData, l)
+	e.emit(line)
+	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, newElemPtr)
+	e.emit(line)
+
+	header := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", header)
+	e.emit(line)
+	newLenPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", newLenPtr, header)
+	e.emit(line)
+	line = fmt.Sprintf("store i64 %s, ptr %s", newLen, newLenPtr)
+	e.emit(line)
+	newDataPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", newDataPtr, header)
+	e.emit(line)
+	line = fmt.Sprintf("store ptr %s, ptr %s", newData, newDataPtr)
+	e.emit(line)
+
+	return header, IrPtr
+}
