@@ -66,6 +66,7 @@ const (
 	Null   BasicType = "null"
 	Unit   BasicType = "unit"
 	Any    BasicType = "any"
+	Byte   BasicType = "byte"
 	Infer  BasicType = "infer"
 )
 

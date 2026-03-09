@@ -92,6 +92,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.Float, p.parseFloatLiteral)
 	p.registerPrefix(token.Macro, p.parseMacroLiteral)
 	p.registerPrefix(token.Match, p.parseMatchExpr)
+	p.registerPrefix(token.Byte, p.parseByteLiteral)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.Plus, p.parseInfixExpr)
@@ -472,6 +473,13 @@ func (p *Parser) parseIntegerLiteral() ast.Expr {
 
 	literal.Value = value
 
+	return literal
+}
+
+func (p *Parser) parseByteLiteral() ast.Expr {
+	literal := &ast.ByteLiteral{Token: p.currToken}
+	val := p.currToken.Literal[0]
+	literal.Value = val
 	return literal
 }
 
@@ -859,6 +867,7 @@ var typeMap = map[token.TokenType]types.Type{
 	token.StringType: types.String,
 	token.Null:       types.Null,
 	token.BoolType:   types.Bool,
+	token.ByteType:   types.Byte,
 }
 
 func (p *Parser) isPeekTokenType() bool {
@@ -878,6 +887,8 @@ func (p *Parser) isPeekTokenType() bool {
 	case token.MapType:
 		fallthrough
 	case token.ResultType:
+		fallthrough
+	case token.ByteType:
 		fallthrough
 	case token.ArrayType:
 		return true
@@ -899,6 +910,8 @@ func (p *Parser) parseType() types.Type {
 	case token.BoolType:
 		return typeMap[p.currToken.Type]
 	case token.Null:
+		return typeMap[p.currToken.Type]
+	case token.ByteType:
 		return typeMap[p.currToken.Type]
 	case token.MapType:
 		return p.parseMapType()
