@@ -242,6 +242,13 @@ type (
 		castable
 	}
 
+	ByteLiteral struct {
+		Token token.Token
+		Value byte
+		resolvable
+		noCast
+	}
+
 	// Expressions
 	Identifier struct {
 		Token token.Token // token.Ident
@@ -464,6 +471,10 @@ func (s *ScopeAccessExpr) TokenLiteral() string {
 
 func (m *MatchExpr) TokenLiteral() string {
 	return m.Token.Literal
+}
+
+func (b *ByteLiteral) TokenLiteral() string {
+	return b.Token.Literal
 }
 
 // Statements
@@ -869,6 +880,10 @@ func (m *MatchExpr) String() string {
 	return out.String()
 }
 
+func (b *ByteLiteral) String() string {
+	return b.Token.Literal
+}
+
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
 func (r *ReturnStmt) statementNode()                  {}
@@ -906,6 +921,7 @@ func (s *StructLiteral) expressionNode()   {}
 func (s *SelectorExpr) expressionNode()    {}
 func (s *ScopeAccessExpr) expressionNode() {}
 func (m *MatchExpr) expressionNode()       {}
+func (b *ByteLiteral) expressionNode()     {}
 
 func Dump(node Node, indent int) {
 	prefix := func(label string) {
@@ -1121,6 +1137,9 @@ func Dump(node Node, indent int) {
 			}
 			Dump(node.ErrArm.Body, indent+4)
 		}
+	case *ByteLiteral:
+		prefix(fmt.Sprintf("ByteLiteral(%d)", node.Value))
+
 	default:
 		prefix(fmt.Sprintf("<%T>", node))
 	}

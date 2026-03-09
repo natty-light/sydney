@@ -27,6 +27,7 @@ func TestVarDeclarationStmts(t *testing.T) {
 		{"mut map<string, int> m;", "m", nil, types.MapType{KeyType: types.String, ValueType: types.Int}, false},
 		{"mut array<int> a;", "a", nil, types.ArrayType{ElemType: types.Int}, false},
 		{"mut fn<(int) -> int> f;", "f", nil, types.FunctionType{Params: []types.Type{types.Int}, Return: types.Int}, false},
+		{"mut byte b = 'a';", "b", byte('a'), types.Byte, false},
 	}
 
 	for _, tt := range tests {
@@ -49,9 +50,8 @@ func TestVarDeclarationStmts(t *testing.T) {
 		if !strings.Contains(tt.source, "=") {
 			if val != tt.expectedValue {
 				t.Fatalf("expecting value %s, got %s", tt.expectedValue, val)
-			} else {
-				return
 			}
+			continue
 		}
 
 		str := val.String()
@@ -1996,6 +1996,8 @@ func testLiteralExpr(t *testing.T, expr ast.Expr, expected interface{}) bool {
 		return testIdentifier(t, expr, v)
 	case bool:
 		return testBooleanLiteral(t, expr, v)
+	case byte:
+		return testByteLiteral(t, expr, v)
 	}
 	t.Errorf("type of expr not handled. got=%T", expr)
 	return false
@@ -2038,6 +2040,26 @@ func testBooleanLiteral(t *testing.T, expr ast.Expr, value bool) bool {
 
 	if boolean.TokenLiteral() != fmt.Sprintf("%t", value) {
 		t.Errorf("boolean.TokenLiteral not %t. got=%s", value, boolean.TokenLiteral())
+		return false
+	}
+
+	return true
+}
+
+func testByteLiteral(t *testing.T, expr ast.Expr, expected byte) bool {
+	byt, ok := expr.(*ast.ByteLiteral)
+	if !ok {
+		t.Errorf("expr not *ast.ByteLiteral. got=%T", expr)
+		return false
+	}
+
+	if byt.Value != expected {
+		t.Errorf("byt.Value not %d. got=%q", expected, byt.Value)
+		return false
+	}
+
+	if byt.TokenLiteral() != string(expected) {
+		t.Errorf("byt.TokenLiteral not %s. got=%s", string(expected), byt.TokenLiteral())
 		return false
 	}
 
