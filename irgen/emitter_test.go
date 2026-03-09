@@ -982,7 +982,6 @@ store ptr %env, ptr %t1
   br i1 %t3, label %then.0, label %merge.1
 then.0:
     ret i64 0
-  br label %merge.1
 merge.1:
   %t4 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
   %t5 = load ptr, ptr %t4
@@ -1055,7 +1054,6 @@ store ptr %env, ptr %t1
   br i1 %t4, label %then.0, label %merge.1
 then.0:
     ret i64 0
-  br label %merge.1
 merge.1:
   %t5 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
   %t6 = load ptr, ptr %t5

@@ -19,6 +19,8 @@ type Checker struct {
 	packages               map[string]*TypeEnv
 
 	moduleTypes map[string]map[string]types.Type
+
+	inLoop bool
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -40,6 +42,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		make(map[string]types.StructType),
 		make(map[string]*TypeEnv),
 		map[string]map[string]types.Type{},
+		false,
 	}
 }
 
@@ -62,6 +65,7 @@ func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]ty
 		make(map[string]types.StructType),
 		make(map[string]*TypeEnv),
 		moduleTypes,
+		false,
 	}
 }
 
@@ -151,6 +155,7 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 	if node.Init != nil {
 		c.check(node.Init)
 	}
+	c.inLoop = true
 	conditionType := c.typeOf(node.Condition, types.Bool)
 	if conditionType != types.Bool {
 		c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()))
@@ -160,6 +165,7 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 	}
 	ret := c.check(node.Body)
 	c.env = oldEnv
+	c.inLoop = false
 
 	return ret
 }
@@ -299,6 +305,18 @@ func (c *Checker) check(n ast.Node) types.Type {
 		return c.checkFunctionDeclaration(node)
 	case *ast.SelectorAssignmentStmt:
 		return c.checkSelectorAssignmentStmt(node)
+	case *ast.ContinueStmt:
+		if !c.inLoop {
+			c.errors = append(c.errors, fmt.Sprintf("continue statement cannot be outside of loop"))
+			return nil
+		}
+		return types.Unit
+	case *ast.BreakStmt:
+		if !c.inLoop {
+			c.errors = append(c.errors, fmt.Sprintf("break statement cannot be outside of loop"))
+			return nil
+		}
+		return types.Unit
 	}
 
 	return types.Unit
@@ -405,6 +423,8 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	case *ast.ByteLiteral:
 		return types.Byte
 	case *ast.FunctionLiteral:
+		oldInLoop := c.inLoop
+		c.inLoop = true
 		oldReturnType := c.currentReturnType
 		c.currentReturnType = expr.Type.Return
 		oldEnv := c.env
@@ -422,6 +442,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 
 		c.env = oldEnv
 		c.currentReturnType = oldReturnType
+		c.inLoop = oldInLoop
 
 		return expr.Type
 	case *ast.ArrayLiteral:
@@ -1391,6 +1412,8 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 	}
 
 	if !node.IsExtern {
+		oldInLoop := c.inLoop
+		c.inLoop = false
 		oldReturnType := c.currentReturnType
 		c.currentReturnType = fType.Return
 		oldEnv := c.env
@@ -1403,6 +1426,7 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 		c.check(node.Body)
 		c.env = oldEnv
 		c.currentReturnType = oldReturnType
+		c.inLoop = oldInLoop
 	}
 
 	return types.Unit

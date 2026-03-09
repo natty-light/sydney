@@ -54,6 +54,7 @@ const (
 	OpCallInterface
 	OpResultTag
 	OpResultValue
+	OpModulo
 )
 
 type (
@@ -107,6 +108,7 @@ var definitions = map[Opcode]*Definition{
 	OpCallInterface:      {"OpCallInterface", []int{2, 1}}, // methodIdx, numArgs
 	OpResultTag:          {"OpResultTag", []int{}},
 	OpResultValue:        {"OpResultValue", []int{}},
+	OpModulo:             {"OpModulo", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

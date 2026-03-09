@@ -164,6 +164,14 @@ type (
 		Token token.Token
 		Stmt  Stmt
 	}
+
+	BreakStmt struct {
+		Token token.Token
+	}
+
+	ContinueStmt struct {
+		Token token.Token
+	}
 )
 
 // Expressions and literals
@@ -477,6 +485,14 @@ func (m *MatchExpr) TokenLiteral() string {
 
 func (b *ByteLiteral) TokenLiteral() string {
 	return b.Token.Literal
+}
+
+func (b *BreakStmt) TokenLiteral() string {
+	return b.Token.Literal
+}
+
+func (c *ContinueStmt) TokenLiteral() string {
+	return c.Token.Literal
 }
 
 // Statements
@@ -886,6 +902,14 @@ func (b *ByteLiteral) String() string {
 	return b.Token.Literal
 }
 
+func (b *BreakStmt) String() string {
+	return b.Token.Literal
+}
+
+func (c *ContinueStmt) String() string {
+	return c.Token.Literal
+}
+
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
 func (r *ReturnStmt) statementNode()                  {}
@@ -902,6 +926,8 @@ func (i *InterfaceImplementationStmt) statementNode() {}
 func (m *ModuleDeclarationStmt) statementNode()       {}
 func (i *ImportStatement) statementNode()             {}
 func (p *PubStatement) statementNode()                {}
+func (c *ContinueStmt) statementNode()                {}
+func (b *BreakStmt) statementNode()                   {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

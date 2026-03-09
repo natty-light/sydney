@@ -18,7 +18,6 @@ const (
 	False          TokenType = "False"
 	If             TokenType = "If"
 	Else           TokenType = "Else"
-	Elseif         TokenType = "Elseif"
 	Func           TokenType = "Func"
 	Return         TokenType = "Return"
 	For            TokenType = "For"
@@ -32,6 +31,8 @@ const (
 	Public         TokenType = "Public"
 	Match          TokenType = "Match"
 	Extern         TokenType = "Extern"
+	Continue       TokenType = "Continue"
+	Break          TokenType = "Break"
 
 	// Types
 	IntType    TokenType = "IntegerType"

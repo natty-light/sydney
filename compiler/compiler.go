@@ -11,7 +11,7 @@ import (
 	"sydney/types"
 )
 
-// sn:in
+// ItabKey struct name:interface name
 type ItabKey string
 
 type Compiler struct {
@@ -19,7 +19,7 @@ type Compiler struct {
 
 	symbolTable *SymbolTable
 
-	scopes     []CompilationScope
+	scopes     []*CompilationScope
 	scopeIndex int
 
 	structTypes    map[string]types.StructType
@@ -27,6 +27,9 @@ type Compiler struct {
 	itabMapping    map[ItabKey]int
 
 	currentModule string
+
+	loopContexts []*LoopContext
+	loopIndex    int
 }
 
 type Bytecode struct {
@@ -45,6 +48,13 @@ type CompilationScope struct {
 	previousInstruction EmittedInstruction
 }
 
+type LoopContext struct {
+	conditionPos      int
+	hasPost           bool
+	breakPositions    []int
+	continuePositions []int
+}
+
 func New() *Compiler {
 	mainScope := CompilationScope{
 		instructions:        code.Instructions{},
@@ -60,13 +70,16 @@ func New() *Compiler {
 	return &Compiler{
 		constants:   []object.Object{},
 		symbolTable: symbolTable,
-		scopes:      []CompilationScope{mainScope},
+		scopes:      []*CompilationScope{&mainScope},
 		scopeIndex:  0,
 
 		structTypes:    make(map[string]types.StructType),
 		interfaceTypes: make(map[string]types.InterfaceType),
 
 		itabMapping: make(map[ItabKey]int),
+
+		loopContexts: make([]*LoopContext, 0),
+		loopIndex:    0,
 	}
 }
 
@@ -251,6 +264,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		conditionPos := len(c.currentInstructions())
+		c.enterLoop(conditionPos, node.Post != nil)
 
 		err := c.Compile(node.Condition)
 		if err != nil {
@@ -265,6 +279,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		if node.Post != nil {
+			postPos := len(c.currentInstructions())
+			loop := c.getLoop()
+			if loop != nil {
+				for _, pos := range loop.continuePositions {
+					c.changeOperand(pos, postPos)
+				}
+			}
+
 			err = c.Compile(node.Post)
 			if err != nil {
 				return err
@@ -272,7 +294,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		c.emit(code.OpJump, conditionPos)
-		c.changeOperand(jumpNotTruthyPos, len(c.currentInstructions()))
+
+		escapePos := len(c.currentInstructions())
+		c.changeOperand(jumpNotTruthyPos, escapePos)
+		loop := c.getLoop()
+		if loop != nil {
+			for _, pos := range c.getLoop().breakPositions {
+				c.changeOperand(pos, escapePos)
+			}
+		}
+		c.leaveLoop()
+
 		c.emit(code.OpNull)
 		c.emit(code.OpPop) // this clears the condition value from the stack
 
@@ -328,6 +360,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpAnd)
 		case "||":
 			c.emit(code.OpOr)
+		case "%":
+			c.emit(code.OpModulo)
 		default:
 			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
@@ -472,7 +506,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpArray, len(node.Elements))
 	case *ast.HashLiteral:
-		keys := []ast.Expr{}
+		keys := make([]ast.Expr, 0)
 		for k := range node.Pairs {
 			keys = append(keys, k)
 		}
@@ -704,6 +738,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		afterErrPos := len(c.currentInstructions())
 		c.changeOperand(jumpPos, afterErrPos)
+	case *ast.BreakStmt:
+		loop := c.getLoop()
+		pos := c.emit(code.OpJump, 9999)
+		loop.breakPositions = append(loop.breakPositions, pos)
+	case *ast.ContinueStmt:
+		loop := c.getLoop()
+		if loop.hasPost {
+			pos := c.emit(code.OpJump, 9999)
+			loop.continuePositions = append(loop.continuePositions, pos)
+		} else {
+			c.emit(code.OpJump, loop.conditionPos)
+		}
 	}
 
 	if expr, ok := node.(ast.Expr); ok {
@@ -814,7 +860,7 @@ func (c *Compiler) currentInstructions() code.Instructions {
 }
 
 func (c *Compiler) enterScope() {
-	scope := CompilationScope{
+	scope := &CompilationScope{
 		instructions:        code.Instructions{},
 		lastInstruction:     EmittedInstruction{},
 		previousInstruction: EmittedInstruction{},
@@ -835,6 +881,29 @@ func (c *Compiler) leaveScope() code.Instructions {
 	c.symbolTable = c.symbolTable.Outer
 
 	return instructions
+}
+
+func (c *Compiler) enterLoop(conditionPos int, hasPost bool) {
+	loop := &LoopContext{
+		conditionPos:      conditionPos,
+		hasPost:           hasPost,
+		breakPositions:    make([]int, 0),
+		continuePositions: make([]int, 0),
+	}
+	c.loopContexts = append(c.loopContexts, loop)
+	c.loopIndex++
+}
+
+func (c *Compiler) leaveLoop() {
+	c.loopIndex--
+	c.loopContexts = c.loopContexts[:c.loopIndex]
+}
+
+func (c *Compiler) getLoop() *LoopContext {
+	if len(c.loopContexts) == 0 {
+		return nil
+	}
+	return c.loopContexts[c.loopIndex-1]
 }
 
 func (c *Compiler) replaceLastPopWithReturn() {
