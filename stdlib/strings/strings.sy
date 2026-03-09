@@ -31,3 +31,21 @@ pub func join_with_delim(array<string> strs, string delim) -> string {
     }
     return r + strs[len(strs) - 1];
 }
+
+pub func char_count(string str, byte chr) -> int {
+    mut int i = 0;
+    mut int count = 0;
+    for (i < len(str)) {
+        count = count + if (str[i] == chr) { 1; } else { 0; }
+        i = i + 1;
+    }
+
+    return count;
+}
+
+pub func char_at(string str, int idx) -> result<string> {
+    if (idx < 0 || idx > len(str) - 1) {
+        return err("index out of bounds")
+    }
+    return ok(char(str[idx]));
+}
