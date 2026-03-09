@@ -830,6 +830,20 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 			return c.checkOkBuiltIn(expr)
 		case "err":
 			return c.checkErrBuiltIn(expr, expected)
+		case "int":
+			return c.checkIntBuiltIn(expr)
+		case "byte":
+			return c.checkByteBuiltIn(expr)
+		case "char":
+			return c.checkCharBuiltIn(expr)
+		case "fopen":
+			return c.checkFopenBuiltIn(expr)
+		case "fclose":
+			return c.checkFcloseBuiltIn(expr)
+		case "fread":
+			return c.checkFreadBuiltIn(expr)
+		case "fwrite":
+			return c.checkFwriteBuiltIn(expr)
 		}
 	}
 
@@ -1520,4 +1534,92 @@ func (c *Checker) resolveFunctionType(ft types.FunctionType) types.FunctionType 
 	}
 	ft.Return = c.resolveType(ft.Return)
 	return ft
+}
+
+func (c *Checker) checkFopenBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, "fopen() expects exactly 1 argument")
+		return &types.ResultType{T: types.Int}
+	}
+	t := c.typeOf(expr.Arguments[0], types.String)
+	if t != types.String {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fopen(), expected string", t.Signature()))
+	}
+	return &types.ResultType{T: types.Int}
+}
+
+func (c *Checker) checkFreadBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, "fread() expects exactly 1 argument")
+		return &types.ResultType{T: types.String}
+	}
+	t := c.typeOf(expr.Arguments[0], types.Int)
+	if t != types.Int {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fread(), expected int", t.Signature()))
+	}
+	return &types.ResultType{T: types.String}
+}
+
+func (c *Checker) checkFwriteBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 2 {
+		c.errors = append(c.errors, "fwrite() expects exactly 2 arguments")
+		return &types.ResultType{T: types.Int}
+	}
+	fdType := c.typeOf(expr.Arguments[0], types.Int)
+	if fdType != types.Int {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fwrite() fd, expected int", fdType.Signature()))
+	}
+	dataType := c.typeOf(expr.Arguments[1], types.String)
+	if dataType != types.String {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fwrite() data, expected string", dataType.Signature()))
+	}
+	return &types.ResultType{T: types.Int}
+}
+
+func (c *Checker) checkFcloseBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, "fclose() expects exactly 1 argument")
+		return &types.ResultType{T: types.Int}
+	}
+	t := c.typeOf(expr.Arguments[0], types.Int)
+	if t != types.Int {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fclose(), expected int", t.Signature()))
+	}
+	return &types.ResultType{T: types.Int}
+}
+
+func (c *Checker) checkIntBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, "int() expects exactly 1 argument")
+		return types.Int
+	}
+	t := c.typeOf(expr.Arguments[0], types.Byte)
+	if t != types.Byte {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for int(), expected byte", t.Signature()))
+	}
+	return types.Int
+}
+
+func (c *Checker) checkByteBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, "byte() expects exactly 1 argument")
+		return types.Byte
+	}
+	t := c.typeOf(expr.Arguments[0], types.Int)
+	if t != types.Int {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for byte(), expected int", t.Signature()))
+	}
+	return types.Byte
+}
+
+func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.errors = append(c.errors, "char() expects exactly 1 argument")
+		return types.String
+	}
+	t := c.typeOf(expr.Arguments[0], types.Byte)
+	if t != types.Byte {
+		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for char(), expected byte", t.Signature()))
+	}
+	return types.String
 }

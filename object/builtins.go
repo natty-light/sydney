@@ -362,6 +362,9 @@ var BuiltInMap = map[string]bool{
 	"fread":  true,
 	"fwrite": true,
 	"fclose": true,
+	"int":    true,
+	"byte":   true,
+	"char":   true,
 }
 
 func GetBuiltInByName(name string) *BuiltIn {
