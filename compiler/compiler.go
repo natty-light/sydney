@@ -243,6 +243,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpReturnValue)
 	case *ast.ForStmt:
+		//if node.Init != nil {
+		//	err := c.Compile(node.Init)
+		//	if err != nil {
+		//		return err
+		//	}
+		//}
+
 		conditionPos := len(c.currentInstructions())
 
 		err := c.Compile(node.Condition)
@@ -256,6 +263,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if err != nil {
 			return err
 		}
+
+		//if node.Post != nil {
+		//	err = c.Compile(node.Post)
+		//	if err != nil {
+		//		return err
+		//	}
+		//}
+
 		c.emit(code.OpJump, conditionPos)
 		c.changeOperand(jumpNotTruthyPos, len(c.currentInstructions()))
 		c.emit(code.OpNull)
@@ -385,11 +400,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpIndex)
 	case *ast.Identifier:
-		symbol, _, ok := c.symbolTable.Resolve(node.Value)
+		name := node.Value
+		symbol, _, ok := c.symbolTable.Resolve(name)
+		if !ok && c.currentModule != "" {
+			mangled := c.mangleModule(c.currentModule, name)
+			symbol, _, ok = c.symbolTable.Resolve(mangled)
+		}
 		if !ok {
 			return fmt.Errorf("undefined variable %s", node.Value)
 		}
-
 		c.loadSymbol(symbol)
 
 	case *ast.CallExpr:
