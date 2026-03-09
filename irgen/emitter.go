@@ -41,6 +41,12 @@ type funcState struct {
 	bodyBuf   *bytes.Buffer
 }
 
+type LoopLabels struct {
+	condLabel   string
+	postLabel   string // empty if no post
+	escapeLabel string
+}
+
 type Emitter struct {
 	buf     *bytes.Buffer
 	funcBuf *bytes.Buffer
@@ -67,6 +73,10 @@ type Emitter struct {
 
 	currentModule  string
 	emittedModules []string
+
+	loopStack       []*LoopLabels
+	loopIdx         int
+	blockTerminated bool
 }
 
 func New() *Emitter {
@@ -84,7 +94,10 @@ func New() *Emitter {
 		buf:     &bytes.Buffer{},
 		funcBuf: &bytes.Buffer{},
 
-		emittedModules: make([]string, 0),
+		emittedModules:  make([]string, 0),
+		loopStack:       make([]*LoopLabels, 0),
+		blockTerminated: false,
+		loopIdx:         0,
 	}
 }
 
@@ -430,6 +443,9 @@ func (e *Emitter) addStr(s string) {
 }
 
 func (e *Emitter) emit(line string) {
+	if e.blockTerminated {
+		return
+	}
 	withIndent := strings.Repeat("  ", e.depth) + line + "\n"
 	if e.bodyBuf != nil {
 		e.bodyBuf.WriteString(withIndent)
@@ -454,6 +470,7 @@ func (e *Emitter) global(name string) string {
 }
 
 func (e *Emitter) emitLabel(name string) {
+	e.blockTerminated = false
 	line := name + ":\n"
 	if e.bodyBuf != nil {
 		e.bodyBuf.WriteString(line)
@@ -504,6 +521,7 @@ func (e *Emitter) endFunction(state funcState) {
 	e.allocaBuf = state.allocaBuf
 	e.bodyBuf = state.bodyBuf
 	e.inFunc = false
+	e.blockTerminated = false
 }
 
 func (e *Emitter) assembleFunction(target *bytes.Buffer) {
@@ -526,6 +544,7 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 	case *ast.ReturnStmt:
 		val, valType = e.emitReturnStmt(s)
 		hasReturn = true
+		e.blockTerminated = true
 	case *ast.ForStmt:
 		val, valType = e.emitForStmt(s)
 	case *ast.SelectorAssignmentStmt:
@@ -537,6 +556,24 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 		} else if _, ok := t.(types.MapType); ok {
 			val, valType = e.emitMapIndexAssignment(s)
 		}
+	case *ast.ContinueStmt:
+		loop := e.getLoop()
+		if loop != nil {
+			if loop.postLabel != "" {
+				e.emitJmp(loop.postLabel)
+			} else {
+				e.emitJmp(loop.condLabel)
+			}
+		}
+		e.blockTerminated = true
+		return "", IrUnit, false
+	case *ast.BreakStmt:
+		loop := e.getLoop()
+		if loop != nil {
+			e.emitJmp(loop.escapeLabel)
+		}
+		e.blockTerminated = true
+		return "", IrUnit, false
 	}
 	return val, valType, hasReturn
 }
@@ -1101,7 +1138,13 @@ func (e *Emitter) emitReturnStmt(stmt *ast.ReturnStmt) (string, IrType) {
 func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 	condLabel := e.label("cond")
 	loopLabel := e.label("loop")
+	postLabel := ""
+	if stmt.Post != nil {
+		postLabel = e.label("post")
+	}
 	escapeLabel := e.label("escape")
+
+	e.enterLoop(condLabel, postLabel, escapeLabel)
 
 	e.pushScope()
 	if stmt.Init != nil {
@@ -1119,6 +1162,8 @@ func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 	e.emitBlock(stmt.Body)
 
 	if stmt.Post != nil {
+		e.emitJmp(postLabel)
+		e.emitLabel(postLabel)
 		e.emitStmt(stmt.Post)
 	}
 
@@ -1127,6 +1172,8 @@ func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 
 	// how to get out of loop
 	e.emitLabel(escapeLabel)
+	e.popScope()
+	e.leaveLoop()
 
 	return "", IrUnit
 }
@@ -2247,4 +2294,26 @@ func (e *Emitter) pushScope() {
 func (e *Emitter) popScope() {
 	e.locals = e.scopeStack[len(e.scopeStack)-1]
 	e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
+}
+
+func (e *Emitter) enterLoop(condLabel, postLabel, escapeLabel string) {
+	loop := &LoopLabels{
+		condLabel:   condLabel,
+		postLabel:   postLabel,
+		escapeLabel: escapeLabel,
+	}
+	e.loopStack = append(e.loopStack, loop)
+	e.loopIdx++
+}
+
+func (e *Emitter) leaveLoop() {
+	e.loopStack = e.loopStack[:len(e.loopStack)-1]
+	e.loopIdx--
+}
+
+func (e *Emitter) getLoop() *LoopLabels {
+	if len(e.loopStack) == 0 {
+		return nil
+	}
+	return e.loopStack[e.loopIdx-1]
 }

@@ -292,7 +292,6 @@ var keywords = map[string]token.TokenType{
 	"false":          token.False,
 	"if":             token.If,
 	"else":           token.Else,
-	"elseif":         token.Elseif,
 	"func":           token.Func,
 	"return":         token.Return,
 	"for":            token.For,
@@ -308,6 +307,8 @@ var keywords = map[string]token.TokenType{
 	"import":         token.Import,
 	"match":          token.Match,
 	"extern":         token.Extern,
+	"break":          token.Break,
+	"continue":       token.Continue,
 }
 
 var types = map[string]token.TokenType{

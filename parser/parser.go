@@ -273,6 +273,18 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseImportStatement()
 	case token.Module:
 		return p.parseModuleStatement()
+	case token.Break:
+		stmt := &ast.BreakStmt{Token: p.currToken}
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+		return stmt
+	case token.Continue:
+		stmt := &ast.ContinueStmt{Token: p.currToken}
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+		return stmt
 	default:
 		return p.parseExpressionOrAssignmentStmt()
 	}
