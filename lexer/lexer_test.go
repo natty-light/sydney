@@ -40,7 +40,7 @@ func TestNextToken(t *testing.T) {
 	pub mut int x
 	module "math"
 
-	mut byte b
+	mut byte b = 'a'
 	`
 
 	tests := []struct {
@@ -249,6 +249,8 @@ func TestNextToken(t *testing.T) {
 		{token.Mut, "mut"},
 		{token.ByteType, "byte"},
 		{token.Identifier, "b"},
+		{token.Assign, "="},
+		{token.Byte, "a"},
 
 		{token.EOF, ""},
 	}
