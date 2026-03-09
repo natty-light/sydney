@@ -1,0 +1,37 @@
+module "io"
+
+pub extern func fopen(string path) -> result<int>
+pub extern func fread(int fd) -> result<string>
+pub extern func fwrite(int fd, string data) -> result<int>
+pub extern func fclose(int fd) -> result<int>
+
+pub define struct File { fd int }
+
+
+pub func openFile(string path) -> result<File> {
+    const result<int> r = fopen(path);
+
+    mut result<File> f = match r {
+       ok(fd) -> {
+            const File ff = File { fd: fd };
+            ok(ff);
+       },
+       err(msg) -> {
+           err(msg);
+       },
+   }
+
+    return f;
+}
+
+func read(File f) -> result<string> {
+    return fread(f.fd);
+}
+
+func write(File f, string data) -> result<int> {
+    return fwrite(f.fd, data);
+}
+
+func close(File f) -> result<int> {
+    return fclose(f.fd);
+}
