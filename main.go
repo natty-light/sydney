@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sydney/ast"
 	"sydney/compiler"
 	"sydney/irgen"
 	"sydney/lexer"
@@ -17,28 +18,60 @@ import (
 	"sydney/vm"
 )
 
+type Flag string
+
+const (
+	dumpAst   Flag = "dump-ast"
+	dumpTypes Flag = "dump-types"
+)
+
+var allowedFlags = map[Flag]bool{
+	dumpTypes: true,
+	dumpAst:   true,
+}
+
+type CommandFunc func(args []string, flags map[Flag]bool) int
+
+var commands = map[string]CommandFunc{
+	"help":    Help,
+	"version": Version,
+	"compile": Compile,
+	"run":     Run,
+}
+
 // TODO : unfuck this
 func main() {
 
 	args := os.Args
 	status := 0
+	flags := parseFlags(args)
 
 	if len(args) == 1 {
 		// If no filename was passed as a command line argument, run the repl
 		repl.StartVM(os.Stdin, os.Stdout)
 	} else {
-		if args[1] == "run" {
-			status = Run(args[2])
-		} else if args[1] == "compile" {
-			status = Compile(args[2])
-		} else if args[1] == "help" {
-			fmt.Println("Usage: quonk [run|compile|help] [filename]")
+		command, ok := commands[strings.ToLower(args[1])]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[1])
+			os.Exit(1)
 		}
+		status = command(args[2:], flags)
 	}
 	os.Exit(status)
 }
 
-func Run(filename string) int {
+func Help(args []string, flags map[Flag]bool) int {
+	fmt.Println("Usage: sydney [version|run|compile|help] [filename]")
+	return 0
+}
+
+func Version(args []string, flags map[Flag]bool) int {
+	fmt.Println("Sydney v0.1.0")
+	return 0
+}
+
+func Run(args []string, flags map[Flag]bool) int {
+	filename := args[0]
 	constants := []object.Object{}
 	globals := make([]object.Object, vm.GlobalsSize)
 	symbolTable := compiler.NewSymbolTable()
@@ -58,6 +91,11 @@ func Run(filename string) int {
 	l := lexer.New(src)
 	p := parser.New(l)
 	program := p.ParseProgram()
+
+	if flags[dumpAst] {
+		ast.Dump(program, 0)
+	}
+
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
@@ -75,6 +113,10 @@ func Run(filename string) int {
 
 	c := typechecker.NewWithModuleTypes(typeEnv, tt)
 	typeErrs := c.Check(program, packages)
+
+	if flags[dumpTypes] {
+		ast.Dump(program, 0)
+	}
 
 	if len(typeErrs) != 0 {
 		printParserErrors(os.Stdout, typeErrs)
@@ -102,10 +144,11 @@ func Run(filename string) int {
 	return 0
 }
 
-func Compile(filename string) int {
+func Compile(args []string, flags map[Flag]bool) int {
+	filename := args[0]
 	file, err := os.ReadFile(filename)
 	if err != nil {
-		fmt.Printf("Honk! Cannot read file %s\n", filename)
+		fmt.Printf("cannot read file %s\n", filename)
 		return 1
 	}
 
@@ -114,6 +157,10 @@ func Compile(filename string) int {
 	l := lexer.New(src)
 	p := parser.New(l)
 	program := p.ParseProgram()
+
+	if flags[dumpAst] {
+		ast.Dump(program, 0)
+	}
 
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
@@ -132,6 +179,11 @@ func Compile(filename string) int {
 
 	c := typechecker.NewWithModuleTypes(nil, tt)
 	errs := c.Check(program, packages)
+
+	if flags[dumpTypes] {
+		ast.Dump(program, 0)
+	}
+
 	if len(errs) != 0 {
 		printParserErrors(os.Stdout, errs)
 		return 1
@@ -153,4 +205,20 @@ func printParserErrors(out io.Writer, errors []string) {
 	for _, msg := range errors {
 		io.WriteString(out, "\t"+msg+"\n")
 	}
+}
+
+func parseFlags(args []string) map[Flag]bool {
+	flags := make(map[Flag]bool)
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--") {
+			flag := Flag(arg[2:])
+			if _, ok := allowedFlags[flag]; ok {
+				flags[flag] = true
+			} else {
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n", arg)
+			}
+		}
+	}
+
+	return flags
 }

@@ -906,3 +906,226 @@ func (s *StructLiteral) expressionNode()   {}
 func (s *SelectorExpr) expressionNode()    {}
 func (s *ScopeAccessExpr) expressionNode() {}
 func (m *MatchExpr) expressionNode()       {}
+
+func Dump(node Node, indent int) {
+	prefix := func(label string) {
+		fmt.Println(withIdent(label, indent))
+	}
+	field := func(label string, val string) {
+		fmt.Println(withIdent(label+" "+val, indent+2))
+	}
+	child := func(label string, n Node) {
+		fmt.Println(withIdent(label, indent+2))
+		if n != nil {
+			Dump(n, indent+4)
+		}
+	}
+
+	switch node := node.(type) {
+	case *Program:
+		prefix("Program")
+		for _, stmt := range node.Stmts {
+			Dump(stmt, indent+2)
+		}
+
+	// Statements
+	case *ExpressionStmt:
+		prefix("ExpressionStmt")
+		child("Expr:", node.Expr)
+	case *ReturnStmt:
+		prefix("ReturnStmt")
+		child("Value:", node.ReturnValue)
+	case *BlockStmt:
+		prefix("BlockStmt")
+		for _, stmt := range node.Stmts {
+			Dump(stmt, indent+2)
+		}
+	case *VarDeclarationStmt:
+		prefix("VarDeclarationStmt")
+		field("Name:", node.Name.Value)
+		field("Constant:", fmt.Sprintf("%v", node.Constant))
+		if node.Type != nil {
+			field("Type:", node.Type.Signature())
+		}
+		child("Value:", node.Value)
+	case *VarAssignmentStmt:
+		prefix("VarAssignmentStmt")
+		field("Name:", node.Identifier.Value)
+		child("Value:", node.Value)
+	case *ForStmt:
+		prefix("ForStmt")
+		child("Condition:", node.Condition)
+		child("Body:", node.Body)
+	case *IndexAssignmentStmt:
+		prefix("IndexAssignmentStmt")
+		child("Left:", node.Left)
+		child("Value:", node.Value)
+	case *FunctionDeclarationStmt:
+		prefix("FunctionDeclarationStmt")
+		field("Name:", node.Name.Value)
+		if node.MangledName != "" {
+			field("MangledName:", node.MangledName)
+		}
+		if node.IsExtern {
+			field("Extern:", "true")
+		}
+		if node.Type != nil {
+			field("Type:", node.Type.Signature())
+		}
+		for _, p := range node.Params {
+			child("Param:", p)
+		}
+		if node.Body != nil {
+			child("Body:", node.Body)
+		}
+	case *StructDefinitionStmt:
+		prefix("StructDefinitionStmt")
+		field("Name:", node.Name.Value)
+		for i, f := range node.Type.Fields {
+			field("Field:", f+" "+node.Type.Types[i].Signature())
+		}
+	case *SelectorAssignmentStmt:
+		prefix("SelectorAssignmentStmt")
+		child("Left:", node.Left)
+		child("Value:", node.Value)
+	case *InterfaceDefinitionStmt:
+		prefix("InterfaceDefinitionStmt")
+		field("Name:", node.Name.Value)
+		for i, m := range node.Type.Methods {
+			field("Method:", m+" "+node.Type.Types[i].Signature())
+		}
+	case *InterfaceImplementationStmt:
+		prefix("InterfaceImplementationStmt")
+		field("Struct:", node.StructName.Value)
+		for _, n := range node.InterfaceNames {
+			field("Interface:", n.Value)
+		}
+	case *ImportStatement:
+		prefix("ImportStatement")
+		field("Name:", node.Name.Value)
+	case *ModuleDeclarationStmt:
+		prefix("ModuleDeclarationStmt")
+		field("Name:", node.Name.Value)
+	case *PubStatement:
+		prefix("PubStatement")
+		Dump(node.Stmt, indent+2)
+
+	// Expressions
+	case *Identifier:
+		prefix("Identifier")
+		field("Value:", node.Value)
+		if node.GetResolvedType() != nil {
+			field("ResolvedType:", node.GetResolvedType().Signature())
+		}
+	case *IntegerLiteral:
+		prefix(fmt.Sprintf("IntegerLiteral(%d)", node.Value))
+	case *FloatLiteral:
+		prefix(fmt.Sprintf("FloatLiteral(%g)", node.Value))
+	case *StringLiteral:
+		prefix(fmt.Sprintf("StringLiteral(%q)", node.Value))
+	case *BooleanLiteral:
+		prefix(fmt.Sprintf("BooleanLiteral(%v)", node.Value))
+	case *NullLiteral:
+		prefix("NullLiteral")
+	case *ArrayLiteral:
+		prefix("ArrayLiteral")
+		for i, el := range node.Elements {
+			child(fmt.Sprintf("[%d]:", i), el)
+		}
+	case *HashLiteral:
+		prefix("HashLiteral")
+		for k, v := range node.Pairs {
+			child("Key:", k)
+			child("Value:", v)
+		}
+	case *FunctionLiteral:
+		prefix("FunctionLiteral")
+		if node.Name != "" {
+			field("Name:", node.Name)
+		}
+		field("Type:", node.Type.Signature())
+		for _, p := range node.Parameters {
+			child("Param:", p)
+		}
+		child("Body:", node.Body)
+	case *StructLiteral:
+		prefix("StructLiteral")
+		field("Name:", node.Name)
+		for i, f := range node.Fields {
+			fmt.Println(withIdent("Field: "+f, indent+2))
+			Dump(node.Values[i], indent+4)
+		}
+	case *MacroLiteral:
+		prefix("MacroLiteral")
+		for _, p := range node.Parameters {
+			child("Param:", p)
+		}
+		child("Body:", node.Body)
+	case *PrefixExpr:
+		prefix("PrefixExpr")
+		field("Op:", node.Operator)
+		child("Right:", node.Right)
+	case *InfixExpr:
+		prefix("InfixExpr")
+		field("Op:", node.Operator)
+		child("Left:", node.Left)
+		child("Right:", node.Right)
+	case *IfExpr:
+		prefix("IfExpr")
+		child("Condition:", node.Condition)
+		child("Consequence:", node.Consequence)
+		if node.Alternative != nil {
+			child("Alternative:", node.Alternative)
+		}
+	case *CallExpr:
+		prefix("CallExpr")
+		if node.MangledName != "" {
+			field("MangledName:", node.MangledName)
+		}
+		child("Function:", node.Function)
+		for i, arg := range node.Arguments {
+			child(fmt.Sprintf("Arg[%d]:", i), arg)
+		}
+	case *IndexExpr:
+		prefix("IndexExpr")
+		if node.ContainerType != nil {
+			field("ContainerType:", node.ContainerType.Signature())
+		}
+		child("Left:", node.Left)
+		child("Index:", node.Index)
+	case *SelectorExpr:
+		prefix("SelectorExpr")
+		child("Left:", node.Left)
+		child("Field:", node.Value)
+	case *ScopeAccessExpr:
+		prefix("ScopeAccessExpr")
+		field("Module:", node.Module.Value)
+		field("Member:", node.Member.Value)
+	case *MatchExpr:
+		prefix("MatchExpr")
+		if node.SubjectType != nil {
+			field("SubjectType:", node.SubjectType.Signature())
+		}
+		child("Subject:", node.Subject)
+		if node.OkArm != nil {
+			fmt.Println(withIdent("OkArm:", indent+2))
+			if node.OkArm.Pattern.Binding != nil {
+				fmt.Println(withIdent("Binding: "+node.OkArm.Pattern.Binding.Value, indent+4))
+			}
+			Dump(node.OkArm.Body, indent+4)
+		}
+		if node.ErrArm != nil {
+			fmt.Println(withIdent("ErrArm:", indent+2))
+			if node.ErrArm.Pattern.Binding != nil {
+				fmt.Println(withIdent("Binding: "+node.ErrArm.Pattern.Binding.Value, indent+4))
+			}
+			Dump(node.ErrArm.Body, indent+4)
+		}
+	default:
+		prefix(fmt.Sprintf("<%T>", node))
+	}
+}
+
+func withIdent(text string, space int) string {
+	return strings.Repeat(" ", space) + text
+}
