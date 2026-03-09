@@ -424,6 +424,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.IntegerLiteral:
 		integer := &object.Integer{Value: node.Value}
 		c.emit(code.OpConstant, c.addConstant(integer))
+	case *ast.ByteLiteral:
+		byt := &object.Byte{Value: node.Value}
+		c.emit(code.OpConstant, c.addConstant(byt))
 	case *ast.FloatLiteral:
 		float := &object.Float{Value: node.Value}
 		c.emit(code.OpConstant, c.addConstant(float))
@@ -847,9 +850,11 @@ func (c *Compiler) emitZeroValue(t types.Type) error {
 	case types.String:
 		s := &object.String{Value: ""}
 		c.emit(code.OpConstant, c.addConstant(s))
+	case types.Byte:
+		b := &object.Byte{Value: 0}
+		c.emit(code.OpConstant, c.addConstant(b))
 	default:
 		c.emit(code.OpNull)
-
 	}
 
 	return nil

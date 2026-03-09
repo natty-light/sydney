@@ -385,6 +385,8 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		return types.Bool
 	case *ast.NullLiteral:
 		return types.Null
+	case *ast.ByteLiteral:
+		return types.Byte
 	case *ast.FunctionLiteral:
 		oldReturnType := c.currentReturnType
 		c.currentReturnType = expr.Type.Return
@@ -623,7 +625,7 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
 		}
 
-		if lt != types.Float && lt != types.Int {
+		if lt != types.Float && lt != types.Int && lt != types.Byte {
 			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
 		}
 
@@ -633,7 +635,7 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
 		}
 
-		if lt != types.Float && lt != types.Int {
+		if lt != types.Float && lt != types.Int && lt != types.Byte {
 			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
 		}
 
@@ -643,7 +645,17 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
 		}
 
-		if lt != types.Float && lt != types.Int {
+		if lt != types.Float && lt != types.Int && lt != types.Byte {
+			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+		}
+
+		return types.Bool
+	case "<=":
+		if !c.typesMatch(lt, rt) {
+			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+		}
+
+		if lt != types.Float && lt != types.Int && lt != types.Byte {
 			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
 		}
 
@@ -654,13 +666,6 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 		}
 
 		return types.Bool
-	case "<=":
-		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
-		}
-
-		return types.Bool
-
 	case "&&":
 		if !c.typesMatch(lt, rt) {
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()))
@@ -682,7 +687,7 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot add types %s and %s", lt.Signature(), rt.Signature()))
 		}
 
-		if lt != types.String && lt != types.Float && lt != types.Int {
+		if lt != types.String && lt != types.Float && lt != types.Int && lt != types.Byte {
 			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
 		}
 
@@ -693,7 +698,7 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) 
 			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot subtract types %s and %s", lt.Signature(), rt.Signature()))
 		}
 
-		if lt != types.Float && lt != types.Int {
+		if lt != types.Float && lt != types.Int && lt != types.Byte {
 			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
 		}
 
@@ -1377,6 +1382,13 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 	idxT := c.typeOf(expr.Index, nil)
 	mt, mok := lt.(types.MapType)
 	at, aok := lt.(types.ArrayType)
+
+	if lt == types.String {
+		if idxT != types.Int {
+			c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", idxT.Signature()))
+		}
+		return types.Byte
+	}
 
 	if aok {
 		if idxT != types.Int {

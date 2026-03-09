@@ -37,6 +37,7 @@ const (
 	InterfaceObj        ObjectType = "Interface"
 	ItabObj             ObjectType = "Itab"
 	ResultObj           ObjectType = "Result"
+	ByteObj             ObjectType = "Byte"
 )
 
 type (
@@ -57,6 +58,10 @@ type (
 
 	Boolean struct {
 		Value bool
+	}
+
+	Byte struct {
+		Value byte
 	}
 
 	Null struct{}
@@ -244,6 +249,10 @@ func (r *Result) Type() ObjectType {
 	return ResultObj
 }
 
+func (b *Byte) Type() ObjectType {
+	return ByteObj
+}
+
 func (i *Integer) Inspect() string {
 	return fmt.Sprintf("%d", i.Value)
 }
@@ -411,6 +420,10 @@ func (r *Result) Inspect() string {
 	return out.String()
 }
 
+func (b *Byte) Inspect() string {
+	return fmt.Sprintf("%d", b.Value)
+}
+
 // HashKey functions
 func (b *Boolean) HashKey() HashKey {
 	var val uint64
@@ -446,6 +459,8 @@ func GetZeroValue(t types.Type) Object {
 			return &String{Value: ""}
 		case types.Bool:
 			return &Boolean{Value: false}
+		case types.Byte:
+			return &Byte{Value: 0}
 		}
 	}
 
