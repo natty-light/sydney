@@ -39,6 +39,8 @@ func TestNextToken(t *testing.T) {
 	import "math"
 	pub mut int x
 	module "math"
+
+	mut byte b
 	`
 
 	tests := []struct {
@@ -243,6 +245,10 @@ func TestNextToken(t *testing.T) {
 
 		{token.Module, "module"},
 		{token.String, "math"},
+
+		{token.Mut, "mut"},
+		{token.ByteType, "byte"},
+		{token.Identifier, "b"},
 
 		{token.EOF, ""},
 	}
