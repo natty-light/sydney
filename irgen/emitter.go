@@ -660,7 +660,7 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 		case IrFloat:
 			op = "fadd"
 		case IrPtr:
-			line := fmt.Sprintf("%s = call ptr @sydney_strcat(%s, %s)", result, left, right)
+			line := fmt.Sprintf("%s = call ptr @sydney_strcat(ptr %s, ptr %s)", result, left, right)
 			e.emit(line)
 			return result, IrPtr
 		default:

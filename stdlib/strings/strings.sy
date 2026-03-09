@@ -1,0 +1,33 @@
+module "strings"
+
+pub func repeat(string str, int count) -> string {
+    mut i = 0;
+    mut string r = ""
+    for (i < count) {
+        r = r + str;
+        i = i + 1;
+    }
+
+    return r;
+}
+
+pub func join(array<string> strs) -> string {
+    mut i = 0;
+    mut r = "";
+    for (i < len(strs)) {
+        r = r + strs[i];
+        i = i + 1;
+    }
+
+    return r;
+}
+
+pub func join_with_delim(array<string> strs, string delim) -> string {
+    mut i = 0;
+    mut r = "";
+    for (i < len(strs) - 1) {
+        r = r + strs[i] + delim;
+        i = i + 1;
+    }
+    return r + strs[len(strs) - 1];
+}
