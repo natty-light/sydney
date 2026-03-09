@@ -190,3 +190,21 @@ pub func trim(string str) -> string {
 
     return str
 }
+
+pub func split(string str, byte delim) -> array<string> {
+    mut array<string> r = [];
+    mut rr = "";
+    mut i = 0;
+    for (i < len(str)) {
+        const chr = str[i];
+        if (chr != delim) {
+            rr = rr + char(chr);
+        } else {
+            r = append(r, rr);
+            rr = ""
+        }
+        i = i + 1;
+    }
+
+    return append(r, rr);
+}
