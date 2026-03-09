@@ -3,6 +3,8 @@ package object
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"sydney/types"
 )
@@ -249,6 +251,69 @@ var Builtins = []struct {
 			T: types.FunctionType{Params: []types.Type{types.Infer}, Return: types.ResultType{T: types.Infer}},
 		},
 	},
+	{
+		"fopen",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				path := args[0].(*String).Value
+				f, err := os.Open(path)
+				if err != nil {
+					return &Result{Value: nil, Error: &String{Value: err.Error()}, IsOk: false}
+				}
+				fd := f.Fd()
+				return &Result{Value: &Integer{Value: int64(fd)}, Error: nil, IsOk: true}
+			},
+			T: types.FunctionType{Params: []types.Type{types.String}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"fread",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				f := os.NewFile(uintptr(fd), "")
+				data, err := io.ReadAll(f)
+				if err != nil {
+					return &Result{Value: nil, Error: &String{Value: err.Error()}, IsOk: false}
+				}
+
+				return &Result{Value: &String{Value: string(data)}, Error: nil, IsOk: true}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.String}},
+		},
+	},
+	{
+		"fwrite",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				data := []byte(args[1].(*String).Value)
+				f := os.NewFile(uintptr(fd), "")
+				_, err := f.Write(data)
+				if err != nil {
+					return &Result{Value: nil, Error: &String{Value: err.Error()}, IsOk: false}
+				}
+
+				return &Result{Value: &Integer{Value: fd}, Error: nil, IsOk: true}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.String}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"fclose",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				f := os.NewFile(uintptr(fd), "")
+				err := f.Close()
+				if err != nil {
+					return &Result{Value: nil, Error: &String{Value: err.Error()}, IsOk: false}
+				}
+				return &Result{Value: &Integer{Value: fd}, Error: nil, IsOk: true}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
 }
 
 var BuiltInMap = map[string]bool{
@@ -263,6 +328,10 @@ var BuiltInMap = map[string]bool{
 	"values": true,
 	"ok":     true,
 	"err":    true,
+	"fopen":  true,
+	"fread":  true,
+	"fwrite": true,
+	"fclose": true,
 }
 
 func GetBuiltInByName(name string) *BuiltIn {

@@ -92,10 +92,6 @@ func Run(args []string, flags map[Flag]bool) int {
 	p := parser.New(l)
 	program := p.ParseProgram()
 
-	if flags[dumpAst] {
-		ast.Dump(program, 0)
-	}
-
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
@@ -109,6 +105,16 @@ func Run(args []string, flags map[Flag]bool) int {
 	if err != nil {
 		fmt.Printf("loader error: %s\n", err)
 		return 1
+	}
+
+	if flags[dumpAst] {
+		ast.Dump(program, 0)
+		for _, pkg := range packages {
+			fmt.Println(pkg)
+			for _, pr := range pkg.Programs {
+				ast.Dump(pr, 0)
+			}
+		}
 	}
 
 	c := typechecker.NewWithModuleTypes(typeEnv, tt)
@@ -127,6 +133,7 @@ func Run(args []string, flags map[Flag]bool) int {
 	err = comp.CompilePackages(packages)
 	if err != nil {
 		fmt.Printf("compiler error: %s\n", err)
+		return 1
 	}
 	err = comp.Compile(program)
 	if err != nil {
