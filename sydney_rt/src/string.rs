@@ -30,3 +30,11 @@ pub extern "C" fn sydney_strcat(a: *const c_char, b: *const c_char) -> *mut c_ch
     let c_string = std::ffi::CString::new(result).unwrap();
     c_string.into_raw() // caller (GC) is responsible for freeing
 }
+
+#[no_mangle]
+pub extern "C" fn sydney_byte_to_string(b: u8) -> *mut u8 {
+    let s = vec![b, 0];
+    let ptr = s.as_ptr() as *mut u8;
+    std::mem::forget(s);
+    ptr
+}
