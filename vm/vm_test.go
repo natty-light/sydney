@@ -681,6 +681,79 @@ func TestMatchExpression(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestThreePartForLoops(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `mut sum = 0; for (mut i = 0; i < 5; i = i + 1) { sum = sum + i; } sum;`,
+			expected: 10,
+		},
+		{
+			source:   `mut s = ""; for (mut i = 0; i < 3; i = i + 1) { s = s + "x"; } s;`,
+			expected: "xxx",
+		},
+		{ // init variable doesn't leak — reuse i
+			source:   `mut r = 0; for (mut i = 0; i < 3; i = i + 1) { r = r + i; } for (mut i = 0; i < 3; i = i + 1) { r = r + i; } r;`,
+			expected: 6,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestBreakStatement(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `mut sum = 0; for (mut i = 0; i < 10; i = i + 1) { if (i == 3) { break; } sum = sum + i; } sum;`,
+			expected: 3,
+		},
+		{
+			source:   `mut r = 0; for (r < 100) { r = r + 1; if (r == 5) { break; } } r;`,
+			expected: 5,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestContinueStatement(t *testing.T) {
+	tests := []vmTestCase{
+		{ // skip even numbers
+			source:   `mut sum = 0; for (mut i = 0; i < 6; i = i + 1) { if (i % 2 == 0) { continue; } sum = sum + i; } sum;`,
+			expected: 9,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestModulo(t *testing.T) {
+	tests := []vmTestCase{
+		{source: `10 % 3;`, expected: 1},
+		{source: `15 % 5;`, expected: 0},
+		{source: `7 % 2;`, expected: 1},
+	}
+	runVmTests(t, tests)
+}
+
+func TestConversionBuiltins(t *testing.T) {
+	tests := []vmTestCase{
+		{source: `int('a');`, expected: 97},
+		{source: `char(byte(72));`, expected: "H"},
+	}
+	runVmTests(t, tests)
+}
+
+func TestIfExpressionAsStatement(t *testing.T) {
+	tests := []vmTestCase{
+		{ // if-as-statement in loop shouldn't corrupt stack
+			source:   `mut r = 0; for (mut i = 0; i < 3; i = i + 1) { if (i == 1) { r = 10; } } r;`,
+			expected: 10,
+		},
+		{ // if-else as statement in loop
+			source:   `mut r = 0; for (mut i = 0; i < 4; i = i + 1) { if (i % 2 == 0) { r = r + 1; } else { r = r + 10; } } r;`,
+			expected: 22,
+		},
+	}
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 

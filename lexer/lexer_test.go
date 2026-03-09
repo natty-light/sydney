@@ -269,6 +269,82 @@ func TestNextToken(t *testing.T) {
 	}
 }
 
+func TestBreakContinueKeywords(t *testing.T) {
+	source := `break; continue;`
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.Break, "break"},
+		{token.Semicolon, ";"},
+		{token.Continue, "continue"},
+		{token.Semicolon, ";"},
+		{token.EOF, ""},
+	}
+	lexer := New(source)
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}
+
+func TestStringEscapeSequences(t *testing.T) {
+	source := `"hello\nworld" "tab\there" "cr\rhere" "back\\slash" "escaped\"quote" "null\0byte"`
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.String, "hello\nworld"},
+		{token.String, "tab\there"},
+		{token.String, "cr\rhere"},
+		{token.String, "back\\slash"},
+		{token.String, "escaped\"quote"},
+		{token.String, "null\x00byte"},
+		{token.EOF, ""},
+	}
+	lexer := New(source)
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}
+
+func TestByteEscapeSequences(t *testing.T) {
+	source := `'\n' '\t' '\r' '\\' '\'' '\0'`
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.Byte, "\n"},
+		{token.Byte, "\t"},
+		{token.Byte, "\r"},
+		{token.Byte, "\\"},
+		{token.Byte, "'"},
+		{token.Byte, "0"},
+		{token.EOF, ""},
+	}
+	lexer := New(source)
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}
+
 func TestTypeLexing(t *testing.T) {
 	source := `
 	mut int x = 5;

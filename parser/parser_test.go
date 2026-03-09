@@ -1882,6 +1882,102 @@ func TestMatchExpr(t *testing.T) {
 	testIntegerLiteral(t, errBody.Expr, 0)
 }
 
+func TestThreePartForLoop(t *testing.T) {
+	source := "for (mut i = 0; i < 10; i = i + 1) { print(i); }"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. want=1, got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ForStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ForStmt. got=%T", program.Stmts[0])
+	}
+
+	if stmt.Init == nil {
+		t.Fatal("for loop Init is nil")
+	}
+	if _, ok := stmt.Init.(*ast.VarDeclarationStmt); !ok {
+		t.Fatalf("for loop Init is not *ast.VarDeclarationStmt. got=%T", stmt.Init)
+	}
+
+	if stmt.Condition == nil {
+		t.Fatal("for loop Condition is nil")
+	}
+
+	if stmt.Post == nil {
+		t.Fatal("for loop Post is nil")
+	}
+	if _, ok := stmt.Post.(*ast.VarAssignmentStmt); !ok {
+		t.Fatalf("for loop Post is not *ast.VarAssignmentStmt. got=%T", stmt.Post)
+	}
+
+	if len(stmt.Body.Stmts) != 1 {
+		t.Fatalf("for loop body should have 1 statement, got %d", len(stmt.Body.Stmts))
+	}
+}
+
+func TestBreakContinueStatements(t *testing.T) {
+	source := `for (x < 10) { break; continue; }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Stmts[0].(*ast.ForStmt)
+	if len(stmt.Body.Stmts) != 2 {
+		t.Fatalf("body should have 2 statements, got %d", len(stmt.Body.Stmts))
+	}
+
+	if _, ok := stmt.Body.Stmts[0].(*ast.BreakStmt); !ok {
+		t.Fatalf("stmt 0 is not *ast.BreakStmt. got=%T", stmt.Body.Stmts[0])
+	}
+	if _, ok := stmt.Body.Stmts[1].(*ast.ContinueStmt); !ok {
+		t.Fatalf("stmt 1 is not *ast.ContinueStmt. got=%T", stmt.Body.Stmts[1])
+	}
+}
+
+func TestMatchOnScopeAccess(t *testing.T) {
+	source := `match foo:bar(x) {
+		ok(v) -> { v; },
+		err(e) -> { 0; },
+	}`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Stmts[0].(*ast.ExpressionStmt)
+	expr, ok := stmt.Expr.(*ast.MatchExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.MatchExpr. got=%T", stmt.Expr)
+	}
+
+	call, ok := expr.Subject.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("match subject is not *ast.CallExpr. got=%T", expr.Subject)
+	}
+
+	scope, ok := call.Function.(*ast.ScopeAccessExpr)
+	if !ok {
+		t.Fatalf("call function is not *ast.ScopeAccessExpr. got=%T", call.Function)
+	}
+
+	if scope.Module.Value != "foo" {
+		t.Fatalf("scope module wrong. want=foo, got=%s", scope.Module.Value)
+	}
+	if scope.Member.Value != "bar" {
+		t.Fatalf("scope member wrong. want=bar, got=%s", scope.Member.Value)
+	}
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {

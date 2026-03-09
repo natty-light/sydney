@@ -256,7 +256,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpReturnValue)
 	case *ast.ForStmt:
+		var initVarName string
 		if node.Init != nil {
+			if varDecl, ok := node.Init.(*ast.VarDeclarationStmt); ok {
+				initVarName = varDecl.Name.Value
+			}
 			err := c.Compile(node.Init)
 			if err != nil {
 				return err
@@ -304,6 +308,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 		c.leaveLoop()
+
+		if initVarName != "" {
+			delete(c.symbolTable.store, initVarName)
+		}
 
 		c.emit(code.OpNull)
 		c.emit(code.OpPop) // this clears the condition value from the stack
