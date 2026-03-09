@@ -42,6 +42,7 @@ const (
 	MapType      TokenType = "MapType"
 	FunctionType TokenType = "FunctionType"
 	ResultType   TokenType = "ResultType"
+	ByteType     TokenType = "ByteType"
 
 	// Grouping
 	LeftParen          TokenType = "LeftParen"
