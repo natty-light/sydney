@@ -474,6 +474,8 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 		return vm.executeBinaryFloatOperation(op, left, right)
 	case leftType == object.StringObj && rightType == object.StringObj:
 		return vm.executeBinaryStringOperation(op, left, right)
+	case leftType == object.ByteObj && rightType == object.ByteObj:
+		return vm.executeBinaryByteOperation(op, left, right)
 	}
 	return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
 }
@@ -538,6 +540,10 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 
 	if leftType == object.StringObj && rightType == object.StringObj {
 		return vm.executeStringComparison(op, left, right)
+	}
+
+	if leftType == object.ByteObj && rightType == object.ByteObj {
+		return vm.executeByteComparision(op, left, right)
 	}
 	// objects should be boolean at this point
 
@@ -641,6 +647,19 @@ func (vm *VM) executeBinaryStringOperation(op code.Opcode, left, right object.Ob
 	return vm.push(&object.String{Value: leftVal + rightVal})
 }
 
+func (vm *VM) executeBinaryByteOperation(op code.Opcode, left, right object.Object) error {
+	if op != code.OpAdd && op != code.OpSub {
+		return fmt.Errorf("unknown byte operator: %d", op)
+	}
+	leftVal := left.(*object.Byte).Value
+	rightVal := right.(*object.Byte).Value
+	if op == code.OpSub {
+		return vm.push(&object.Byte{Value: leftVal - rightVal})
+	}
+
+	return vm.push(&object.Byte{Value: leftVal + rightVal})
+}
+
 func (vm *VM) executeStringComparison(op code.Opcode, left, right object.Object) error {
 	leftVal := left.(*object.String).Value
 	rightVal := right.(*object.String).Value
@@ -653,6 +672,26 @@ func (vm *VM) executeStringComparison(op code.Opcode, left, right object.Object)
 		result = leftVal != rightVal
 	default:
 		return fmt.Errorf("unknown string operator: %d", op)
+	}
+
+	return vm.push(nativeBoolToBooleanObject(result))
+}
+
+func (vm *VM) executeByteComparision(op code.Opcode, left, right object.Object) error {
+	leftVal := left.(*object.Byte).Value
+	rightVal := right.(*object.Byte).Value
+	var result bool
+	switch op {
+	case code.OpEqual:
+		result = leftVal == rightVal
+	case code.OpNotEqual:
+		result = leftVal != rightVal
+	case code.OpGt:
+		result = leftVal > rightVal
+	case code.OpGte:
+		result = leftVal >= rightVal
+	default:
+		return fmt.Errorf("unknown byte operator: %d", op)
 	}
 
 	return vm.push(nativeBoolToBooleanObject(result))
@@ -685,10 +724,12 @@ func (vm *VM) buildHash(startIndex, endIndex int) (*object.Hash, error) {
 
 func (vm *VM) executeIndexExpression(left, index object.Object) error {
 	switch {
-	case left.Type() == object.ArrayObj && index.Type() == object.IntegerObj:
+	case left.Type() == object.ArrayObj:
 		return vm.executeArrayIndex(left, index)
 	case left.Type() == object.HashObj:
 		return vm.executeHashIndex(left, index)
+	case left.Type() == object.StringObj:
+		return vm.executeStringIndex(left, index)
 	default:
 		return fmt.Errorf("index operator not supported: %s", left.Type())
 	}
@@ -704,6 +745,17 @@ func (vm *VM) executeArrayIndex(array, index object.Object) error {
 	}
 
 	return vm.push(arrayObj.Elements[idx])
+}
+
+func (vm *VM) executeStringIndex(str, index object.Object) error {
+	strObj := str.(*object.String).Value
+	idx := index.(*object.Integer).Value
+	m := int64(len(strObj) - 1)
+	if idx < 0 || idx > m {
+		return vm.push(Null)
+	}
+
+	return vm.push(&object.Byte{Value: strObj[idx]})
 }
 
 func (vm *VM) executeHashIndex(hash, index object.Object) error {

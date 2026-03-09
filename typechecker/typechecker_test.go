@@ -134,6 +134,9 @@ func TestValidTypeChecking(t *testing.T) {
 			err(msg) -> { 0; },
 			ok(val) -> { val * 2; },
 		};`,
+		`const byte b = 'a';`,
+		`'a' + 'b'`,
+		`'a' - 'b'`,
 	}
 
 	for _, s := range source {
@@ -221,6 +224,10 @@ func TestTypeErrorChecking(t *testing.T) {
 			"mut int x = 5; mut int x = 4;",
 			"variable x already declared",
 		},
+		{
+			"mut byte x = 0;",
+			"type mismatch: cannot assign int to variable x of type byte",
+		},
 	}
 
 	testTypeErrors(t, tests)
@@ -263,6 +270,10 @@ func TestInfixExpresionErrorTesting(t *testing.T) {
 		{
 			"5 || false",
 			"type mismatch: cannot perform boolean operation on types int and bool",
+		},
+		{
+			"'a' * 5",
+			"type mismatch: cannot multiply types byte and int",
 		},
 	}
 
