@@ -1029,7 +1029,7 @@ func (c *Checker) checkKeysBuiltIn(expr *ast.CallExpr) types.Type {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
 	}
 
-	return &types.ArrayType{ElemType: mapType.KeyType}
+	return types.ArrayType{ElemType: mapType.KeyType}
 }
 
 func (c *Checker) checkValuesBuiltIn(expr *ast.CallExpr) types.Type {
@@ -1042,7 +1042,7 @@ func (c *Checker) checkValuesBuiltIn(expr *ast.CallExpr) types.Type {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
 	}
 
-	return &types.ArrayType{ElemType: mapType.ValueType}
+	return types.ArrayType{ElemType: mapType.ValueType}
 }
 
 func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {

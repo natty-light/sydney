@@ -243,3 +243,39 @@ func (e *Emitter) emitAppendCall(expr *ast.CallExpr) (string, IrType) {
 
 	return header, IrPtr
 }
+
+func (e *Emitter) emitIntKeysCall(expr *ast.CallExpr) (string, IrType) {
+	m, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_map_keys_int(ptr %s)", result, m)
+	e.emit(line)
+
+	return result, IrPtr
+}
+
+func (e *Emitter) emitIntValuesCall(expr *ast.CallExpr) (string, IrType) {
+	m, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_map_values_int(ptr %s)", result, m)
+	e.emit(line)
+
+	return result, IrPtr
+}
+
+func (e *Emitter) emitStrKeysCall(expr *ast.CallExpr) (string, IrType) {
+	m, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_map_keys_str(ptr %s)", result, m)
+	e.emit(line)
+
+	return result, IrPtr
+}
+
+func (e *Emitter) emitStrValuesCall(expr *ast.CallExpr) (string, IrType) {
+	m, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_map_values_str(ptr %s)", result, m)
+	e.emit(line)
+
+	return result, IrPtr
+}

@@ -325,6 +325,10 @@ func (e *Emitter) preamble() {
 	e.emit("declare ptr @sydney_byte_to_string(i8)")
 	e.emit("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")
 	e.emit("declare i1 @sydney_str_equals(ptr, ptr)")
+	e.emit("declare ptr @sydney_map_keys_str(ptr)")
+	e.emit("declare ptr @sydney_map_values_str(ptr)")
+	e.emit("declare ptr @sydney_map_keys_int(ptr)")
+	e.emit("declare ptr @sydney_map_values_int(ptr)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -888,6 +892,20 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitCharConvCall(expr)
 		case "append":
 			return e.emitAppendCall(expr)
+		case "keys":
+			if mt, ok := expr.Arguments[0].GetResolvedType().(types.MapType); ok {
+				if mt.KeyType == types.String {
+					return e.emitStrKeysCall(expr)
+				}
+				return e.emitIntKeysCall(expr)
+			}
+		case "values":
+			if mt, ok := expr.Arguments[0].GetResolvedType().(types.MapType); ok {
+				if mt.KeyType == types.String {
+					return e.emitStrValuesCall(expr)
+				}
+				return e.emitIntValuesCall(expr)
+			}
 		}
 
 		if fn, ok := runtimeBuiltins[name]; ok {

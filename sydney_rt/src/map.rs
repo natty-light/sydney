@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::path::Component::ParentDir;
-use crate::gc::GC;
+use crate::gc::{sydney_gc_alloc, GC};
 
 #[no_mangle]
 pub extern "C" fn sydney_map_create_int() -> *mut HashMap<i64, i64> {
@@ -60,5 +60,81 @@ pub extern "C" fn sydney_map_get_destroy_string(map: *mut HashMap<String, i64>) 
     let gc = GC.as_mut().unwrap();
     gc.maps.retain(|m| (*m as *const () as usize != (map as *const () as usize)));
     drop(Box::from_raw(map));
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn sydney_map_keys_int(map: *const HashMap<i64, i64>) -> *mut u8 {
+  unsafe {
+    let keys: Vec<i64> = (*map).keys().copied().collect();
+    let len = keys.len() as i64;
+    let gc = GC.as_mut().unwrap();
+    let buf = sydney_gc_alloc((keys.len() * 8) as i64);
+    let data = buf as *mut i64;
+    for (i, k) in keys.iter().enumerate() {
+      *data.add(i) = *k;
+    }
+    // allocate header: { i64, ptr }
+    let header = sydney_gc_alloc(16) as *mut i64;
+    *header = len;
+    *header.add(1) = buf as i64;
+    header as *mut u8
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn sydney_map_values_int(map: *const HashMap<i64, i64>) -> *mut u8 {
+  unsafe {
+    let vals: Vec<i64> = (*map).values().copied().collect();
+    let len = vals.len() as i64;
+    let gc = GC.as_mut().unwrap();
+    let buf = sydney_gc_alloc((vals.len() * 8) as i64);
+    let data = buf as *mut i64;
+    for (i, v) in vals.iter().enumerate() {
+      *data.add(i) = *v;
+    }
+    let header = sydney_gc_alloc(16) as *mut i64;
+    *header = len;
+    *header.add(1) = buf as i64;
+    header as *mut u8
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn sydney_map_keys_str(map: *const HashMap<String, i64>) -> *mut u8 {
+  unsafe {
+    let gc = GC.as_mut().unwrap();
+    let keys: Vec<&String> = (*map).keys().collect();
+    let len = keys.len() as i64;
+    let buf = sydney_gc_alloc((keys.len() * 8) as i64);
+    let data = buf as *mut i64;
+    for (i, k) in keys.iter().enumerate() {
+      let cstr = std::ffi::CString::new(k.as_str()).unwrap();
+      let ptr = sydney_gc_alloc((k.len() + 1) as i64);
+      std::ptr::copy_nonoverlapping(cstr.as_ptr(), ptr as *mut i8, k.len() + 1);
+      *data.add(i) = ptr as i64;
+    }
+    let header = sydney_gc_alloc(16) as *mut i64;
+    *header = len;
+    *header.add(1) = buf as i64;
+    header as *mut u8
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn sydney_map_values_str(map: *const HashMap<String, i64>) -> *mut u8 {
+  unsafe {
+    let vals: Vec<i64> = (*map).values().copied().collect();
+    let len = vals.len() as i64;
+    let gc = GC.as_mut().unwrap();
+    let buf = sydney_gc_alloc((vals.len() * 8) as i64);
+    let data = buf as *mut i64;
+    for (i, v) in vals.iter().enumerate() {
+      *data.add(i) = *v;
+    }
+    let header = sydney_gc_alloc(16) as *mut i64;
+    *header = len;
+    *header.add(1) = buf as i64;
+    header as *mut u8
   }
 }
