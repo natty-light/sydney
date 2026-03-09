@@ -1103,6 +1103,11 @@ func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 	loopLabel := e.label("loop")
 	escapeLabel := e.label("escape")
 
+	e.pushScope()
+	if stmt.Init != nil {
+		e.emitStmt(stmt.Init)
+	}
+
 	// so we can branch back here
 	e.emitJmp(condLabel)
 	e.emitLabel(condLabel)
@@ -1111,9 +1116,11 @@ func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 
 	// set loop body
 	e.emitLabel(loopLabel)
-	e.pushScope()
 	e.emitBlock(stmt.Body)
-	e.popScope()
+
+	if stmt.Post != nil {
+		e.emitStmt(stmt.Post)
+	}
 
 	// jump back to above condition
 	e.emitJmp(condLabel)
