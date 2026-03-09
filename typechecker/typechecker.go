@@ -65,6 +65,13 @@ func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]ty
 	}
 }
 
+func (c *Checker) pushScope() *TypeEnv {
+	env := c.env
+	c.env = NewTypeEnv(env)
+
+	return env
+}
+
 func (c *Checker) Errors() []string {
 	return c.errors
 }
@@ -140,11 +147,21 @@ func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
 }
 
 func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
+	oldEnv := c.pushScope()
+	if node.Init != nil {
+		c.check(node.Init)
+	}
 	conditionType := c.typeOf(node.Condition, types.Bool)
 	if conditionType != types.Bool {
 		c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()))
 	}
-	return c.check(node.Body)
+	if node.Post != nil {
+		c.check(node.Post)
+	}
+	ret := c.check(node.Body)
+	c.env = oldEnv
+
+	return ret
 }
 
 func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {

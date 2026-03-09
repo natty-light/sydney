@@ -243,12 +243,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpReturnValue)
 	case *ast.ForStmt:
-		//if node.Init != nil {
-		//	err := c.Compile(node.Init)
-		//	if err != nil {
-		//		return err
-		//	}
-		//}
+		if node.Init != nil {
+			err := c.Compile(node.Init)
+			if err != nil {
+				return err
+			}
+		}
 
 		conditionPos := len(c.currentInstructions())
 
@@ -264,12 +264,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		//if node.Post != nil {
-		//	err = c.Compile(node.Post)
-		//	if err != nil {
-		//		return err
-		//	}
-		//}
+		if node.Post != nil {
+			err = c.Compile(node.Post)
+			if err != nil {
+				return err
+			}
+		}
 
 		c.emit(code.OpJump, conditionPos)
 		c.changeOperand(jumpNotTruthyPos, len(c.currentInstructions()))
