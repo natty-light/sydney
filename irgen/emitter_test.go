@@ -261,27 +261,27 @@ print("x + 6 = ", xPlusSix);`
 @xPlusSix = global i64 0
 define i64 @addFive(i64 %i) {
 entry:
-  %i.addr = alloca i64
-  %r.addr = alloca i64
-  store i64 %i, ptr %i.addr
-  %t0 = load i64, ptr %i.addr
-  %t1 = add i64 %t0, 5
-  store i64 %t1, ptr %r.addr
-  %t2 = load i64, ptr %r.addr
-  ret i64 %t2
+  %i.0.addr = alloca i64
+  %r.3.addr = alloca i64
+  store i64 %i, ptr %i.0.addr
+  %t1 = load i64, ptr %i.0.addr
+  %t2 = add i64 %t1, 5
+  store i64 %t2, ptr %r.3.addr
+  %t4 = load i64, ptr %r.3.addr
+  ret i64 %t4
   }
 
 
 define i64 @addSix(i64 %i) {
 entry:
-  %i.addr = alloca i64
-  %r.addr = alloca i64
-  store i64 %i, ptr %i.addr
-  %t0 = load i64, ptr %i.addr
-  %t1 = add i64 %t0, 6
-  store i64 %t1, ptr %r.addr
-  %t2 = load i64, ptr %r.addr
-  ret i64 %t2
+  %i.0.addr = alloca i64
+  %r.3.addr = alloca i64
+  store i64 %i, ptr %i.0.addr
+  %t1 = load i64, ptr %i.0.addr
+  %t2 = add i64 %t1, 6
+  store i64 %t2, ptr %r.3.addr
+  %t4 = load i64, ptr %r.3.addr
+  ret i64 %t4
   }
 
 
@@ -449,50 +449,50 @@ print("circle area: ", circA);`
 @rectA = global double 0.0
 define double @Circle.area(ptr %c) {
 entry:
-  %c.addr = alloca ptr
-  %pi.addr = alloca double
-  store ptr %c, ptr %c.addr
-  store double 3.140000, ptr %pi.addr
-  %t0 = load ptr, ptr %c.addr
-  %t1 = getelementptr %struct.Circle, ptr %t0, i32 0, i32 0
-  %t2 = load double, ptr %t1
-  %t3 = load ptr, ptr %c.addr
-  %t4 = getelementptr %struct.Circle, ptr %t3, i32 0, i32 0
-  %t5 = load double, ptr %t4
-  %t6 = fmul double %t2, %t5
-  %t7 = load double, ptr %pi.addr
-  %t8 = fmul double %t6, %t7
-  ret double %t8
+  %c.0.addr = alloca ptr
+  %pi.1.addr = alloca double
+  store ptr %c, ptr %c.0.addr
+  store double 3.140000, ptr %pi.1.addr
+  %t2 = load ptr, ptr %c.0.addr
+  %t3 = getelementptr %struct.Circle, ptr %t2, i32 0, i32 0
+  %t4 = load double, ptr %t3
+  %t5 = load ptr, ptr %c.0.addr
+  %t6 = getelementptr %struct.Circle, ptr %t5, i32 0, i32 0
+  %t7 = load double, ptr %t6
+  %t8 = fmul double %t4, %t7
+  %t9 = load double, ptr %pi.1.addr
+  %t10 = fmul double %t8, %t9
+  ret double %t10
   }
 
 
 define double @Rect.area(ptr %r) {
 entry:
-  %r.addr = alloca ptr
-  store ptr %r, ptr %r.addr
-  %t0 = load ptr, ptr %r.addr
-  %t1 = getelementptr %struct.Rect, ptr %t0, i32 0, i32 0
-  %t2 = load double, ptr %t1
-  %t3 = load ptr, ptr %r.addr
-  %t4 = getelementptr %struct.Rect, ptr %t3, i32 0, i32 1
-  %t5 = load double, ptr %t4
-  %t6 = fmul double %t2, %t5
-  ret double %t6
+  %r.0.addr = alloca ptr
+  store ptr %r, ptr %r.0.addr
+  %t1 = load ptr, ptr %r.0.addr
+  %t2 = getelementptr %struct.Rect, ptr %t1, i32 0, i32 0
+  %t3 = load double, ptr %t2
+  %t4 = load ptr, ptr %r.0.addr
+  %t5 = getelementptr %struct.Rect, ptr %t4, i32 0, i32 1
+  %t6 = load double, ptr %t5
+  %t7 = fmul double %t3, %t6
+  ret double %t7
   }
 
 
 define double @getArea(ptr %a) {
 entry:
-  %a.addr = alloca ptr
-  store ptr %a, ptr %a.addr
-  %t0 = load ptr, ptr %a.addr
-  %t1 = load { ptr, ptr }, ptr %t0
-  %t2 = extractvalue { ptr, ptr } %t1, 0
-  %t3 = extractvalue { ptr, ptr } %t1, 1
-  %t4 = getelementptr [1 x ptr], ptr %t3, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = call double %t5(ptr %t2)
-  ret double %t6
+  %a.0.addr = alloca ptr
+  store ptr %a, ptr %a.0.addr
+  %t1 = load ptr, ptr %a.0.addr
+  %t2 = load { ptr, ptr }, ptr %t1
+  %t3 = extractvalue { ptr, ptr } %t2, 0
+  %t4 = extractvalue { ptr, ptr } %t2, 1
+  %t5 = getelementptr [1 x ptr], ptr %t4, i32 0, i32 0
+  %t6 = load ptr, ptr %t5
+  %t7 = call double %t6(ptr %t3)
+  ret double %t7
   }
 
 
@@ -641,14 +641,14 @@ entry:
 
 define i64 @anon.1(ptr %env, i64 %a, i64 %b) {
 entry:
-  %a.addr = alloca i64
-  %b.addr = alloca i64
-  store i64 %a, ptr %a.addr
-  store i64 %b, ptr %b.addr
-  %t0 = load i64, ptr %a.addr
-  %t1 = load i64, ptr %b.addr
-  %t2 = add i64 %t0, %t1
-  ret i64 %t2
+  %a.0.addr = alloca i64
+  %b.1.addr = alloca i64
+  store i64 %a, ptr %a.0.addr
+  store i64 %b, ptr %b.1.addr
+  %t2 = load i64, ptr %a.0.addr
+  %t3 = load i64, ptr %b.1.addr
+  %t4 = add i64 %t2, %t3
+  ret i64 %t4
 }
 
 `
@@ -688,12 +688,12 @@ entry:
 }
 define i64 @anon.0(ptr %env, i64 %y) {
 entry:
-  %y.addr = alloca i64
-  store i64 %y, ptr %y.addr
-  %t0 = load i64, ptr @x
-  %t1 = load i64, ptr %y.addr
-  %t2 = add i64 %t0, %t1
-  ret i64 %t2
+  %y.0.addr = alloca i64
+  store i64 %y, ptr %y.0.addr
+  %t1 = load i64, ptr @x
+  %t2 = load i64, ptr %y.0.addr
+  %t3 = add i64 %t1, %t2
+  ret i64 %t3
 }
 
 `
@@ -763,34 +763,34 @@ entry:
 }
 define i64 @anon.1(ptr %env, i64 %z) {
 entry:
-  %y.addr = alloca i64
-  %z.addr = alloca i64
+  %y.2.addr = alloca i64
+  %z.3.addr = alloca i64
   %t0 = getelementptr { i64 }, ptr %env, i32 0, i32 0
   %t1 = load i64, ptr %t0
-  store i64 %t1, ptr %y.addr
-  store i64 %z, ptr %z.addr
-  %t2 = load i64, ptr @x
-  %t3 = load i64, ptr %y.addr
-  %t4 = add i64 %t2, %t3
-  %t5 = load i64, ptr %z.addr
+  store i64 %t1, ptr %y.2.addr
+  store i64 %z, ptr %z.3.addr
+  %t4 = load i64, ptr @x
+  %t5 = load i64, ptr %y.2.addr
   %t6 = add i64 %t4, %t5
-  ret i64 %t6
+  %t7 = load i64, ptr %z.3.addr
+  %t8 = add i64 %t6, %t7
+  ret i64 %t8
 }
 
 define ptr @anon.0(ptr %env, i64 %y) {
 entry:
-  %y.addr = alloca i64
-  store i64 %y, ptr %y.addr
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
-  store ptr @anon.1, ptr %t1
-  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
-  %t3 = call ptr @sydney_gc_alloc(i64 8)
-  %t4 = getelementptr { i64 }, ptr %t3, i32 0, i32 0
-  %t5 = load i64, ptr %y.addr
-  store i64 %t5, ptr %t4
-  store ptr %t3, ptr %t2
-  ret ptr %t0
+  %y.0.addr = alloca i64
+  store i64 %y, ptr %y.0.addr
+  %t1 = call ptr @sydney_gc_alloc(i64 16)
+  %t2 = getelementptr { ptr, ptr }, ptr %t1, i32 0, i32 0
+  store ptr @anon.1, ptr %t2
+  %t3 = getelementptr { ptr, ptr }, ptr %t1, i32 0, i32 1
+  %t4 = call ptr @sydney_gc_alloc(i64 8)
+  %t5 = getelementptr { i64 }, ptr %t4, i32 0, i32 0
+  %t6 = load i64, ptr %y.0.addr
+  store i64 %t6, ptr %t5
+  store ptr %t4, ptr %t3
+  ret ptr %t1
 }
 
 `
@@ -804,11 +804,11 @@ print(addTwo(3));`
 
 	expected := `define i64 @addTwo(i64 %x) {
 entry:
-  %x.addr = alloca i64
-  store i64 %x, ptr %x.addr
-  %t0 = load i64, ptr %x.addr
-  %t1 = add i64 %t0, 2
-  ret i64 %t1
+  %x.0.addr = alloca i64
+  store i64 %x, ptr %x.0.addr
+  %t1 = load i64, ptr %x.0.addr
+  %t2 = add i64 %t1, 2
+  ret i64 %t2
   }
 
 
@@ -970,27 +970,27 @@ entry:
 }
 define i64 @anon.0(ptr %env, i64 %x) {
 entry:
-  %x.addr = alloca i64
+  %x.0.addr = alloca i64
   %self = alloca { ptr, ptr }
-  store i64 %x, ptr %x.addr
-%t0 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-store ptr @anon.0, ptr %t0
-%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-store ptr %env, ptr %t1
-  %t2 = load i64, ptr %x.addr
-  %t3 = icmp eq i64 %t2, 0
-  br i1 %t3, label %then.0, label %merge.1
+  store i64 %x, ptr %x.0.addr
+%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+store ptr @anon.0, ptr %t1
+%t2 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+store ptr %env, ptr %t2
+  %t3 = load i64, ptr %x.0.addr
+  %t4 = icmp eq i64 %t3, 0
+  br i1 %t4, label %then.0, label %merge.1
 then.0:
     ret i64 0
 merge.1:
-  %t4 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-  %t7 = load ptr, ptr %t6
-  %t8 = load i64, ptr %x.addr
-  %t9 = sub i64 %t8, 1
-  %t10 = call i64 %t5(ptr %t7, i64 %t9)
-  ret i64 %t10
+  %t5 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+  %t6 = load ptr, ptr %t5
+  %t7 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+  %t8 = load ptr, ptr %t7
+  %t9 = load i64, ptr %x.0.addr
+  %t10 = sub i64 %t9, 1
+  %t11 = call i64 %t6(ptr %t8, i64 %t10)
+  ret i64 %t11
 }
 
 `
@@ -1011,20 +1011,20 @@ print(callCountDown());`
 
 	expected := `define i64 @callCountDown() {
 entry:
-  %countDown.addr = alloca ptr
+  %countDown.3.addr = alloca ptr
   %t0 = call ptr @sydney_gc_alloc(i64 16)
   %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
   store ptr @anon.0, ptr %t1
   %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
   store ptr null, ptr %t2
-  store ptr %t0, ptr %countDown.addr
-  %t3 = load ptr, ptr %countDown.addr
-  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
-  %t7 = load ptr, ptr %t6
-  %t8 = call i64 %t5(ptr %t7, i64 5)
-  ret i64 %t8
+  store ptr %t0, ptr %countDown.3.addr
+  %t4 = load ptr, ptr %countDown.3.addr
+  %t5 = getelementptr { ptr, ptr }, ptr %t4, i32 0, i32 0
+  %t6 = load ptr, ptr %t5
+  %t7 = getelementptr { ptr, ptr }, ptr %t4, i32 0, i32 1
+  %t8 = load ptr, ptr %t7
+  %t9 = call i64 %t6(ptr %t8, i64 5)
+  ret i64 %t9
   }
 
 
@@ -1039,30 +1039,30 @@ entry:
 }
 define i64 @anon.0(ptr %env, i64 %x) {
 entry:
-  %x.addr = alloca i64
+  %x.0.addr = alloca i64
   %self = alloca { ptr, ptr }
-  store i64 %x, ptr %x.addr
-%t0 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-store ptr @anon.0, ptr %t0
-%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-store ptr %env, ptr %t1
-  %t2 = load i64, ptr %x.addr
-  call void @sydney_print_int(i64 %t2)
+  store i64 %x, ptr %x.0.addr
+%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+store ptr @anon.0, ptr %t1
+%t2 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+store ptr %env, ptr %t2
+  %t3 = load i64, ptr %x.0.addr
+  call void @sydney_print_int(i64 %t3)
   call void @sydney_print_newline()
-  %t3 = load i64, ptr %x.addr
-  %t4 = icmp eq i64 %t3, 0
-  br i1 %t4, label %then.0, label %merge.1
+  %t4 = load i64, ptr %x.0.addr
+  %t5 = icmp eq i64 %t4, 0
+  br i1 %t5, label %then.0, label %merge.1
 then.0:
     ret i64 0
 merge.1:
-  %t5 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-  %t6 = load ptr, ptr %t5
-  %t7 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-  %t8 = load ptr, ptr %t7
-  %t9 = load i64, ptr %x.addr
-  %t10 = sub i64 %t9, 1
-  %t11 = call i64 %t6(ptr %t8, i64 %t10)
-  ret i64 %t11
+  %t6 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
+  %t7 = load ptr, ptr %t6
+  %t8 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
+  %t9 = load ptr, ptr %t8
+  %t10 = load i64, ptr %x.0.addr
+  %t11 = sub i64 %t10, 1
+  %t12 = call i64 %t7(ptr %t9, i64 %t11)
+  ret i64 %t12
 }
 
 `

@@ -429,6 +429,12 @@ func (e *Emitter) tmp() string {
 	return name
 }
 
+func (e *Emitter) alloca(name string) string {
+	allocaName := fmt.Sprintf("%%%s.%d.addr", name, e.tmpIdx)
+	e.tmpIdx++
+	return allocaName
+}
+
 func (e *Emitter) anon() string {
 	name := fmt.Sprintf("@anon.%d", e.anonIdx)
 	e.anonIdx++
@@ -1031,7 +1037,7 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
 		e.emit(line)
 	} else {
-		allocaName := "%" + name + ".addr"
+		allocaName := e.alloca(name)
 		e.emitAlloca(allocaName, valType)
 
 		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
@@ -1286,7 +1292,7 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 
 	for i, paramName := range decl.Params {
 		pName := paramName.Value
-		allocaName := "%" + pName + ".addr"
+		allocaName := e.alloca(pName)
 		e.emitAlloca(allocaName, paramIrTypes[i])
 
 		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
@@ -1372,7 +1378,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, fv.typ, gepPtr)
 		e.emit(line)
 
-		allocaName := "%" + fv.name + ".addr"
+		allocaName := e.alloca(fv.name)
 		e.emitAlloca(allocaName, fv.typ)
 
 		line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, loaded, allocaName)
@@ -1383,7 +1389,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	// allocate params
 	for i, paramName := range expr.Parameters {
 		pName := paramName.Value
-		allocaName := "%" + pName + ".addr"
+		allocaName := e.alloca(pName)
 		e.emitAlloca(allocaName, paramIrTypes[i])
 
 		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
