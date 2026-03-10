@@ -1,0 +1,85 @@
+module "conv"
+
+import "strings"
+
+pub extern func atof(string str) -> result<float>
+
+pub func atoi(string str) -> result<int> {
+    mut r = 0;
+    for (mut i = 0; i < len(str); i = i + 1) {
+        const chr = str[i];
+        if (chr < '0' || chr > '9') {
+            return err("invalid string");
+        }
+        r = r * 10 + int(chr) - 48;
+    }
+
+    return ok(r);
+}
+
+pub func itoa(int num) -> string {
+    mut s = "";
+    mut isNeg = false;
+
+    if (num == 0) {
+        return "0"
+    }
+
+    if (num < 0) {
+        isNeg = true;
+        num = -num;
+    }
+
+    for (num != 0) {
+        const digit = num % 10;
+        const b = byte(digit + 48);
+        s = s + char(b);
+        num = num / 10;
+    }
+
+    if (isNeg) {
+        s = s + "-";
+    }
+
+    return strings:reverse(s);
+}
+
+pub func parse_bool(string str) -> result<bool> {
+    const upper = strings:to_upper(str);
+    if (upper == "TRUE") {
+        return ok(true);
+    }
+
+    if (upper == "FALSE") {
+        return ok(false);
+    }
+
+    return err("invalid string");
+}
+
+pub func itob(int num) -> string {
+ mut s = "";
+    mut isNeg = false;
+
+    if (num == 0) {
+        return "0"
+    }
+
+    if (num < 0) {
+        isNeg = true;
+        num = -num;
+    }
+
+    for (num != 0) {
+        const digit = num % 2;
+        const b = byte(digit + 48);
+        s = s + char(b);
+        num = num / 2;
+    }
+
+    if (isNeg) {
+        s = s + "-";
+    }
+
+    return strings:reverse(s);
+}
