@@ -4,3 +4,4 @@ mod gc;
 mod map;
 mod file;
 mod error;
+mod floats;

@@ -11,7 +11,10 @@ var runtimeBuiltins = map[string]string{
 	"io__fread":  "sydney_file_read",
 	"io__fwrite": "sydney_file_write",
 	"io__fclose": "sydney_file_close",
+	"conv__atof": "sydney_atof",
 }
+
+const fNaN = "0x7FF8000000000000"
 
 func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
 	for _, a := range expr.Arguments {
@@ -97,6 +100,8 @@ func (e *Emitter) wrapIntoResult(val string, typ IrType) (string, IrType) {
 	var line string
 	if typ == IrPtr {
 		line = fmt.Sprintf("%s = icmp eq ptr %s, null", cmp, val)
+	} else if typ == IrFloat {
+		line = fmt.Sprintf("%s = fcmp uno double %s, 0.0", cmp, val)
 	} else {
 		line = fmt.Sprintf("%s = icmp eq i64 %s, -1", cmp, val)
 	}
@@ -147,6 +152,8 @@ func (e *Emitter) wrapIntoResult(val string, typ IrType) (string, IrType) {
 	e.emit(line)
 	if typ == IrPtr {
 		line = fmt.Sprintf("store ptr %s, ptr %s", val, valGep)
+	} else if typ == IrFloat {
+		line = fmt.Sprintf("store double %s, ptr %s", val, valGep)
 	} else {
 		line = fmt.Sprintf("store i64 %s, ptr %s", val, valGep)
 	}
@@ -278,4 +285,12 @@ func (e *Emitter) emitStrValuesCall(expr *ast.CallExpr) (string, IrType) {
 	e.emit(line)
 
 	return result, IrPtr
+}
+
+func (e *Emitter) emitStrToFloatCall(expr *ast.CallExpr) (string, IrType) {
+	m, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call double @sydney_atof(ptr %s)", result, m)
+	e.emit(line)
+	return e.wrapIntoResult(result, IrFloat)
 }

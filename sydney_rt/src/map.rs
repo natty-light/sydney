@@ -68,7 +68,6 @@ pub extern "C" fn sydney_map_keys_int(map: *const HashMap<i64, i64>) -> *mut u8 
   unsafe {
     let keys: Vec<i64> = (*map).keys().copied().collect();
     let len = keys.len() as i64;
-    let gc = GC.as_mut().unwrap();
     let buf = sydney_gc_alloc((keys.len() * 8) as i64);
     let data = buf as *mut i64;
     for (i, k) in keys.iter().enumerate() {
@@ -87,7 +86,6 @@ pub extern "C" fn sydney_map_values_int(map: *const HashMap<i64, i64>) -> *mut u
   unsafe {
     let vals: Vec<i64> = (*map).values().copied().collect();
     let len = vals.len() as i64;
-    let gc = GC.as_mut().unwrap();
     let buf = sydney_gc_alloc((vals.len() * 8) as i64);
     let data = buf as *mut i64;
     for (i, v) in vals.iter().enumerate() {
@@ -103,7 +101,6 @@ pub extern "C" fn sydney_map_values_int(map: *const HashMap<i64, i64>) -> *mut u
 #[no_mangle]
 pub extern "C" fn sydney_map_keys_str(map: *const HashMap<String, i64>) -> *mut u8 {
   unsafe {
-    let gc = GC.as_mut().unwrap();
     let keys: Vec<&String> = (*map).keys().collect();
     let len = keys.len() as i64;
     let buf = sydney_gc_alloc((keys.len() * 8) as i64);
@@ -126,7 +123,6 @@ pub extern "C" fn sydney_map_values_str(map: *const HashMap<String, i64>) -> *mu
   unsafe {
     let vals: Vec<i64> = (*map).values().copied().collect();
     let len = vals.len() as i64;
-    let gc = GC.as_mut().unwrap();
     let buf = sydney_gc_alloc((vals.len() * 8) as i64);
     let data = buf as *mut i64;
     for (i, v) in vals.iter().enumerate() {

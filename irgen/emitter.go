@@ -289,6 +289,10 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		for _, val := range node.Values {
 			e.collectStrings(val)
 		}
+	case *ast.MatchExpr:
+		e.collectStrings(node.Subject)
+		e.collectStrings(node.OkArm.Body)
+		e.collectStrings(node.ErrArm.Body)
 	}
 
 }
@@ -329,6 +333,8 @@ func (e *Emitter) preamble() {
 	e.emit("declare ptr @sydney_map_values_str(ptr)")
 	e.emit("declare ptr @sydney_map_keys_int(ptr)")
 	e.emit("declare ptr @sydney_map_values_int(ptr)")
+	e.emit("declare ptr @sydney_atof(ptr)")
+	e.emit("declare double @conv__atof(ptr)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -939,6 +945,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 				return e.emitFileWrite(expr)
 			case "sydney_file_close":
 				return e.emitFileClose(expr)
+			case "sydney_atof":
+				return e.emitStrToFloatCall(expr)
 			}
 		}
 
@@ -1035,6 +1043,9 @@ func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 
 func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	global, isGlobal := e.globals[e.global(stmt.Name.Value)]
+	if e.inFunc {
+		isGlobal = false
+	}
 
 	val, valType := e.emitExpr(stmt.Value)
 	if valType == IrUnit {
@@ -1287,6 +1298,9 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	}
 	if e.currentModule != "" {
 		name = e.moduleMangle(e.currentModule, name)
+	}
+	if _, isRuntime := runtimeBuiltins[name]; isRuntime {
+		return "", IrUnit
 	}
 
 	ret := SydneyTypeToIrType(fType.Return)
@@ -2305,6 +2319,8 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 		return e.emitFileWrite(expr)
 	case "sydney_file_close":
 		return e.emitFileClose(expr)
+	case "sydney_atof":
+		return e.emitStrToFloatCall(expr)
 	}
 
 	return "", IrUnit
