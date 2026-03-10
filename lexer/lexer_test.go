@@ -429,3 +429,35 @@ func TestTypeLexing(t *testing.T) {
 		}
 	}
 }
+
+func TestCommentLexing(t *testing.T) {
+	source := `mut int x;
+// this is a comment
+mut bool x; // this is a comment
+// this is a comment`
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.Mut, "mut"},
+		{token.IntType, "int"},
+		{token.Identifier, "x"},
+		{token.Semicolon, ";"},
+		{token.Mut, "mut"},
+		{token.BoolType, "bool"},
+		{token.Identifier, "x"},
+		{token.Semicolon, ";"},
+	}
+
+	lexer := New(source)
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}

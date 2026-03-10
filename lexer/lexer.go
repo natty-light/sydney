@@ -206,6 +206,13 @@ func (l *Lexer) NextToken() token.Token {
 	case star:
 		tok = token.MakeToken(token.Star, l.char)
 	case slash:
+		if l.peekChar() == slash {
+			l.readChar()
+			for l.char != '\n' && l.char != 0 {
+				l.readChar()
+			}
+			return l.NextToken()
+		}
 		tok = token.MakeToken(token.Slash, l.char)
 	case modulo:
 		tok = token.MakeToken(token.Modulo, l.char)
