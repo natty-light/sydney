@@ -77,6 +77,7 @@ type Emitter struct {
 	loopStack       []*LoopLabels
 	loopIdx         int
 	blockTerminated bool
+	currentBlock    string
 }
 
 func New() *Emitter {
@@ -403,6 +404,7 @@ func (e *Emitter) mainWrapper(node ast.Node) error {
 
 	e.allocaBuf = &bytes.Buffer{}
 	e.bodyBuf = &bytes.Buffer{}
+	e.currentBlock = "entry"
 	e.depth = 1
 
 	e.emit("call void @sydney_gc_init()")
@@ -487,6 +489,7 @@ func (e *Emitter) global(name string) string {
 
 func (e *Emitter) emitLabel(name string) {
 	e.blockTerminated = false
+	e.currentBlock = name
 	line := name + ":\n"
 	if e.bodyBuf != nil {
 		e.bodyBuf.WriteString(line)
@@ -524,6 +527,7 @@ func (e *Emitter) beginFunction() funcState {
 	e.locals = make(map[string]irLocal)
 	e.tmpIdx = 0
 	e.lblIdx = 0
+	e.currentBlock = "entry"
 	e.allocaBuf = &bytes.Buffer{}
 	e.bodyBuf = &bytes.Buffer{}
 	return state
@@ -1226,13 +1230,6 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	}
 	mergeLabel := e.label("merge")
 
-	// alloca for result
-	var resultAddr string
-	if hasElse {
-		resultAddr = e.tmp()
-		e.emitAlloca(resultAddr, IrInt) // i think this is wrong, and the if expr needs a resolved type
-	}
-
 	falseLabel := mergeLabel
 	if hasElse {
 		falseLabel = elseLabel
@@ -1245,25 +1242,19 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	e.pushScope()
 	thenVal, thenType, _ := e.emitBlock(expr.Consequence)
 	e.popScope()
-	// controls whether result is stored
 	isExpr := hasElse && thenType != IrUnit
-	// if there is an else, then there's an expression -- typechecker needs to enforce this more cleanly
-	if isExpr {
-		line := fmt.Sprintf("store %s %s, ptr %s", thenType, thenVal, resultAddr) // need to store result if this is an expression
-		e.emit(line)
-	}
-	e.emitJmp(mergeLabel) // mergeLabel might be elseLabel if no alternative
+	thenBlock := e.currentBlock // track where then branch ends (may differ from thenLabel)
+	e.emitJmp(mergeLabel)
 
 	// alternative block
+	var elseVal string
+	var elseBlock string
 	if hasElse {
 		e.emitLabel(elseLabel)
 		e.pushScope()
-		elseVal, _, _ := e.emitBlock(expr.Alternative)
+		elseVal, _, _ = e.emitBlock(expr.Alternative)
 		e.popScope()
-		if isExpr {
-			line := fmt.Sprintf("store %s %s, ptr %s", thenType, elseVal, resultAddr)
-			e.emit(line)
-		}
+		elseBlock = e.currentBlock
 		e.emitJmp(mergeLabel)
 	}
 
@@ -1272,7 +1263,7 @@ func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 
 	if isExpr {
 		result := e.tmp()
-		line := fmt.Sprintf("%s = load %s, ptr %s", result, thenType, resultAddr)
+		line := fmt.Sprintf("%s = phi %s [ %s, %%%s ], [ %s, %%%s ]", result, thenType, thenVal, thenBlock, elseVal, elseBlock)
 		e.emit(line)
 		return result, thenType
 	}
