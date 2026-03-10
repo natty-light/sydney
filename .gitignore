@@ -14,3 +14,7 @@ CLAUDE.md
 /.error-handling
 sydney
 !stdlib/**/*.sy
+.testing
+.todos
+.changelog
+.stdlib
