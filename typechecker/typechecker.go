@@ -169,6 +169,10 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 	name := node.Name.Value
 	varType, outer, ok := c.env.Get(name)
+	if !ok && node.Type != nil {
+		varType = node.Type
+	}
+
 	valType := c.typeOf(node.Value, varType)
 	if node.Type == nil {
 		node.Type = valType
@@ -176,6 +180,11 @@ func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 
 	if node.Value == nil && !node.Constant {
 		valType = varType
+	}
+
+	if valType == nil && varType == nil {
+		c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for variable %s", name))
+		return types.Unit
 	}
 
 	if ok && !outer {
@@ -1052,8 +1061,8 @@ func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {
 
 	t := c.typeOf(expr.Arguments[0], nil)
 
-	resolved := &types.ResultType{T: t}
-	expr.ResolvedType = resolved
+	resolved := types.ResultType{T: t}
+	expr.ResolvedType = &resolved
 	return resolved
 }
 
@@ -1071,15 +1080,15 @@ func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) ty
 		contextType = c.currentMatchResultType
 	} else if contextType == nil {
 		c.errors = append(c.errors, "cannot infer result type for err()")
-		return &types.ResultType{T: types.Unit}
+		return types.ResultType{T: types.Unit}
 	}
-	var resolved *types.ResultType
+	var resolved types.ResultType
 	if rt, ok := contextType.(types.ResultType); ok {
-		resolved = &types.ResultType{T: rt.T}
+		resolved = types.ResultType{T: rt.T}
 	} else {
-		resolved = &types.ResultType{T: contextType}
+		resolved = types.ResultType{T: contextType}
 	}
-	expr.ResolvedType = resolved
+	expr.ResolvedType = &resolved
 	return resolved
 }
 
@@ -1527,7 +1536,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	oldEnv = c.env
 	c.env = errEnv
 	oldMatchResultType := c.currentMatchResultType
-	if rt, ok := okBranch.(*types.ResultType); ok {
+	if rt, ok := okBranch.(types.ResultType); ok {
 		c.currentMatchResultType = rt.T
 	} else {
 		c.currentMatchResultType = okBranch
@@ -1600,7 +1609,7 @@ func (c *Checker) checkFopenBuiltIn(expr *ast.CallExpr) types.Type {
 	if t != types.String {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fopen(), expected string", t.Signature()))
 	}
-	return &types.ResultType{T: types.Int}
+	return types.ResultType{T: types.Int}
 }
 
 func (c *Checker) checkFreadBuiltIn(expr *ast.CallExpr) types.Type {
@@ -1612,7 +1621,7 @@ func (c *Checker) checkFreadBuiltIn(expr *ast.CallExpr) types.Type {
 	if t != types.Int {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fread(), expected int", t.Signature()))
 	}
-	return &types.ResultType{T: types.String}
+	return types.ResultType{T: types.String}
 }
 
 func (c *Checker) checkFwriteBuiltIn(expr *ast.CallExpr) types.Type {
@@ -1628,7 +1637,7 @@ func (c *Checker) checkFwriteBuiltIn(expr *ast.CallExpr) types.Type {
 	if dataType != types.String {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fwrite() data, expected string", dataType.Signature()))
 	}
-	return &types.ResultType{T: types.Int}
+	return types.ResultType{T: types.Int}
 }
 
 func (c *Checker) checkFcloseBuiltIn(expr *ast.CallExpr) types.Type {
@@ -1640,7 +1649,7 @@ func (c *Checker) checkFcloseBuiltIn(expr *ast.CallExpr) types.Type {
 	if t != types.Int {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fclose(), expected int", t.Signature()))
 	}
-	return &types.ResultType{T: types.Int}
+	return types.ResultType{T: types.Int}
 }
 
 func (c *Checker) checkIntBuiltIn(expr *ast.CallExpr) types.Type {

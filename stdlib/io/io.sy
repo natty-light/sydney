@@ -24,14 +24,14 @@ pub func openFile(string path) -> result<File> {
     return f;
 }
 
-func read(File f) -> result<string> {
+pub func read(File f) -> result<string> {
     return fread(f.fd);
 }
 
-func write(File f, string data) -> result<int> {
+pub func write(File f, string data) -> result<int> {
     return fwrite(f.fd, data);
 }
 
-func close(File f) -> result<int> {
+pub func close(File f) -> result<int> {
     return fclose(f.fd);
 }

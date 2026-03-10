@@ -36,7 +36,12 @@ declare i64 @sydney_file_close(i64)
 declare ptr @sydney_get_last_error()
 declare ptr @sydney_byte_to_string(i8)
 declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
-declare i1 @sydney_str_equals(ptr, ptr)`
+declare i1 @sydney_str_equals(ptr, ptr)
+declare ptr @sydney_map_keys_str(ptr)
+declare ptr @sydney_map_values_str(ptr)
+declare ptr @sydney_map_keys_int(ptr)
+declare ptr @sydney_map_values_int(ptr)
+declare ptr @sydney_atof(ptr)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -116,8 +121,6 @@ print(z);`
 @z = global i64 0
 define i32 @main() {
 entry:
-  %t3 = alloca i64
-  %t7 = alloca i64
   call void @sydney_gc_init()
   store i64 0, ptr @x
   call void @sydney_gc_add_global_root(ptr @x)
@@ -136,22 +139,20 @@ else.1:
     call void @sydney_print_newline()
   br label %merge.2
 merge.2:
-  %t4 = load i64, ptr @x
-  %t5 = load i64, ptr @y
-  %t6 = icmp eq i64 %t4, %t5
-  br i1 %t6, label %then.3, label %else.4
+  %t3 = load i64, ptr @x
+  %t4 = load i64, ptr @y
+  %t5 = icmp eq i64 %t3, %t4
+  br i1 %t5, label %then.3, label %else.4
 then.3:
-  store i64 1, ptr %t7
   br label %merge.5
 else.4:
-  store i64 0, ptr %t7
   br label %merge.5
 merge.5:
-  %t8 = load i64, ptr %t7
-  store i64 %t8, ptr @z
+  %t6 = phi i64 [ 1, %then.3 ], [ 0, %else.4 ]
+  store i64 %t6, ptr @z
   call void @sydney_gc_add_global_root(ptr @z)
-  %t9 = load i64, ptr @z
-  call void @sydney_print_int(i64 %t9)
+  %t7 = load i64, ptr @z
+  call void @sydney_print_int(i64 %t7)
   call void @sydney_print_newline()
   call void @sydney_gc_shutdown()
   ret i32 0

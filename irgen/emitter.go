@@ -335,7 +335,6 @@ func (e *Emitter) preamble() {
 	e.emit("declare ptr @sydney_map_keys_int(ptr)")
 	e.emit("declare ptr @sydney_map_values_int(ptr)")
 	e.emit("declare ptr @sydney_atof(ptr)")
-	e.emit("declare double @conv__atof(ptr)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -2168,9 +2167,11 @@ func (e *Emitter) emitResultConstructorCall(isOk bool, expr *ast.CallExpr) (stri
 	typ = GetResultTaggedUnion(argTyp)
 
 	result := e.tmp()
-	e.emitAlloca(result, typ)
+
+	line := fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 24)", result)
+	e.emit(line)
 	okPtr := e.tmp()
-	line := fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", okPtr, typ, result)
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", okPtr, typ, result)
 	e.emit(line)
 
 	if isOk {
