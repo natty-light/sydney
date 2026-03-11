@@ -122,14 +122,16 @@ type (
 		Params      []*Identifier
 		Body        *BlockStmt
 		Type        types.Type
+		TypeParams  []types.TypeParam
 		MangledName string
 		IsExtern    bool
 	}
 
 	StructDefinitionStmt struct {
-		Token token.Token
-		Name  *Identifier
-		Type  types.StructType
+		Token      token.Token
+		Name       *Identifier
+		Type       types.StructType
+		TypeParams []types.TypeParam
 	}
 
 	SelectorAssignmentStmt struct {
@@ -244,11 +246,12 @@ type (
 	}
 
 	StructLiteral struct {
-		Token  token.Token
-		Name   string
-		Fields []string
-		Values []Expr
-		Module string
+		Token    token.Token
+		Name     string
+		Fields   []string
+		Values   []Expr
+		Module   string
+		TypeArgs []types.Type
 		resolvable
 		castable
 	}
@@ -299,6 +302,7 @@ type (
 		Function    Expr
 		Arguments   []Expr
 		MangledName string
+		TypeArgs    []types.Type
 		resolvable
 		castable
 	}
