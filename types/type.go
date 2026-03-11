@@ -21,9 +21,10 @@ type ArrayType struct {
 }
 
 type FunctionType struct {
-	Params   []Type
-	Return   Type
-	Variadic bool
+	Params     []Type
+	Return     Type
+	Variadic   bool
+	TypeParams []TypeParam
 }
 
 type MapType struct {
@@ -39,6 +40,7 @@ type StructType struct {
 	Types               []Type
 	Interfaces          []Type
 	SatisfiedInterfaces []string
+	TypeParams          []TypeParam
 }
 
 type InterfaceType struct {
@@ -56,6 +58,15 @@ type ResultType struct {
 type ScopeType struct {
 	Module string
 	Name   string
+}
+
+type TypeParam struct {
+	Constraint Type
+	Name       string
+}
+
+type TypeParamRef struct {
+	Name string
 }
 
 const (
@@ -144,4 +155,56 @@ func (r ResultType) Signature() string {
 
 func (s ScopeType) Signature() string {
 	return s.Module + ":" + s.Name
+}
+
+func (t TypeParam) Signature() string {
+	var out bytes.Buffer
+	out.WriteString(t.Name)
+	if t.Constraint != nil {
+		out.WriteString(":")
+		out.WriteString(t.Constraint.Signature())
+	}
+	return out.String()
+}
+
+func (t TypeParamRef) Signature() string {
+	return t.Name
+}
+
+func SubstituteTypeParams(t Type, subs map[string]Type) Type {
+	switch tt := t.(type) {
+	case TypeParamRef:
+		if sub, ok := subs[tt.Name]; ok {
+			return sub
+		}
+	case MapType:
+		return MapType{
+			KeyType:   SubstituteTypeParams(tt.KeyType, subs),
+			ValueType: SubstituteTypeParams(tt.ValueType, subs),
+		}
+	case ArrayType:
+		return ArrayType{
+			ElemType: SubstituteTypeParams(tt.ElemType, subs),
+		}
+	case ResultType:
+		return ResultType{
+			T: SubstituteTypeParams(tt.T, subs),
+		}
+	case FunctionType:
+		params := make([]Type, len(tt.Params))
+		for i, param := range tt.Params {
+			params[i] = SubstituteTypeParams(param, subs)
+		}
+		tt.Params = params
+		tt.Return = SubstituteTypeParams(tt.Return, subs)
+		return tt
+	case StructType:
+		types := make([]Type, len(tt.Types))
+		for i, t := range tt.Types {
+			types[i] = SubstituteTypeParams(t, subs)
+		}
+		tt.Types = types
+		return tt
+	}
+	return t
 }
