@@ -8,6 +8,7 @@ import (
 	"sydney/ast"
 	"sydney/lexer"
 	"sydney/parser"
+	"sydney/token"
 	"sydney/types"
 )
 
@@ -38,6 +39,20 @@ func New(program *ast.Program) *Loader {
 
 	return &Loader{
 		imports: imports,
+	}
+}
+
+func NewFromImports(imports []string) *Loader {
+	importStmts := make([]*ast.ImportStatement, 0)
+	for _, stmt := range imports {
+		importStmts = append(importStmts, &ast.ImportStatement{
+			Name: &ast.StringLiteral{
+				Value: stmt,
+			},
+		})
+	}
+	return &Loader{
+		imports: importStmts,
 	}
 }
 
@@ -111,36 +126,44 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 	return pkg, nil
 }
 
-func (l *Loader) Load(visited map[string]bool) ([]*Package, map[string]map[string]types.Type, error) {
+func (l *Loader) Load(visited map[string]bool) ([]*Package, map[string]map[string]types.Type, map[string]bool, error) {
 	packages := make([]*Package, 0)
 	moduleTypes := make(map[string]map[string]types.Type)
+	genericNames := make(map[string]bool)
 	for _, imp := range l.imports {
 		name := imp.Name.Value
 		if visited[name] {
-			return nil, nil, fmt.Errorf("circular import: %s", name)
+			return nil, nil, nil, fmt.Errorf("circular import: %s", name)
 		}
 		visited[name] = true
 		dir, err := l.resolveDir(name)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		pkg, err := l.LoadPackage(dir)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		pkgTypes := l.ExtractTypes(pkg)
 		moduleTypes[name] = pkgTypes
+		moduleGenerics := l.ExtractGenericNames(pkg)
+		for gn := range moduleGenerics {
+			genericNames[gn] = true
+		}
 
 		for _, program := range pkg.Programs {
 			child := New(program)
 			child.stdLib = l.stdLib
 			child.sourceDir = l.sourceDir
-			childPkgs, childPkgTypes, err := child.Load(visited)
+			childPkgs, childPkgTypes, childGenericNames, err := child.Load(visited)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			for mod, tt := range childPkgTypes {
 				moduleTypes[mod] = tt
+			}
+			for gn := range childGenericNames {
+				genericNames[gn] = true
 			}
 
 			packages = append(packages, childPkgs...)
@@ -149,7 +172,7 @@ func (l *Loader) Load(visited map[string]bool) ([]*Package, map[string]map[strin
 		packages = append(packages, pkg)
 	}
 
-	return packages, moduleTypes, nil
+	return packages, moduleTypes, genericNames, nil
 }
 
 func (l *Loader) resolveDir(name string) (string, error) {
@@ -180,4 +203,47 @@ func (l *Loader) ExtractTypes(pkg *Package) map[string]types.Type {
 		}
 	}
 	return tt
+}
+
+func ScanImports(source string) []string {
+	lx := lexer.New(source)
+	imports := make([]string, 0)
+	for {
+		tok := lx.NextToken()
+		if tok.Type == token.Import {
+			tok = lx.NextToken()
+			if tok.Type == token.String {
+				imports = append(imports, tok.Literal)
+			}
+		} else if tok.Type == token.EOF {
+			break
+		} else if tok.Type != token.Module && tok.Type != token.String {
+			break
+		}
+	}
+
+	return imports
+}
+
+func (l *Loader) ExtractGenericNames(pkg *Package) map[string]bool {
+	names := make(map[string]bool)
+	for _, prog := range pkg.Programs {
+		for _, stmt := range prog.Stmts {
+			if pub, ok := stmt.(*ast.PubStatement); ok {
+				if fd, ok := pub.Stmt.(*ast.FunctionDeclarationStmt); ok {
+					if len(fd.TypeParams) > 0 {
+						names[fd.Name.Value] = true
+					}
+				}
+
+				if sd, ok := pub.Stmt.(*ast.StructDefinitionStmt); ok {
+					if len(sd.TypeParams) > 0 {
+						names[sd.Name.Value] = true
+					}
+				}
+			}
+		}
+	}
+
+	return names
 }

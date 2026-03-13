@@ -88,22 +88,22 @@ func Run(args []string, flags map[Flag]bool) int {
 
 	src := string(file)
 
-	l := lexer.New(src)
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	if len(p.Errors()) != 0 {
-		printParserErrors(os.Stdout, p.Errors())
-		return 1
-	}
-
-	ld := loader.New(program)
+	imports := loader.ScanImports(src)
+	ld := loader.NewFromImports(imports)
 	sourceDir := filepath.Dir(filename)
 	stdLib := filepath.Join(sourceDir, "stdlib")
 	ld.SetPaths(stdLib, sourceDir)
-	packages, tt, err := ld.Load(make(map[string]bool))
+	packages, tt, gns, err := ld.Load(make(map[string]bool))
 	if err != nil {
 		fmt.Printf("loader error: %s\n", err)
+		return 1
+	}
+
+	l := lexer.New(src)
+	p := parser.NewWithGenericNames(l, gns)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		printParserErrors(os.Stdout, p.Errors())
 		return 1
 	}
 
@@ -169,8 +169,19 @@ func Compile(args []string, flags map[Flag]bool) int {
 
 	src := string(file)
 
+	imports := loader.ScanImports(src)
+	ld := loader.NewFromImports(imports)
+	sourceDir := filepath.Dir(filename)
+	stdLib := filepath.Join(sourceDir, "stdlib")
+	ld.SetPaths(stdLib, sourceDir)
+	packages, tt, gns, err := ld.Load(make(map[string]bool))
+	if err != nil {
+		fmt.Printf("loader error: %s\n", err)
+		return 1
+	}
+
 	l := lexer.New(src)
-	p := parser.New(l)
+	p := parser.NewWithGenericNames(l, gns)
 	program := p.ParseProgram()
 
 	if flags[dumpAst] {
@@ -179,16 +190,6 @@ func Compile(args []string, flags map[Flag]bool) int {
 
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
-		return 1
-	}
-
-	ld := loader.New(program)
-	sourceDir := filepath.Dir(filename)
-	stdLib := filepath.Join(sourceDir, "stdlib")
-	ld.SetPaths(stdLib, sourceDir)
-	packages, tt, err := ld.Load(make(map[string]bool))
-	if err != nil {
-		fmt.Printf("loader error: %s\n", err)
 		return 1
 	}
 

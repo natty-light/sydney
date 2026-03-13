@@ -67,9 +67,8 @@ type Parser struct {
 	definedInterfaces map[string]types.Type
 	doneImports       bool
 
-	genericFunctions map[string]*ast.FunctionDeclarationStmt
-	genericStructs   map[string]*ast.StructDefinitionStmt
-	monomorphized    map[string]bool
+	genericNames   map[string]bool
+	typeParameters map[string]bool
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -124,9 +123,14 @@ func New(l *lexer.Lexer) *Parser {
 	p.definedStructs = make(map[string]types.Type)
 	p.definedInterfaces = make(map[string]types.Type)
 
-	p.genericFunctions = make(map[string]*ast.FunctionDeclarationStmt)
-	p.genericStructs = make(map[string]*ast.StructDefinitionStmt)
-	p.monomorphized = make(map[string]bool)
+	p.genericNames = make(map[string]bool)
+	p.typeParameters = make(map[string]bool)
+	return p
+}
+
+func NewWithGenericNames(l *lexer.Lexer, genericNames map[string]bool) *Parser {
+	p := New(l)
+	p.genericNames = genericNames
 	return p
 }
 
@@ -333,7 +337,7 @@ func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
 	// parse type. constant variables do not need a type annotation, mutable variables that are uninitialized do
 	if p.isPeekTokenType() {
 		p.nextToken()
-		stmt.Type = p.parseType(false)
+		stmt.Type = p.parseType()
 	}
 
 	// expectPeek eats?
@@ -483,9 +487,27 @@ func (p *Parser) parseExpression(precedence Precedence) ast.Expr {
 
 // prefix and infix functions
 
-// this is an prefixParseFn, so it will not call p.nextToken() at the end
+// this is an prefixParseFn, so it will not call p.nextToken() at the end. It als
 func (p *Parser) parseIdentifier() ast.Expr {
-	return &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	if p.genericNames[ident.Value] && p.peekTokenIs(token.LessThan) {
+		p.nextToken()
+		p.nextToken()
+		typeArgs := p.parseTypeArgs()
+		if !p.expectPeek(token.LeftParen) {
+			p.errors = append(p.errors, fmt.Sprintf("expected ( for call expression, got =%s", p.peekToken.Literal))
+			return nil
+		}
+		args := p.parseExpressionList(token.RightParen)
+		return &ast.CallExpr{
+			Token:     p.currToken,
+			Function:  ident,
+			Arguments: args,
+			TypeArgs:  typeArgs,
+		}
+	}
+
+	return ident
 }
 
 // this is an prefixParseFn, so it will not call p.nextToken() at the end
@@ -587,7 +609,7 @@ func (p *Parser) parseFunctionLiteral() ast.Expr {
 		return nil
 	}
 
-	params, ts := p.parseFunctionParameters(false)
+	params, ts := p.parseFunctionParameters()
 	function.Parameters = params
 
 	fType := types.FunctionType{Params: ts, Return: nil}
@@ -595,7 +617,7 @@ func (p *Parser) parseFunctionLiteral() ast.Expr {
 	if p.peekTokenIs(token.Arrow) {
 		p.nextToken()
 		p.nextToken() // parseType requires us to be on the type token
-		fType.Return = p.parseType(false)
+		fType.Return = p.parseType()
 	}
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
@@ -609,7 +631,7 @@ func (p *Parser) parseFunctionLiteral() ast.Expr {
 	return function
 }
 
-func (p *Parser) parseFunctionParameters(generic bool) ([]*ast.Identifier, []types.Type) {
+func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []types.Type) {
 	idents := make([]*ast.Identifier, 0)
 	tt := make([]types.Type, 0)
 
@@ -619,7 +641,7 @@ func (p *Parser) parseFunctionParameters(generic bool) ([]*ast.Identifier, []typ
 	}
 
 	p.nextToken()
-	t := p.parseType(generic)
+	t := p.parseType()
 	tt = append(tt, t)
 	p.nextToken()
 
@@ -630,7 +652,7 @@ func (p *Parser) parseFunctionParameters(generic bool) ([]*ast.Identifier, []typ
 	for p.peekTokenIs(token.Comma) {
 		p.nextToken() // advance comma to currToken
 		p.nextToken() // advance past comma to next type
-		t := p.parseType(generic)
+		t := p.parseType()
 		tt = append(tt, t)
 		p.nextToken() // move past type
 		ident := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
@@ -654,18 +676,14 @@ func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 
 	stmt.Name = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 
-	generic := false
-
 	if p.peekTokenIs(token.LessThan) {
-		generic = true
 		p.nextToken()
-		stmt.TypeParams = p.parseGenericTypeList()
-		p.genericFunctions[stmt.Name.Value] = stmt
-	}
-
-	if !p.expectPeek(token.GreaterThan) {
-		p.errors = append(p.errors, fmt.Sprintf("missing closing > for type list"))
-		return nil
+		stmt.TypeParams = p.parseTypeParamList()
+		p.genericNames[stmt.Name.Value] = true
+		p.typeParameters = make(map[string]bool)
+		for _, tp := range stmt.TypeParams {
+			p.typeParameters[tp.Name] = true
+		}
 	}
 
 	if !p.expectPeek(token.LeftParen) {
@@ -673,7 +691,7 @@ func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 		return nil
 	}
 
-	params, pTypes := p.parseFunctionParameters(generic)
+	params, pTypes := p.parseFunctionParameters()
 	stmt.Params = params
 
 	fType := types.FunctionType{Params: pTypes, Return: nil}
@@ -681,7 +699,7 @@ func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 		p.nextToken()
 		p.nextToken()
 
-		fType.Return = p.parseType(generic)
+		fType.Return = p.parseType()
 	} else {
 		fType.Return = types.Unit
 	}
@@ -700,10 +718,9 @@ func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 		return nil
 	}
 
-	body := p.parseBlockStmt()
-	if !generic {
-		stmt.Body = body
-	}
+	stmt.Body = p.parseBlockStmt()
+
+	p.typeParameters = make(map[string]bool)
 
 	if p.peekTokenIs(token.Semicolon) {
 		p.nextToken()
@@ -743,6 +760,9 @@ func (p *Parser) parseMacroParameters() []*ast.Identifier {
 
 func (p *Parser) parseCallExpr(function ast.Expr) ast.Expr {
 	expr := &ast.CallExpr{Token: p.currToken, Function: function}
+	if p.peekTokenIs(token.LessThan) {
+		expr.TypeArgs = p.parseTypeArgs()
+	}
 	expr.Arguments = p.parseExpressionList(token.RightParen)
 	return expr
 }
@@ -999,7 +1019,7 @@ func (p *Parser) isPeekTokenType() bool {
 	return ok
 }
 
-func (p *Parser) parseType(generic bool) types.Type {
+func (p *Parser) parseType() types.Type {
 	switch p.currToken.Type {
 	case token.IntType:
 		return typeMap[p.currToken.Type]
@@ -1024,6 +1044,11 @@ func (p *Parser) parseType(generic bool) types.Type {
 	case token.Identifier:
 		var t types.Type = nil
 		var ok bool
+
+		if p.typeParameters != nil && p.typeParameters[p.currToken.Literal] {
+			return &types.TypeParamRef{Name: p.currToken.Literal}
+		}
+
 		if p.peekTokenIs(token.Colon) {
 			module := p.currToken.Literal
 			p.nextToken()
@@ -1041,9 +1066,6 @@ func (p *Parser) parseType(generic bool) types.Type {
 			return t
 		}
 
-		if generic {
-			return &types.TypeParamRef{Name: p.currToken.Literal}
-		}
 	}
 
 	p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.peekToken.Type))
@@ -1051,14 +1073,14 @@ func (p *Parser) parseType(generic bool) types.Type {
 }
 
 func (p *Parser) parseInterfaceMethod() types.Type {
-	_, ts := p.parseFunctionParameters(false)
+	_, ts := p.parseFunctionParameters()
 
 	fType := types.FunctionType{Params: ts, Return: types.Unit}
 
 	if p.peekTokenIs(token.Arrow) {
 		p.nextToken()
 		p.nextToken() // parseType requires us to be on the type token
-		fType.Return = p.parseType(false)
+		fType.Return = p.parseType()
 	}
 
 	return fType
@@ -1077,7 +1099,7 @@ func (p *Parser) parseFunctionType() types.Type {
 
 	for !p.peekTokenIs(token.RightParen) {
 		p.nextToken()
-		t := p.parseType(false)
+		t := p.parseType()
 		if p.peekTokenIs(token.RightParen) {
 			params = append(params, t)
 			break
@@ -1100,7 +1122,7 @@ func (p *Parser) parseFunctionType() types.Type {
 		return nil
 	}
 	p.nextToken()
-	r := p.parseType(false)
+	r := p.parseType()
 	if !p.expectPeek(token.GreaterThan) {
 		p.errors = append(p.errors, getTypeParseError("function", token.GreaterThan, p.peekToken.Type))
 	}
@@ -1114,7 +1136,7 @@ func (p *Parser) parseResultType() types.Type {
 		return nil
 	}
 	p.nextToken()
-	t := p.parseType(false)
+	t := p.parseType()
 
 	if !p.expectPeek(token.GreaterThan) {
 		p.errors = append(p.errors, getTypeParseError("result", token.GreaterThan, p.peekToken.Type))
@@ -1130,7 +1152,7 @@ func (p *Parser) parseArrayType() types.Type {
 		return nil
 	}
 	p.nextToken()
-	t := p.parseType(false) // recursively get type for array
+	t := p.parseType() // recursively get type for array
 
 	if !p.expectPeek(token.GreaterThan) {
 		p.errors = append(p.errors, getTypeParseError("array", token.LessThan, p.peekToken.Type))
@@ -1146,7 +1168,7 @@ func (p *Parser) parseMapType() types.Type {
 		return nil
 	}
 	p.nextToken()
-	k := p.parseType(false) // recursively get type for key type
+	k := p.parseType() // recursively get type for key type
 
 	if !p.expectPeek(token.Comma) {
 		p.errors = append(p.errors, getTypeParseError("map", token.Comma, p.peekToken.Type))
@@ -1154,7 +1176,7 @@ func (p *Parser) parseMapType() types.Type {
 	}
 
 	p.nextToken()
-	v := p.parseType(false)
+	v := p.parseType()
 
 	if !p.expectPeek(token.GreaterThan) {
 		p.errors = append(p.errors, getTypeParseError("map", token.LessThan, p.peekToken.Type))
@@ -1189,7 +1211,7 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 		}
 		fields = append(fields, p.currToken.Literal)
 		p.nextToken() // we don't have a way to peek for a set of types so advance and let the type parser catch it
-		tt = append(tt, p.parseType(false))
+		tt = append(tt, p.parseType())
 
 		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
 			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
@@ -1483,18 +1505,20 @@ func (p *Parser) parseGenericType() *types.TypeParam {
 	tp := &types.TypeParam{Name: ident.Value}
 	if p.peekTokenIs(token.Colon) {
 		p.nextToken()
-		c := p.parseType(false)
+		p.nextToken()
+		c := p.parseType()
 		tp.Constraint = c
 	}
 
 	return tp
 }
 
-func (p *Parser) parseGenericTypeList() []*types.TypeParam {
+func (p *Parser) parseTypeParamList() []*types.TypeParam {
 	tpa := make([]*types.TypeParam, 0)
 	tp := p.parseGenericType()
 	tpa = append(tpa, tp)
 	for p.peekTokenIs(token.Comma) && !p.peekTokenIs(token.GreaterThan) {
+		p.nextToken()
 		tp := p.parseGenericType()
 		if tp != nil {
 			tpa = append(tpa, tp)
@@ -1502,7 +1526,32 @@ func (p *Parser) parseGenericTypeList() []*types.TypeParam {
 		}
 	}
 
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, fmt.Sprintf("expected >, got %s", p.currToken.Literal))
+		return nil
+	}
+
 	return tpa
+}
+
+func (p *Parser) parseTypeArgs() []types.Type {
+	ta := make([]types.Type, 0)
+	t := p.parseType()
+	ta = append(ta, t)
+
+	for p.peekTokenIs(token.Comma) {
+		p.nextToken()
+		p.nextToken()
+		tt := p.parseType()
+		ta = append(ta, tt)
+	}
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, fmt.Sprintf("expected < after type arg list, got %s", p.peekToken.Literal))
+		return nil
+	}
+
+	return ta
 }
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {

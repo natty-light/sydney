@@ -1979,7 +1979,7 @@ func TestMatchOnScopeAccess(t *testing.T) {
 }
 
 func TestGenericFunctionParsing(t *testing.T) {
-	source := `func f<T>(T x) { print(x) }`
+	source := `func f<T>(T x) { }`
 	l := lexer.New(source)
 	p := New(l)
 	program := p.ParseProgram()
@@ -1991,7 +1991,7 @@ func TestGenericFunctionParsing(t *testing.T) {
 	}
 
 	if len(stmt.TypeParams) != 1 {
-		t.Fatalf("len(stmt.TypeParams is not 1, got=%d", len(stmt.TypeParams))
+		t.Fatalf("len(stmt.TypeParams) is not 1, got=%d", len(stmt.TypeParams))
 	}
 
 	tp := stmt.TypeParams[0]
@@ -2003,8 +2003,174 @@ func TestGenericFunctionParsing(t *testing.T) {
 		t.Fatalf("expected no constraint, got=%s", tp.Constraint.Signature())
 	}
 
-	if stmt.Body != nil {
-		t.Fatalf("expected no body, got %s", stmt.Body.String())
+	// Verify param type is TypeParamRef
+	fnType := stmt.Type.(types.FunctionType)
+	paramType, ok := fnType.Params[0].(*types.TypeParamRef)
+	if !ok {
+		t.Fatalf("param type is not TypeParamRef, got=%T", fnType.Params[0])
+	}
+	if paramType.Name != "T" {
+		t.Fatalf("param type name wrong, want T, got=%s", paramType.Name)
+	}
+}
+
+func TestGenericFunctionMultipleTypeParams(t *testing.T) {
+	source := `func f<T, U>(T x, U y) -> T { }`
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.FunctionDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.FunctionDeclarationStmt, got=%T", program.Stmts[0])
+	}
+
+	if len(stmt.TypeParams) != 2 {
+		t.Fatalf("len(stmt.TypeParams) is not 2, got=%d", len(stmt.TypeParams))
+	}
+
+	if stmt.TypeParams[0].Name != "T" {
+		t.Fatalf("TypeParams[0].Name wrong, want T, got=%s", stmt.TypeParams[0].Name)
+	}
+	if stmt.TypeParams[1].Name != "U" {
+		t.Fatalf("TypeParams[1].Name wrong, want U, got=%s", stmt.TypeParams[1].Name)
+	}
+
+	// Verify return type is TypeParamRef
+	fnType := stmt.Type.(types.FunctionType)
+	retType, ok := fnType.Return.(*types.TypeParamRef)
+	if !ok {
+		t.Fatalf("return type is not TypeParamRef, got=%T", fnType.Return)
+	}
+	if retType.Name != "T" {
+		t.Fatalf("return type name wrong, want T, got=%s", retType.Name)
+	}
+}
+
+func TestGenericFunctionWithConstraint(t *testing.T) {
+	source := `func f<T: Shape>(T x) { }`
+	l := lexer.New(source)
+	p := New(l)
+	// Register Shape as a known interface so parseType can resolve it
+	p.definedInterfaces["Shape"] = types.InterfaceType{Name: "Shape"}
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.FunctionDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.FunctionDeclarationStmt, got=%T", program.Stmts[0])
+	}
+
+	tp := stmt.TypeParams[0]
+	if tp.Name != "T" {
+		t.Fatalf("tp.Name wrong, want T, got=%s", tp.Name)
+	}
+	if tp.Constraint == nil {
+		t.Fatalf("expected constraint, got nil")
+	}
+	if tp.Constraint.Signature() != "Shape" {
+		t.Fatalf("constraint wrong, want Shape, got=%s", tp.Constraint.Signature())
+	}
+}
+
+func TestGenericTypeArgParsing(t *testing.T) {
+	source := `
+func f<T, U>(T t, U u) -> bool {}
+f<int, bool>();`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[1].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[1] not *ast.ExpressionStmt got=%T", program.Stmts[1])
+	}
+
+	expr, ok := stmt.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.CallExpr, got=%T", stmt.Expr)
+	}
+
+	// Verify function name
+	fn, ok := expr.Function.(*ast.Identifier)
+	if !ok {
+		t.Fatalf("expr.Function is not *ast.Identifier, got=%T", expr.Function)
+	}
+	if fn.Value != "f" {
+		t.Fatalf("function name wrong, want f, got=%s", fn.Value)
+	}
+
+	// Verify type args
+	if len(expr.TypeArgs) != 2 {
+		t.Fatalf("len(expr.TypeArgs) not 2, got=%d", len(expr.TypeArgs))
+	}
+	if expr.TypeArgs[0].Signature() != "int" {
+		t.Fatalf("TypeArgs[0] wrong, want int, got=%s", expr.TypeArgs[0].Signature())
+	}
+	if expr.TypeArgs[1].Signature() != "bool" {
+		t.Fatalf("TypeArgs[1] wrong, want bool, got=%s", expr.TypeArgs[1].Signature())
+	}
+
+	// Verify no value args
+	if len(expr.Arguments) != 0 {
+		t.Fatalf("len(expr.Arguments) not 0, got=%d", len(expr.Arguments))
+	}
+}
+
+func TestGenericCallWithArguments(t *testing.T) {
+	source := `
+func identity<T>(T x) -> T {}
+identity<int>(42);`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[1].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[1] not *ast.ExpressionStmt got=%T", program.Stmts[1])
+	}
+
+	expr, ok := stmt.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.CallExpr, got=%T", stmt.Expr)
+	}
+
+	if len(expr.TypeArgs) != 1 {
+		t.Fatalf("len(expr.TypeArgs) not 1, got=%d", len(expr.TypeArgs))
+	}
+	if expr.TypeArgs[0].Signature() != "int" {
+		t.Fatalf("TypeArgs[0] wrong, want int, got=%s", expr.TypeArgs[0].Signature())
+	}
+
+	if len(expr.Arguments) != 1 {
+		t.Fatalf("len(expr.Arguments) not 1, got=%d", len(expr.Arguments))
+	}
+	testIntegerLiteral(t, expr.Arguments[0], 42)
+}
+
+func TestLessThanNotConfusedWithGenericCall(t *testing.T) {
+	source := `const x = a < b;`
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.VarDeclarationStmt, got=%T", program.Stmts[0])
+	}
+
+	infix, ok := stmt.Value.(*ast.InfixExpr)
+	if !ok {
+		t.Fatalf("stmt.Value is not *ast.InfixExpr, got=%T", stmt.Value)
+	}
+	if infix.Operator != "<" {
+		t.Fatalf("operator wrong, want <, got=%s", infix.Operator)
 	}
 }
 
