@@ -637,6 +637,51 @@ func TestConversionBuiltins(t *testing.T) {
 	}
 }
 
+func TestGenericFunctionMonomorphization(t *testing.T) {
+	sources := []string{
+		// Basic generic identity
+		`func identity<T>(T x) -> T { return x; }
+		const int r = identity<int>(42);`,
+
+		// Multiple type params
+		`func pair<T, U>(T a, U b) -> T { return a; }
+		pair<int, string>(1, "hello");`,
+
+		// Generic with array of type param
+		`func first<T>(array<T> a) -> T { return a[0]; }
+		const int x = first<int>([1, 2, 3]);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestGenericFunctionErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			`func identity<T>(T x) -> T { return x; }
+			identity<int>("hello");`,
+			`type mismatch: got string for arg 1 in function identity call, expected int`,
+		},
+		{
+			`func identity<T>(T x) -> T { return x; }
+			identity<int, string>(42);`,
+			`identity expects exactly 1 type argument`,
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
 func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 	for _, tt := range tests {
 		l := lexer.New(tt.input)

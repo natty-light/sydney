@@ -137,6 +137,13 @@ func Run(args []string, flags map[Flag]bool) int {
 		return 1
 	}
 
+	ast.FilterGenericTemplates(program)
+	for _, pkg := range packages {
+		for _, prog := range pkg.Programs {
+			ast.FilterGenericTemplates(prog)
+		}
+	}
+
 	comp := compiler.NewWithState(symbolTable, constants)
 	err = comp.CompilePackages(packages)
 	if err != nil {
@@ -211,6 +218,13 @@ func Compile(args []string, flags map[Flag]bool) int {
 	if len(errs) != 0 {
 		printParserErrors(os.Stdout, errs)
 		return 1
+	}
+
+	ast.FilterGenericTemplates(program)
+	for _, pkg := range packages {
+		for _, prog := range pkg.Programs {
+			ast.FilterGenericTemplates(prog)
+		}
 	}
 
 	i := irgen.New()

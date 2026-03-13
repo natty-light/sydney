@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sydney/ast"
 	"sydney/loader"
 	"sydney/object"
@@ -21,6 +22,12 @@ type Checker struct {
 	moduleTypes map[string]map[string]types.Type
 
 	inLoop bool
+
+	genericFunctions map[string]*ast.FunctionDeclarationStmt // templates
+	genericStructs   map[string]*ast.StructDefinitionStmt    // templates
+	monomorphized    map[string]bool                         // "identity__int" → done
+
+	program *ast.Program
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -35,14 +42,18 @@ func New(globalEnv *TypeEnv) *Checker {
 	errors := make([]string, 0)
 
 	return &Checker{
-		env,
-		errors,
-		nil,
-		nil,
-		make(map[string]types.StructType),
-		make(map[string]*TypeEnv),
-		map[string]map[string]types.Type{},
-		false,
+		env:                    env,
+		errors:                 errors,
+		currentReturnType:      nil,
+		currentMatchResultType: nil,
+		definedStructs:         make(map[string]types.StructType),
+		packages:               make(map[string]*TypeEnv),
+		moduleTypes:            map[string]map[string]types.Type{},
+		inLoop:                 false,
+		genericFunctions:       make(map[string]*ast.FunctionDeclarationStmt),
+		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
+		monomorphized:          make(map[string]bool),
+		program:                nil,
 	}
 }
 
@@ -58,14 +69,18 @@ func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]ty
 	errors := make([]string, 0)
 
 	return &Checker{
-		env,
-		errors,
-		nil,
-		nil,
-		make(map[string]types.StructType),
-		make(map[string]*TypeEnv),
-		moduleTypes,
-		false,
+		env:                    env,
+		errors:                 errors,
+		currentReturnType:      nil,
+		currentMatchResultType: nil,
+		definedStructs:         make(map[string]types.StructType),
+		packages:               make(map[string]*TypeEnv),
+		moduleTypes:            moduleTypes,
+		inLoop:                 false,
+		genericFunctions:       make(map[string]*ast.FunctionDeclarationStmt),
+		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
+		monomorphized:          make(map[string]bool),
+		program:                nil,
 	}
 }
 
@@ -84,6 +99,10 @@ func (c *Checker) Check(node ast.Node, packages []*loader.Package) []string {
 	if packages != nil {
 		c.checkPackages(packages)
 	}
+	if program, ok := node.(*ast.Program); ok {
+		c.program = program
+	}
+
 	c.check(node)
 	return c.errors
 }
@@ -332,7 +351,12 @@ func (c *Checker) hoistBase(n ast.Node) {
 	case *ast.PubStatement:
 		c.hoistBase(node.Stmt)
 	case *ast.StructDefinitionStmt:
+		if len(node.Type.TypeParams) > 0 {
+			c.genericStructs[node.Name.Value] = node
+			return
+		}
 		c.definedStructs[node.Name.Value] = node.Type
+
 	case *ast.InterfaceDefinitionStmt:
 		node.Type.MethodIndices = make(map[string]int)
 		for i, mn := range node.Type.Methods {
@@ -370,6 +394,12 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 		node.Type = resolved
 		fType = resolved
 		name := node.Name.Value
+
+		if len(node.TypeParams) > 0 {
+			c.genericFunctions[node.Name.Value] = node
+			return
+		}
+
 		if len(fType.Params) > 0 {
 			receiverType := fType.Params[0]
 			if st, ok := toStruct(receiverType); ok {
@@ -818,6 +848,16 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type) types.Type {
 }
 
 func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.Type {
+	if ident, ok := expr.Function.(*ast.Identifier); ok && len(expr.TypeArgs) > 0 {
+		template, ok := c.genericFunctions[ident.Value]
+		if !ok {
+			c.errors = append(c.errors, fmt.Sprintf("unknown generic function: %s", ident.Value))
+			return nil
+		}
+
+		return c.monomorphizeCall(expr, template)
+	}
+
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
 		if len(expr.Arguments) > 0 {
 			receiverType := c.typeOf(expr.Arguments[0], nil)
@@ -1410,6 +1450,9 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 }
 
 func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) types.Type {
+	if len(node.TypeParams) > 0 {
+		return types.Unit
+	}
 	name := node.Name.Value
 	fTypeRaw := node.Type.(types.FunctionType)
 	resolved := c.resolveFunctionType(fTypeRaw)
@@ -1686,4 +1729,53 @@ func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
 		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for char(), expected byte", t.Signature()))
 	}
 	return types.String
+}
+
+func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) types.Type {
+	ident := expr.Function.(*ast.Identifier)
+	templateType := template.Type.(types.FunctionType)
+
+	if len(expr.TypeArgs) != len(template.TypeParams) {
+		c.errors = append(c.errors, fmt.Sprintf("%s expects exactly %d type argument", ident.Value, len(templateType.TypeParams)))
+		return nil
+	}
+
+	subs := make(map[string]types.Type)
+	for i, tp := range template.TypeParams {
+		subs[tp.Name] = expr.TypeArgs[i]
+	}
+
+	mangledName := mangleName(ident.Value, expr.TypeArgs)
+
+	if !c.monomorphized[mangledName] {
+		cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{template}})
+		clonedFn := cloned.(*ast.Program).Stmts[0].(*ast.FunctionDeclarationStmt)
+
+		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
+
+		clonedFn.Name.Value = mangledName
+		clonedFn.TypeParams = nil // no longer generic
+
+		c.checkFunctionDeclaration(clonedFn)
+
+		if c.program != nil {
+			c.program.Stmts = append(c.program.Stmts, clonedFn)
+		}
+
+		c.monomorphized[mangledName] = true
+	}
+
+	expr.MangledName = mangledName
+
+	concreteType := types.SubstituteTypeParams(templateType, subs)
+	return c.validateFunctionCall(expr, concreteType)
+}
+
+func mangleName(base string, tt []types.Type) string {
+	parts := []string{base}
+	for _, t := range tt {
+		parts = append(parts, t.Signature())
+	}
+
+	return strings.Join(parts, "__")
 }

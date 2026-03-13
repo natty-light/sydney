@@ -228,3 +228,28 @@ func cloneExpr(e Expr) Expr {
 	}
 	return nil
 }
+
+func FilterGenericTemplates(program *Program) {
+	filtered := make([]Stmt, 0, len(program.Stmts))
+	for _, stmt := range program.Stmts {
+		switch s := stmt.(type) {
+		case *FunctionDeclarationStmt:
+			if len(s.TypeParams) > 0 {
+				continue
+			}
+		case *StructDefinitionStmt:
+			if len(s.Type.TypeParams) > 0 {
+				continue
+			}
+		case *PubStatement:
+			if fd, ok := s.Stmt.(*FunctionDeclarationStmt); ok && len(fd.TypeParams) > 0 {
+				continue
+			}
+			if sd, ok := s.Stmt.(*StructDefinitionStmt); ok && len(sd.Type.TypeParams) > 0 {
+				continue
+			}
+		}
+		filtered = append(filtered, stmt)
+	}
+	program.Stmts = filtered
+}
