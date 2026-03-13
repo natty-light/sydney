@@ -237,7 +237,7 @@ func (l *Loader) ExtractGenericNames(pkg *Package) map[string]bool {
 				}
 
 				if sd, ok := pub.Stmt.(*ast.StructDefinitionStmt); ok {
-					if len(sd.TypeParams) > 0 {
+					if len(sd.Type.TypeParams) > 0 {
 						names[sd.Name.Value] = true
 					}
 				}

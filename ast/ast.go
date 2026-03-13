@@ -128,10 +128,9 @@ type (
 	}
 
 	StructDefinitionStmt struct {
-		Token      token.Token
-		Name       *Identifier
-		Type       types.StructType
-		TypeParams []*types.TypeParam
+		Token token.Token
+		Name  *Identifier
+		Type  types.StructType
 	}
 
 	SelectorAssignmentStmt struct {

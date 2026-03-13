@@ -40,7 +40,7 @@ type StructType struct {
 	Types               []Type
 	Interfaces          []Type
 	SatisfiedInterfaces []string
-	TypeParams          []TypeParam
+	TypeParams          []*TypeParam
 }
 
 type InterfaceType struct {

@@ -2174,6 +2174,94 @@ func TestLessThanNotConfusedWithGenericCall(t *testing.T) {
 	}
 }
 
+func TestGenericStructDefinition(t *testing.T) {
+	source := "define struct Pair<T, U> { first T, second U }"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	stmt, ok := program.Stmts[0].(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[1] not *ast.StructDefinitionStmt, got=%T", program.Stmts[1])
+	}
+
+	if len(stmt.Type.TypeParams) != 2 {
+		t.Fatalf("len(stmt.TypeParams) not 2, got=%d", len(stmt.Type.TypeParams))
+	}
+
+	if stmt.Type.TypeParams[0].Signature() != "T" {
+		t.Fatalf("TypeParams[0] wrong, want T, got=%s", stmt.Type.TypeParams[0].Signature())
+	}
+	if stmt.Type.TypeParams[1].Signature() != "U" {
+		t.Fatalf("TypeParams[1] wrong, want U, got=%s", stmt.Type.TypeParams[1].Signature())
+	}
+
+	tpr, ok := stmt.Type.Types[0].(*types.TypeParamRef)
+	if !ok {
+		t.Fatalf("stmt.Type.Types[0] is not *types.TypeParamRef, got=%T", stmt.Type.Types[0])
+	}
+
+	if tpr.Name != "T" {
+		t.Fatalf("tpr.Name not T, got=%s", tpr.Name)
+	}
+
+	tpr, ok = stmt.Type.Types[1].(*types.TypeParamRef)
+	if !ok {
+		t.Fatalf("stmt.Type.Types[1] is not *types.TypeParamRef, got=%T", stmt.Type.Types[1])
+	}
+
+	if tpr.Name != "U" {
+		t.Fatalf("tpr.Name not U, got=%s", tpr.Name)
+	}
+}
+
+func TestGenericStructLiteral(t *testing.T) {
+	source := "const p = Pair<int, bool> { first: 0, second: true };"
+	l := lexer.New(source)
+	p := New(l)
+	p.definedStructs["Pair"] = types.StructType{Name: "Pair"}
+	p.genericNames["Pair"] = true
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.VarDeclarationStmt, got=%T", program.Stmts[0])
+	}
+
+	val, ok := stmt.Value.(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("stmt.Value is not *ast.StructLiteral, got=%T", stmt.Value)
+	}
+
+	if val.Name != "Pair" {
+		t.Fatalf("struct name wrong, want Pair, got=%s", val.Name)
+	}
+
+	if len(val.TypeArgs) != 2 {
+		t.Fatalf("len(val.TypeArgs) not 2, got=%d", len(val.TypeArgs))
+	}
+	if val.TypeArgs[0].Signature() != "int" {
+		t.Fatalf("TypeArgs[0] wrong, want int, got=%s", val.TypeArgs[0].Signature())
+	}
+	if val.TypeArgs[1].Signature() != "bool" {
+		t.Fatalf("TypeArgs[1] wrong, want bool, got=%s", val.TypeArgs[1].Signature())
+	}
+
+	if len(val.Fields) != 2 {
+		t.Fatalf("len(val.Fields) not 2, got=%d", len(val.Fields))
+	}
+	if val.Fields[0] != "first" {
+		t.Fatalf("Fields[0] wrong, want first, got=%s", val.Fields[0])
+	}
+	if val.Fields[1] != "second" {
+		t.Fatalf("Fields[1] wrong, want second, got=%s", val.Fields[1])
+	}
+
+	testIntegerLiteral(t, val.Values[0], 0)
+	testBooleanLiteral(t, val.Values[1], true)
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {

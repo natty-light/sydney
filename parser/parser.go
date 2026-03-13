@@ -494,17 +494,27 @@ func (p *Parser) parseIdentifier() ast.Expr {
 		p.nextToken()
 		p.nextToken()
 		typeArgs := p.parseTypeArgs()
-		if !p.expectPeek(token.LeftParen) {
-			p.errors = append(p.errors, fmt.Sprintf("expected ( for call expression, got =%s", p.peekToken.Literal))
-			return nil
+
+		if p.peekTokenIs(token.LeftParen) {
+			p.nextToken()
+			args := p.parseExpressionList(token.RightParen)
+			return &ast.CallExpr{
+				Token:     p.currToken,
+				Function:  ident,
+				Arguments: args,
+				TypeArgs:  typeArgs,
+			}
 		}
-		args := p.parseExpressionList(token.RightParen)
-		return &ast.CallExpr{
-			Token:     p.currToken,
-			Function:  ident,
-			Arguments: args,
-			TypeArgs:  typeArgs,
+
+		if p.peekTokenIs(token.LeftCurlyBracket) {
+			expr := p.parseStructLiteral(ident.Token)
+			if expr != nil {
+				expr.TypeArgs = typeArgs
+			}
+
+			return expr
 		}
+
 	}
 
 	return ident
@@ -1195,6 +1205,16 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 	name := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 	stmt.Name = name
 
+	typeParams := make([]*types.TypeParam, 0)
+	if p.peekTokenIs(token.LessThan) {
+		p.nextToken()
+		typeParams = p.parseTypeParamList()
+		p.typeParameters = make(map[string]bool)
+		for _, t := range typeParams {
+			p.typeParameters[t.Name] = true
+		}
+	}
+
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
 		return nil
@@ -1222,10 +1242,18 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
 		return nil
 	}
-	t := types.StructType{Fields: fields, Types: tt, Name: stmt.Name.Value, Interfaces: make([]types.Type, 0), SatisfiedInterfaces: make([]string, 0)}
+	t := types.StructType{
+		Fields:              fields,
+		Types:               tt,
+		Name:                stmt.Name.Value,
+		Interfaces:          make([]types.Type, 0),
+		SatisfiedInterfaces: make([]string, 0),
+		TypeParams:          typeParams,
+	}
 
 	stmt.Type = t
 	p.definedStructs[stmt.Name.Value] = t
+	p.typeParameters = nil
 
 	return stmt
 }
@@ -1309,8 +1337,8 @@ func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
 	return stmt
 }
 
-func (p *Parser) parseStructLiteral() ast.Expr {
-	expr := &ast.StructLiteral{Token: p.currToken, Name: p.currToken.Literal, Fields: make([]string, 0), Values: make([]ast.Expr, 0)}
+func (p *Parser) parseStructLiteral(tok token.Token) *ast.StructLiteral {
+	expr := &ast.StructLiteral{Token: tok, Name: tok.Literal, Fields: make([]string, 0), Values: make([]ast.Expr, 0)}
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
 		return nil
@@ -1346,7 +1374,7 @@ func (p *Parser) parseStructLiteral() ast.Expr {
 
 func (p *Parser) parseIdentifierOrStructLiteral() ast.Expr {
 	if p.peekTokenIs(token.LeftCurlyBracket) {
-		return p.parseStructLiteral()
+		return p.parseStructLiteral(p.currToken)
 	}
 
 	return p.parseIdentifier()
@@ -1372,9 +1400,9 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 	member := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 
 	if p.peekTokenIs(token.LeftCurlyBracket) {
-		expr := p.parseStructLiteral()
-		if sl, ok := expr.(*ast.StructLiteral); ok {
-			sl.Module = ident.Value
+		expr := p.parseStructLiteral(p.currToken)
+		if expr != nil {
+			expr.Module = ident.Value
 		}
 		return expr
 	}
