@@ -122,7 +122,7 @@ type (
 		Params      []*Identifier
 		Body        *BlockStmt
 		Type        types.Type
-		TypeParams  []types.TypeParam
+		TypeParams  []*types.TypeParam
 		MangledName string
 		IsExtern    bool
 	}
@@ -131,7 +131,7 @@ type (
 		Token      token.Token
 		Name       *Identifier
 		Type       types.StructType
-		TypeParams []types.TypeParam
+		TypeParams []*types.TypeParam
 	}
 
 	SelectorAssignmentStmt struct {

@@ -1978,6 +1978,36 @@ func TestMatchOnScopeAccess(t *testing.T) {
 	}
 }
 
+func TestGenericFunctionParsing(t *testing.T) {
+	source := `func f<T>(T x) { print(x) }`
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt, ok := program.Stmts[0].(*ast.FunctionDeclarationStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.FunctionDeclarationStmt, got=%T", program.Stmts[0])
+	}
+
+	if len(stmt.TypeParams) != 1 {
+		t.Fatalf("len(stmt.TypeParams is not 1, got=%d", len(stmt.TypeParams))
+	}
+
+	tp := stmt.TypeParams[0]
+	if tp.Name != "T" {
+		t.Fatalf("tp.Name wrong, want T, got=%s", tp.Name)
+	}
+
+	if tp.Constraint != nil {
+		t.Fatalf("expected no constraint, got=%s", tp.Constraint.Signature())
+	}
+
+	if stmt.Body != nil {
+		t.Fatalf("expected no body, got %s", stmt.Body.String())
+	}
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {
