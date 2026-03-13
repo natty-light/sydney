@@ -151,7 +151,7 @@ func (t TypeParamRef) Signature() string {
 
 func SubstituteTypeParams(t Type, subs map[string]Type) Type {
 	switch tt := t.(type) {
-	case TypeParamRef:
+	case *TypeParamRef:
 		if sub, ok := subs[tt.Name]; ok {
 			return sub
 		}
