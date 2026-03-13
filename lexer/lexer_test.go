@@ -461,3 +461,34 @@ mut bool x; // this is a comment
 		}
 	}
 }
+
+func TestGenericFunctionLexing(t *testing.T) {
+	source := `func f<T>(T t)`
+
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.Func, "func"},
+		{token.Identifier, "f"},
+		{token.LessThan, "<"},
+		{token.Identifier, "T"},
+		{token.GreaterThan, ">"},
+		{token.LeftParen, "("},
+		{token.Identifier, "T"},
+		{token.Identifier, "t"},
+		{token.RightParen, ")"},
+	}
+
+	lexer := New(source)
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}
