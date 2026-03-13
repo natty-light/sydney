@@ -119,30 +119,8 @@ func (s StructType) Signature() string {
 	return s.Name
 }
 
-func (s InterfaceType) Signature() string {
-	var out bytes.Buffer
-	out.WriteString(s.Name)
-	out.WriteString(" { ")
-	for i, method := range s.Methods {
-		t := s.Types[i].(FunctionType)
-		out.WriteString(method)
-		out.WriteString("(")
-		for i, tt := range t.Params {
-			out.WriteString(tt.Signature())
-			if i < len(t.Params)-1 {
-				out.WriteString(", ")
-			}
-		}
-		out.WriteString(")")
-		out.WriteString("->")
-		out.WriteString(t.Return.Signature())
-		if i < len(s.Methods)-1 {
-			out.WriteString(", ")
-		}
-	}
-	out.WriteString(" }")
-
-	return out.String()
+func (i InterfaceType) Signature() string {
+	return i.Name
 }
 
 func (r ResultType) Signature() string {
