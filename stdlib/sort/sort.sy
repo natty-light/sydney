@@ -1,0 +1,33 @@
+module "sort"
+
+pub define interface Sortable {
+    length() -> int,
+    less(int i, int j) -> bool,
+    swap(int i, int j),
+}
+
+func partition(Sortable s, int lo, int hi) -> int {
+    mut i = lo;
+    for (mut j = lo; j < hi; j = j + 1) {
+        if (s.less(j, hi)) {
+            s.swap(i, j);
+            i = i + 1;
+        }
+    }
+
+    s.swap(i, hi);
+    return i;
+}
+
+
+func qs(Sortable s, int lo, int hi) {
+    if (lo < hi) {
+        const p = partition(s, lo, hi);
+        qs(s, lo, p - 1);
+        qs(s, p + 1, hi);
+    }
+}
+
+pub func quick_sort(Sortable s) {
+    qs(s, 0, s.length() - 1);
+}
