@@ -260,7 +260,7 @@ func (p *Parser) parseStatement() ast.Stmt {
 				break
 			}
 		default:
-			p.errors = append(p.errors, fmt.Sprintf("cannot define pub for token: %s", p.currToken.Type))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d cannot define pub for token: %s", p.currToken.Line, p.currToken.Column, p.currToken.Type))
 			return nil
 		}
 		return pubStmt
@@ -269,7 +269,7 @@ func (p *Parser) parseStatement() ast.Stmt {
 	case token.For:
 		return p.parseForStmt()
 	case token.Extern:
-		p.errors = append(p.errors, fmt.Sprintf("cannot extern for token: %s", p.currToken.Type))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d cannot extern for token: %s", p.currToken.Line, p.currToken.Column, p.currToken.Type))
 		return nil
 	case token.Func:
 		if p.peekTokenIs(token.Identifier) {
@@ -286,7 +286,7 @@ func (p *Parser) parseStatement() ast.Stmt {
 		} else if p.currTokenIs(token.Implementation) {
 			return p.parseInterfaceImplementationStmt()
 		}
-		p.errors = append(p.errors, fmt.Sprintf("expected interface or struct, got %s instead", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected interface or struct, got %s instead", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	case token.Import:
 		return p.parseImportStatement()
@@ -529,7 +529,7 @@ func (p *Parser) parseIntegerLiteral() ast.Expr {
 	value, err := strconv.ParseInt(p.currToken.Literal, 0, 64)
 
 	if err != nil {
-		msg := fmt.Sprintf("could not parse %q as integer", p.currToken.Literal)
+		msg := fmt.Sprintf("%d:%d could not parse %q as integer", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
 		p.errors = append(p.errors, msg)
 		return nil
 	}
@@ -672,7 +672,7 @@ func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []types.Type) {
 	}
 
 	if !p.expectPeek(token.RightParen) {
-		p.errors = append(p.errors, fmt.Sprintf("missing closing parenthesis"))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d missing closing parenthesis", p.peekToken.Line, p.peekToken.Column))
 		return nil, nil
 	}
 
@@ -699,7 +699,7 @@ func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 	}
 
 	if !p.expectPeek(token.LeftParen) {
-		p.errors = append(p.errors, fmt.Sprintf("missing opening parenthesis for function declaration"))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d missing opening parenthesis for function declaration", p.peekToken.Line, p.peekToken.Column))
 		return nil
 	}
 
@@ -726,7 +726,7 @@ func (p *Parser) parseFunctionDeclarationStmt(extern bool) ast.Stmt {
 	}
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected body for function %s declaration", stmt.Name.String()))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected body for function %s declaration", p.peekToken.Line, p.peekToken.Column, stmt.Name.String()))
 		return nil
 	}
 
@@ -763,7 +763,7 @@ func (p *Parser) parseMacroParameters() []*ast.Identifier {
 	}
 
 	if !p.expectPeek(token.RightParen) {
-		p.errors = append(p.errors, fmt.Sprintf("missing closing parenthesis"))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d missing closing parenthesis", p.peekToken.Line, p.peekToken.Column))
 		return nil
 	}
 
@@ -868,14 +868,14 @@ func (p *Parser) parseForStmt() *ast.ForStmt {
 		p.nextToken()
 		forStmt.Condition = p.parseExpression(LOWEST)
 		if !p.expectPeek(token.Semicolon) {
-			p.errors = append(p.errors, fmt.Sprintf("expected ; after condition, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 			return nil
 		}
 
 		p.nextToken()
 		forStmt.Post = p.parseExpressionOrAssignmentStmt()
 		if !p.expectPeek(token.RightParen) {
-			p.errors = append(p.errors, fmt.Sprintf("expected ) after post, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after post, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 			return nil
 		}
 	} else {
@@ -895,25 +895,25 @@ func (p *Parser) parseForStmt() *ast.ForStmt {
 			}
 
 			if !p.expectPeek(token.Semicolon) {
-				p.errors = append(p.errors, fmt.Sprintf("expected ; after init, got %s", p.currToken.Literal))
+				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after init, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 				return nil
 			}
 			p.nextToken()
 			forStmt.Condition = p.parseExpression(LOWEST)
 			if !p.expectPeek(token.Semicolon) {
-				p.errors = append(p.errors, fmt.Sprintf("expected ; after condition, got %s", p.currToken.Literal))
+				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 				return nil
 			}
 			p.nextToken()
 			forStmt.Post = p.parseExpressionOrAssignmentStmt()
 			if !p.expectPeek(token.RightParen) {
-				p.errors = append(p.errors, fmt.Sprintf("expected ) after post, got %s", p.currToken.Literal))
+				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after post, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 				return nil
 			}
 		} else {
 			forStmt.Condition = expr
 			if !p.expectPeek(token.RightParen) {
-				p.errors = append(p.errors, fmt.Sprintf("expected ) after condition, got %s", p.currToken.Literal))
+				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 				return nil
 			}
 		}
@@ -961,7 +961,7 @@ func (p *Parser) parseFloatLiteral() ast.Expr {
 	value, err := strconv.ParseFloat(p.currToken.Literal, 64)
 
 	if err != nil {
-		msg := fmt.Sprintf("could not parse %q as float", p.currToken.Literal)
+		msg := fmt.Sprintf("%d:%d could not parse %q as float", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
 		p.errors = append(p.errors, msg)
 		return nil
 	}
@@ -1065,7 +1065,7 @@ func (p *Parser) parseType() types.Type {
 			name := p.currToken.Literal
 			templateType, ok := p.definedStructs[name]
 			if !ok {
-				p.errors = append(p.errors, fmt.Sprintf("unknown generic struct %s", name))
+				p.errors = append(p.errors, fmt.Sprintf("%d:%d unknown generic struct %s", p.currToken.Line, p.currToken.Column, name))
 				return nil
 			}
 
@@ -1075,7 +1075,7 @@ func (p *Parser) parseType() types.Type {
 			typeArgs := p.parseTypeArgs()
 
 			if len(typeArgs) != len(template.TypeParams) {
-				p.errors = append(p.errors, fmt.Sprintf("%s expects exactly %d type arguments", name, len(template.TypeArgs)))
+				p.errors = append(p.errors, fmt.Sprintf("%d:%d %s expects exactly %d type arguments", p.currToken.Line, p.currToken.Column, name, len(template.TypeArgs)))
 				return nil
 			}
 
@@ -1110,7 +1110,7 @@ func (p *Parser) parseType() types.Type {
 
 	}
 
-	p.errors = append(p.errors, fmt.Sprintf("unknown type %q", p.peekToken.Type))
+	p.errors = append(p.errors, fmt.Sprintf("%d:%d unknown type %q", p.peekToken.Line, p.peekToken.Column, p.peekToken.Type))
 	return nil
 }
 
@@ -1231,7 +1231,7 @@ func (p *Parser) parseMapType() types.Type {
 func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 	stmt := &ast.StructDefinitionStmt{}
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	}
 	name := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
@@ -1249,7 +1249,7 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 	}
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected {, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	}
 
@@ -1259,7 +1259,7 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 	for !p.peekTokenIs(token.RightCurlyBracket) {
 		p.nextToken() // move to ident
 		if !p.currTokenIs(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 			return nil
 		}
 		fields = append(fields, p.currToken.Literal)
@@ -1267,12 +1267,12 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 		tt = append(tt, p.parseType())
 
 		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
-			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected , or } got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 			return nil
 		}
 	}
 	if !p.expectPeek(token.RightCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected }, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	}
 	t := types.StructType{
@@ -1294,7 +1294,7 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 	stmt := &ast.InterfaceDefinitionStmt{}
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	}
 
@@ -1305,7 +1305,7 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 	p.definedInterfaces[stmt.Name.Value] = t
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected {, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 
@@ -1315,7 +1315,7 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 	for !p.peekTokenIs(token.RightCurlyBracket) {
 		p.nextToken() // move to ident
 		if !p.currTokenIs(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 			return nil
 		}
 		methods = append(methods, p.currToken.Literal)
@@ -1323,12 +1323,12 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 		tt = append(tt, p.parseInterfaceMethod())
 
 		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
-			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected , or } got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 	}
 	if !p.expectPeek(token.RightCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected }, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	t.Methods = methods
@@ -1347,12 +1347,12 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
 	stmt := &ast.InterfaceImplementationStmt{}
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	stmt.StructName = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
 	if !p.expectPeek(token.Arrow) {
-		p.errors = append(p.errors, fmt.Sprintf("expected ->, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ->, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	p.nextToken() // move past ->
@@ -1368,7 +1368,7 @@ func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
 	for p.peekTokenIs(token.Comma) {
 		p.nextToken()
 		if !p.expectPeek(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 		left = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
@@ -1387,19 +1387,19 @@ func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
 func (p *Parser) parseStructLiteral(tok token.Token) *ast.StructLiteral {
 	expr := &ast.StructLiteral{Token: tok, Name: tok.Literal, Fields: make([]string, 0), Values: make([]ast.Expr, 0)}
 	if !p.expectPeek(token.LeftCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected {, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 
 	for !p.peekTokenIs(token.RightCurlyBracket) {
 		p.nextToken() // advance to field name
 		if !p.currTokenIs(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 		expr.Fields = append(expr.Fields, p.currToken.Literal)
 		if !p.expectPeek(token.Colon) {
-			p.errors = append(p.errors, fmt.Sprintf("expected :, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected :, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 
@@ -1407,13 +1407,13 @@ func (p *Parser) parseStructLiteral(tok token.Token) *ast.StructLiteral {
 		expr.Values = append(expr.Values, p.parseExpression(LOWEST))
 
 		if !p.peekTokenIs(token.RightCurlyBracket) && !p.expectPeek(token.Comma) {
-			p.errors = append(p.errors, fmt.Sprintf("expected , or } got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected , or } got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 	}
 
 	if !p.expectPeek(token.RightCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected }, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	return expr
@@ -1440,7 +1440,7 @@ func (p *Parser) parseSelectorExpr(left ast.Expr) ast.Expr {
 func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 	ident, ok := left.(*ast.Identifier)
 	if !ok {
-		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	}
 	p.nextToken()
@@ -1460,7 +1460,7 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 func (p *Parser) parseMatchExpr() ast.Expr {
 	m := &ast.MatchExpr{Token: p.currToken}
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 
@@ -1475,11 +1475,11 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 	}
 	m.Subject = subject
 	if !p.expectPeek(token.LeftCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected {, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected {, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("expected ok or err, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok or err, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	okArm := &ast.MatchArm{}
@@ -1492,11 +1492,11 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 			return nil
 		}
 		if !p.expectPeek(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 		if p.currToken.Literal != "err" {
-			p.errors = append(p.errors, fmt.Sprintf("expected err, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected err, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 		err = p.parseMatchArm(errArm, false)
@@ -1511,11 +1511,11 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 			return nil
 		}
 		if !p.expectPeek(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 			return nil
 		}
 		if p.currToken.Literal != "ok" {
-			p.errors = append(p.errors, fmt.Sprintf("expected ok, got %s", p.currToken.Literal))
+			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 			return nil
 		}
 		err = p.parseMatchArm(okArm, true)
@@ -1524,7 +1524,7 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 			return nil
 		}
 	} else {
-		p.errors = append(p.errors, fmt.Sprintf("expected ok or err, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok or err, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
 	}
 
@@ -1532,7 +1532,7 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 	m.ErrArm = errArm
 
 	if !p.expectPeek(token.RightCurlyBracket) {
-		p.errors = append(p.errors, fmt.Sprintf("expected }, got %s", p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected }, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 
@@ -1542,26 +1542,26 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 func (p *Parser) parseMatchArm(a *ast.MatchArm, isOk bool) error {
 	pattern := &ast.MatchPattern{IsOk: isOk}
 	if !p.expectPeek(token.LeftParen) {
-		return fmt.Errorf("expected (, got %s", p.currToken.Literal)
+		return fmt.Errorf("%d:%d expected (, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
 	if !p.expectPeek(token.Identifier) {
-		return fmt.Errorf("expected identifier, got %s", p.currToken.Literal)
+		return fmt.Errorf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
 	binding := p.parseIdentifier()
 	pattern.Binding = binding.(*ast.Identifier)
 	a.Pattern = pattern
 	if !p.expectPeek(token.RightParen) {
-		return fmt.Errorf("expected ), got %s", p.currToken.Literal)
+		return fmt.Errorf("%d:%d expected ), got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
 	if !p.expectPeek(token.Arrow) {
-		return fmt.Errorf("expected ->, got %s", p.currToken.Literal)
+		return fmt.Errorf("%d:%d expected ->, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
 	p.nextToken() // advance past ->
 
 	body := p.parseBlockStmt()
 	a.Body = body
 	if !p.expectPeek(token.Comma) {
-		return fmt.Errorf("expected ,  got %s", p.currToken.Literal)
+		return fmt.Errorf("%d:%d expected , got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
 
 	return nil
