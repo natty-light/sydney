@@ -507,7 +507,11 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 
 		var resolved types.ArrayType
 		if elemType == nil {
-			resolved = types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
+			if targetedElemType != nil {
+				resolved = types.ArrayType{ElemType: targetedElemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
+			} else {
+				resolved = types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
+			}
 		} else {
 			resolved = types.ArrayType{ElemType: elemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 		}
