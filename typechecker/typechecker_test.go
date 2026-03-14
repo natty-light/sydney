@@ -676,7 +676,7 @@ func TestGenericFunctionErrors(t *testing.T) {
 		{
 			`func identity<T>(T x) -> T { return x; }
 			identity<int, string>(42);`,
-			`identity expects exactly 1 type argument`,
+			`identity expects exactly 1 type arguments`,
 		},
 	}
 	testTypeErrors(t, tests)
@@ -697,4 +697,64 @@ func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 			t.Fatalf("input %q expected error %q but got %q", tt.input, tt.expectedError, errors[0])
 		}
 	}
+}
+
+func TestGenericStructMonomorphization(t *testing.T) {
+	sources := []string{
+		// Basic generic struct
+		`define struct Box<T> { value T }
+		const b = Box<int> { value: 42 };`,
+
+		// Two type params
+		`define struct Pair<T, U> { first T, second U }
+		const p = Pair<int, string> { first: 1, second: "hello" };`,
+
+		// Field access on generic struct
+		`define struct Box<T> { value T }
+		const b = Box<int> { value: 42 };
+		const int v = b.value;`,
+
+		// Multiple instantiations of same generic struct
+		`define struct Box<T> { value T }
+		const a = Box<int> { value: 1 };
+		const b = Box<string> { value: "hi" };`,
+
+		// Generic struct with array field
+		`define struct Container<T> { items array<T> }
+		const c = Container<int> { items: [1, 2, 3] };`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestGenericStructErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			`define struct Box<T> { value T }
+			Box<int> { value: "hello" };`,
+			`type mismatch for field value in struct Box__int: expected int, got string`,
+		},
+		{
+			`define struct Pair<T, U> { first T, second U }
+			Pair<int> { first: 1 };`,
+			`Pair expects exactly 2 type arguments`,
+		},
+		{
+			`define struct Box<T> { value T }
+			Box<int> { wrong: 42 };`,
+			`missing field value in struct literal Box__int`,
+		},
+	}
+	testTypeErrors(t, tests)
 }

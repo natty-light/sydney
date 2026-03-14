@@ -628,19 +628,45 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		return structType.Types[i]
 	case *ast.StructLiteral:
 		var structType types.StructType
-		var ok bool
-		if expr.Module != "" {
-			if mt, found := c.moduleTypes[expr.Module]; found {
-				if t, found := mt[expr.Name]; found {
-					structType, ok = t.(types.StructType)
+		if len(expr.TypeArgs) > 0 {
+			// generic
+			var templateType types.StructType
+			var found bool
+			if expr.Module != "" {
+				if mt, ok := c.moduleTypes[expr.Module]; ok {
+					if t, ok := mt[expr.Name]; ok {
+						templateType, found = t.(types.StructType)
+					}
+				}
+			} else if tmpl, ok := c.genericStructs[expr.Name]; ok {
+				templateType = tmpl.Type
+				found = true
+			}
+
+			if !found {
+				c.errors = append(c.errors, fmt.Sprintf("unknown generic struct %s", expr.Name))
+				return types.Unit
+			}
+
+			var ok bool
+			structType, ok = c.monomorphizeStructLiteral(expr, templateType)
+			if !ok {
+				return types.Unit
+			}
+		} else if expr.Module != "" {
+			var found bool
+			if mt, ok := c.moduleTypes[expr.Module]; ok {
+				if t, ok := mt[expr.Name]; ok {
+					structType, found = t.(types.StructType)
 				}
 			}
 
-			if !ok {
+			if !found {
 				c.errors = append(c.errors, fmt.Sprintf("unknown type %s:%s", expr.Module, expr.Name))
 				return types.Unit
 			}
 		} else {
+			var ok bool
 			structType, ok = c.definedStructs[expr.Name]
 			if !ok {
 				c.errors = append(c.errors, fmt.Sprintf("unknown type %s", expr.Name))
@@ -666,7 +692,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 				continue
 			}
 
-			expectedType := structType.Types[idx]
+			expectedType = structType.Types[idx]
 			actualType := c.typeOf(expr.Values[i], expectedType)
 			if !c.typesMatch(actualType, expectedType) {
 				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
@@ -1736,7 +1762,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 	templateType := template.Type.(types.FunctionType)
 
 	if len(expr.TypeArgs) != len(template.TypeParams) {
-		c.errors = append(c.errors, fmt.Sprintf("%s expects exactly %d type argument", ident.Value, len(templateType.TypeParams)))
+		c.errors = append(c.errors, fmt.Sprintf("%s expects exactly %d type arguments", ident.Value, len(template.TypeParams)))
 		return nil
 	}
 
@@ -1749,7 +1775,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 
 	if !c.monomorphized[mangledName] {
 		cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{template}})
-		clonedFn := cloned.(*ast.Program).Stmts[0].(*ast.FunctionDeclarationStmt)
+		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 
 		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
 
@@ -1769,6 +1795,46 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 
 	concreteType := types.SubstituteTypeParams(templateType, subs)
 	return c.validateFunctionCall(expr, concreteType)
+}
+
+func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template types.StructType) (types.StructType, bool) {
+	if len(expr.TypeArgs) != len(template.TypeParams) {
+		c.errors = append(c.errors, fmt.Sprintf("%s expects exactly %d type arguments", expr.Name, len(template.TypeParams)))
+		return types.StructType{}, false
+	}
+
+	subs := make(map[string]types.Type)
+	for i, tp := range template.TypeParams {
+		subs[tp.Name] = expr.TypeArgs[i]
+	}
+
+	mangled := mangleName(expr.Name, expr.TypeArgs)
+
+	if !c.monomorphized[mangled] {
+		// monomorphize type
+		concreteType := types.SubstituteTypeParams(template, subs).(types.StructType)
+		concreteType.Name = mangled
+		concreteType.TypeParams = nil
+
+		// register non-generic struct
+		c.definedStructs[mangled] = concreteType
+
+		// clone definition
+		synthetic := &ast.StructDefinitionStmt{
+			Name: &ast.Identifier{Value: mangled},
+			Type: concreteType,
+		}
+
+		// inject back in to program
+		if c.program != nil {
+			c.program.Stmts = append(c.program.Stmts, synthetic)
+		}
+
+		c.monomorphized[mangled] = true
+	}
+	expr.Name = mangled
+
+	return c.definedStructs[mangled], true
 }
 
 func mangleName(base string, tt []types.Type) string {

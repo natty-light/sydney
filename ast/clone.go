@@ -1,6 +1,6 @@
 package ast
 
-func Clone(n Node) Node {
+func Clone(n Node) *Program {
 	nn := &Program{Stmts: make([]Stmt, 0)}
 
 	switch node := n.(type) {
