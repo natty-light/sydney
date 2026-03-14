@@ -47,7 +47,7 @@ type Lexer struct {
 }
 
 func New(source string) *Lexer {
-	lexer := &Lexer{source: source}
+	lexer := &Lexer{source: source, line: 1}
 	lexer.readChar() // set up lexer
 	return lexer
 }
