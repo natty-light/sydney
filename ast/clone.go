@@ -42,6 +42,7 @@ func cloneStmt(stmt Stmt) Stmt {
 		return &cloned
 	case *FunctionDeclarationStmt:
 		cloned := *stmt
+		cloned.Name = cloneIdentifier(stmt.Name)
 		cloned.Params = make([]*Identifier, len(stmt.Params))
 		for i, p := range stmt.Params {
 			cloned.Params[i] = cloneIdentifier(p)
