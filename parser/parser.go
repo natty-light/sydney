@@ -383,7 +383,9 @@ func (p *Parser) parseReturnStmt() *ast.ReturnStmt {
 
 	p.nextToken()
 
-	stmt.ReturnValue = p.parseExpression(LOWEST)
+	if !p.currTokenIs(token.Semicolon) {
+		stmt.ReturnValue = p.parseExpression(LOWEST)
+	}
 
 	if p.peekTokenIs(token.Semicolon) {
 		p.nextToken()
