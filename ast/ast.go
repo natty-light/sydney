@@ -148,7 +148,7 @@ type (
 	InterfaceImplementationStmt struct {
 		Token          token.Token
 		StructName     *Identifier
-		InterfaceNames []*Identifier
+		InterfaceNames []Expr
 	}
 
 	ImportStatement struct {
@@ -316,9 +316,10 @@ type (
 	}
 
 	SelectorExpr struct {
-		Token token.Token
-		Left  Expr
-		Value Expr
+		Token         token.Token
+		Left          Expr
+		Value         Expr
+		ContainerType types.Type
 		resolvable
 		castable
 	}
@@ -1046,7 +1047,7 @@ func Dump(node Node, indent int) {
 		prefix("InterfaceImplementationStmt")
 		field("Struct:", node.StructName.Value)
 		for _, n := range node.InterfaceNames {
-			field("Interface:", n.Value)
+			Dump(n, indent+2)
 		}
 	case *ImportStatement:
 		prefix("ImportStatement")
