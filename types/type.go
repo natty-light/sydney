@@ -41,6 +41,7 @@ type StructType struct {
 	Interfaces          []Type
 	SatisfiedInterfaces []string
 	TypeParams          []*TypeParam
+	TypeArgs            []Type
 }
 
 type InterfaceType struct {
@@ -180,6 +181,13 @@ func SubstituteTypeParams(t Type, subs map[string]Type) Type {
 		types := make([]Type, len(tt.Types))
 		for i, t := range tt.Types {
 			types[i] = SubstituteTypeParams(t, subs)
+		}
+		if tt.TypeArgs != nil {
+			ta := make([]Type, len(tt.TypeArgs))
+			for i, a := range tt.TypeArgs {
+				ta[i] = SubstituteTypeParams(a, subs)
+			}
+			tt.TypeArgs = ta
 		}
 		tt.Types = types
 		return tt
