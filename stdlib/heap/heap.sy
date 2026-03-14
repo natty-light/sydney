@@ -25,13 +25,29 @@ pub func sift_down(Heapable h, int n, int i) {
     }
 }
 
-pub func heap_sort(Heapable h) {
-    const n = h.length()
-    for (mut int i = n / 2 - 1; i >= 0; i = i - 1) {
+pub func sift_up(Heapable h, int i) {
+    for (i > 0) {
+        const parent = (i - 1) / 2;
+        if (h.less(i, parent)) {
+            h.swap(i, parent);
+            i = parent;
+        } else {
+            return;
+        }
+    }
+}
+
+
+pub func heapify(Heapable h) {
+    const n = h.length();
+     for (mut int i = n / 2 - 1; i >= 0; i = i - 1) {
         sift_down(h, n, i);
     }
+}
 
-    for (mut int i = n - 1; i > 0; i = i - 1) {
+pub func heap_sort(Heapable h) {
+    heapify(h);
+    for (mut int i = h.length() - 1; i > 0; i = i - 1) {
         h.swap(0, i);
         sift_down(h, i, 0);
     }
