@@ -738,6 +738,76 @@ func TestGenericStructMonomorphization(t *testing.T) {
 	}
 }
 
+func TestGenericStructAsArgument(t *testing.T) {
+	sources := []string{
+		// Generic struct as function parameter
+		`define struct Box<T> { value T }
+		func unbox<T>(Box<T> b) -> T { return b.value; }
+		const int r = unbox<int>(Box<int> { value: 42 });`,
+
+		// Two type params in struct, used in function param
+		`define struct Pair<T, U> { first T, second U }
+		func getFirst<T, U>(Pair<T, U> p) -> T { return p.first; }
+		const int r = getFirst<int, string>(Pair<int, string> { first: 1, second: "hi" });`,
+
+		// Generic struct param with implicit return
+		`define struct Box<T> { value T }
+		func unbox<T>(Box<T> b) -> T { b.value; }
+		const int r = unbox<int>(Box<int> { value: 10 });`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestGenericStructAsArgumentErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		// Mismatched argument type
+		{
+			`define struct Box<T> { value T }
+			func unbox<T>(Box<T> b) -> T { return b.value; }
+			unbox<int>(Box<string> { value: "hi" });`,
+			`type mismatch: got Box__string for arg 1 in function unbox call, expected Box__int`,
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestMissingReturnOnAllPaths(t *testing.T) {
+	tests := []TypeErrorTest{
+		// if without else
+		{
+			`func f(int x) -> int {
+				if (x > 0) { return x; }
+			}`,
+			`function f missing return on all paths`,
+		},
+		// last statement is not an expression or return
+		{
+			`func f(int x) -> int {
+				mut int y = x + 1;
+			}`,
+			`function f missing return on all paths`,
+		},
+		// empty body
+		{
+			`func f() -> int {}`,
+			`function f missing return on all paths`,
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
 func TestGenericStructErrors(t *testing.T) {
 	tests := []TypeErrorTest{
 		{

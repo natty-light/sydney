@@ -1059,6 +1059,36 @@ func (p *Parser) parseType() types.Type {
 			return &types.TypeParamRef{Name: p.currToken.Literal}
 		}
 
+		if p.genericNames[p.currToken.Literal] && p.peekTokenIs(token.LessThan) {
+			name := p.currToken.Literal
+			templateType, ok := p.definedStructs[name]
+			if !ok {
+				p.errors = append(p.errors, fmt.Sprintf("unknown generic struct %s", name))
+				return nil
+			}
+
+			template := templateType.(types.StructType)
+			p.nextToken()
+			p.nextToken()
+			typeArgs := p.parseTypeArgs()
+
+			if len(typeArgs) != len(template.TypeParams) {
+				p.errors = append(p.errors, fmt.Sprintf("%s expects exactly %d type arguments", name, len(template.TypeArgs)))
+				return nil
+			}
+
+			subs := make(map[string]types.Type)
+			for i, tp := range template.TypeParams {
+				subs[tp.Name] = typeArgs[i]
+			}
+
+			result := types.SubstituteTypeParams(template, subs).(types.StructType)
+			result.TypeArgs = typeArgs
+			result.TypeParams = nil
+
+			return result
+		}
+
 		if p.peekTokenIs(token.Colon) {
 			module := p.currToken.Literal
 			p.nextToken()

@@ -1208,7 +1208,7 @@ func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
 	sn := structType.Name
 	withInterfaces, ok := c.definedStructs[sn]
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("unknown struct %s", name))
+		return "", false
 	}
 
 	for _, interfaceRaw := range withInterfaces.Interfaces {
@@ -1516,12 +1516,42 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 		}
 
 		c.check(node.Body)
+
+		if fType.Return != types.Unit && !allPathsReturn(node.Body) {
+			c.errors = append(c.errors, fmt.Sprintf("function %s missing return on all paths", node.Name.Value))
+		}
+
 		c.env = oldEnv
 		c.currentReturnType = oldReturnType
 		c.inLoop = oldInLoop
 	}
 
 	return types.Unit
+}
+
+func allPathsReturn(block *ast.BlockStmt) bool {
+	if len(block.Stmts) == 0 {
+		return false
+	}
+	last := block.Stmts[len(block.Stmts)-1]
+	switch s := last.(type) {
+	case *ast.ReturnStmt:
+		return true
+	case *ast.ExpressionStmt:
+		if ifExpr, ok := s.Expr.(*ast.IfExpr); ok {
+			if ifExpr.Alternative == nil {
+				return false
+			}
+			return allPathsReturn(ifExpr.Consequence) &&
+				allPathsReturn(ifExpr.Alternative)
+		}
+		if matchExpr, ok := s.Expr.(*ast.MatchExpr); ok {
+			return allPathsReturn(matchExpr.OkArm.Body) &&
+				allPathsReturn(matchExpr.ErrArm.Body)
+		}
+		return true // implicit return via last expression
+	}
+	return false
 }
 
 func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
@@ -1778,6 +1808,14 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 
 		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
+		// resolve parameterized struct types
+		if ft, ok := clonedFn.Type.(types.FunctionType); ok {
+			for i, p := range ft.Params {
+				ft.Params[i] = c.resolveGenericStructType(p)
+			}
+			ft.Return = c.resolveGenericStructType(ft.Return)
+			clonedFn.Type = ft
+		}
 
 		clonedFn.Name.Value = mangledName
 		clonedFn.TypeParams = nil // no longer generic
@@ -1794,7 +1832,16 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 	expr.MangledName = mangledName
 
 	concreteType := types.SubstituteTypeParams(templateType, subs)
+	// resolve parameterized struct types
+	if ft, ok := concreteType.(types.FunctionType); ok {
+		for i, param := range ft.Params {
+			ft.Params[i] = c.resolveGenericStructType(param)
+		}
+		ft.Return = c.resolveGenericStructType(ft.Return)
+		concreteType = ft
+	}
 	return c.validateFunctionCall(expr, concreteType)
+
 }
 
 func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template types.StructType) (types.StructType, bool) {
@@ -1835,6 +1882,44 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 	expr.Name = mangled
 
 	return c.definedStructs[mangled], true
+}
+
+func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
+	st, ok := t.(types.StructType)
+	if !ok || st.TypeArgs == nil {
+		return t
+	}
+
+	template, exists := c.genericStructs[st.Name]
+	if !exists {
+		return t
+	}
+
+	mangled := mangleName(st.Name, st.TypeArgs)
+	if !c.monomorphized[mangled] {
+		subs := make(map[string]types.Type)
+		for i, tp := range template.Type.TypeParams {
+			subs[tp.Name] = st.TypeArgs[i]
+		}
+
+		concreteType := types.SubstituteTypeParams(template.Type, subs).(types.StructType)
+		concreteType.Name = mangled
+		concreteType.TypeParams = nil
+		c.definedStructs[mangled] = concreteType
+
+		synthetic := &ast.StructDefinitionStmt{
+			Name: &ast.Identifier{Value: mangled},
+			Type: concreteType,
+		}
+
+		if c.program != nil {
+			c.program.Stmts = append(c.program.Stmts, synthetic)
+		}
+
+		c.monomorphized[mangled] = true
+	}
+
+	return c.definedStructs[mangled]
 }
 
 func mangleName(base string, tt []types.Type) string {
