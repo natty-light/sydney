@@ -14,6 +14,7 @@ type (
 	Node interface {
 		TokenLiteral() string
 		String() string
+		Pos() (int, int)
 	}
 
 	Stmt interface {
@@ -913,6 +914,139 @@ func (b *BreakStmt) String() string {
 
 func (c *ContinueStmt) String() string {
 	return c.Token.Literal
+}
+
+func (p *Program) Pos() (int, int) {
+	return 0, 0
+}
+
+func (v *VarDeclarationStmt) Pos() (int, int) {
+	return v.Token.Line, v.Token.Column
+}
+
+func (r *ReturnStmt) Pos() (int, int) {
+	return r.Token.Line, r.Token.Column
+}
+
+func (e *ExpressionStmt) Pos() (int, int) {
+	return e.Token.Line, e.Token.Column
+}
+
+func (b *BlockStmt) Pos() (int, int) {
+	return b.Token.Line, b.Token.Column
+}
+
+func (v *VarAssignmentStmt) Pos() (int, int) {
+	return v.Token.Line, v.Token.Column
+}
+
+func (f *ForStmt) Pos() (int, int) {
+	return f.Token.Line, f.Token.Column
+}
+
+func (i *IndexAssignmentStmt) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+
+func (f *FunctionDeclarationStmt) Pos() (int, int) {
+	return f.Token.Line, f.Token.Column
+}
+
+func (s *StructDefinitionStmt) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+
+func (s *SelectorAssignmentStmt) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+
+func (i *InterfaceDefinitionStmt) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+
+func (i *InterfaceImplementationStmt) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+
+func (m *ModuleDeclarationStmt) Pos() (int, int) {
+	return m.Token.Line, m.Token.Column
+}
+
+func (i *ImportStatement) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+
+func (p *PubStatement) Pos() (int, int) {
+	return p.Token.Line, p.Token.Column
+}
+
+func (c *ContinueStmt) Pos() (int, int) {
+	return c.Token.Line, c.Token.Column
+}
+
+func (b *BreakStmt) Pos() (int, int) {
+	return b.Token.Line, b.Token.Column
+}
+
+func (i *Identifier) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+func (i *IntegerLiteral) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+func (p *PrefixExpr) Pos() (int, int) {
+	return p.Token.Line, p.Token.Column
+}
+func (i *InfixExpr) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+func (b *BooleanLiteral) Pos() (int, int) {
+	return b.Token.Line, b.Token.Column
+}
+func (i *IfExpr) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+func (f *FunctionLiteral) Pos() (int, int) {
+	return f.Token.Line, f.Token.Column
+}
+func (c *CallExpr) Pos() (int, int) {
+	return c.Token.Line, c.Token.Column
+}
+func (s *StringLiteral) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+func (a *ArrayLiteral) Pos() (int, int) {
+	return a.Token.Line, a.Token.Column
+}
+func (i *IndexExpr) Pos() (int, int) {
+	return i.Token.Line, i.Token.Column
+}
+func (n *NullLiteral) Pos() (int, int) {
+	return n.Token.Line, n.Token.Column
+}
+func (h *HashLiteral) Pos() (int, int) {
+	return h.Token.Line, h.Token.Column
+}
+func (f *FloatLiteral) Pos() (int, int) {
+	return f.Token.Line, f.Token.Column
+}
+func (m *MacroLiteral) Pos() (int, int) {
+	return m.Token.Line, m.Token.Column
+}
+func (s *StructLiteral) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+func (s *SelectorExpr) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+func (s *ScopeAccessExpr) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+func (m *MatchExpr) Pos() (int, int) {
+	return m.Token.Line, m.Token.Column
+}
+func (b *ByteLiteral) Pos() (int, int) {
+	return b.Token.Line, b.Token.Column
 }
 
 // Statements

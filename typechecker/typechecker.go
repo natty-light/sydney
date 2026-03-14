@@ -154,7 +154,7 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 
 func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
 	if c.currentReturnType == nil {
-		c.errors = append(c.errors, "return statement outside of function body")
+		c.appendError("return statement outside of function body", node)
 	}
 
 	var valType types.Type = types.Unit
@@ -163,7 +163,7 @@ func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
 	}
 
 	if !c.typesMatch(valType, c.currentReturnType) {
-		c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
+		c.appendError(fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()), node)
 	} else {
 		c.boxIfNecessary(node.ReturnValue, valType, c.currentReturnType)
 	}
@@ -178,7 +178,7 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 	c.inLoop = true
 	conditionType := c.typeOf(node.Condition, types.Bool)
 	if conditionType != types.Bool {
-		c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()))
+		c.appendError(fmt.Sprintf("cannot use expression of type %s for loop condition", conditionType.Signature()), node)
 	}
 	if node.Post != nil {
 		c.check(node.Post)
@@ -207,13 +207,13 @@ func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 	}
 
 	if valType == nil && varType == nil {
-		c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for variable %s", name))
+		c.appendError(fmt.Sprintf("cannot resolve type for variable %s", name), node)
 		return types.Unit
 	}
 
 	if ok && !outer {
 		if !c.typesMatch(valType, varType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()), node)
 		}
 	} else {
 		c.boxIfNecessary(node.Value, valType, varType)
@@ -232,15 +232,15 @@ func (c *Checker) checkVarAssignmentStmt(node *ast.VarAssignmentStmt) types.Type
 	valType := c.typeOf(node.Value, varType)
 	isConst := c.env.IsConst(name)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("cannot assign to undefined variable %s", name))
+		c.appendError(fmt.Sprintf("cannot assign to undefined variable %s", name), node)
 		return types.Unit
 	}
 	if isConst {
-		c.errors = append(c.errors, fmt.Sprintf("cannot assign to constant variable %s", name))
+		c.appendError(fmt.Sprintf("cannot assign to constant variable %s", name), node)
 	}
 
 	if !c.typesMatch(varType, valType) {
-		c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), name, varType.Signature()))
+		c.appendError(fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), name, varType.Signature()), node)
 	}
 	c.boxIfNecessary(node.Value, valType, varType)
 
@@ -265,7 +265,7 @@ func (c *Checker) checkSelectorAssignmentStmt(node *ast.SelectorAssignmentStmt) 
 
 	structType, ok := toStruct(str)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("cannot assign to field of non-struct value of type %s", str.Signature()))
+		c.appendError(fmt.Sprintf("cannot assign to field of non-struct value of type %s", str.Signature()), node)
 		return types.Unit
 	}
 
@@ -276,14 +276,14 @@ func (c *Checker) checkSelectorAssignmentStmt(node *ast.SelectorAssignmentStmt) 
 
 	idx := slices.Index(structType.Fields, field.Value)
 	if idx == -1 {
-		c.errors = append(c.errors, fmt.Sprintf("struct %s of type %s has no field %s", structType.Name, structType.Name, field.Value))
+		c.appendError(fmt.Sprintf("struct %s of type %s has no field %s", structType.Name, structType.Name, field.Value), node)
 		return types.Unit
 	}
 
 	valType := c.typeOf(node.Value, structType.Types[idx])
 
 	if !c.typesMatch(valType, structType.Types[idx]) {
-		c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
+		c.appendError(fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()), node)
 	}
 
 	node.Left.ContainerType = structType
@@ -337,13 +337,13 @@ func (c *Checker) check(n ast.Node) types.Type {
 		return c.checkSelectorAssignmentStmt(node)
 	case *ast.ContinueStmt:
 		if !c.inLoop {
-			c.errors = append(c.errors, fmt.Sprintf("continue statement cannot be outside of loop"))
+			c.appendError(fmt.Sprintf("continue statement cannot be outside of loop"), node)
 			return nil
 		}
 		return types.Unit
 	case *ast.BreakStmt:
 		if !c.inLoop {
-			c.errors = append(c.errors, fmt.Sprintf("break statement cannot be outside of loop"))
+			c.appendError(fmt.Sprintf("break statement cannot be outside of loop"), node)
 			return nil
 		}
 		return types.Unit
@@ -381,7 +381,7 @@ func (c *Checker) hoistBase(n ast.Node) {
 					c.env.SetConst(name)
 				}
 			} else {
-				c.errors = append(c.errors, fmt.Sprintf("variable %s already declared", name))
+				c.appendError(fmt.Sprintf("variable %s already declared", name), node)
 			}
 		}
 	}
@@ -420,7 +420,7 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 		}
 		_, fromOuter, exists := c.env.Get(node.Name.Value)
 		if exists && !fromOuter && !node.IsExtern {
-			c.errors = append(c.errors, fmt.Sprintf("function %s already declared", node.Name.Value))
+			c.appendError(fmt.Sprintf("function %s already declared", node.Name.Value), node)
 			return
 		}
 
@@ -500,7 +500,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			}
 
 			if targetedElemType != nil && !c.typesMatch(eType, targetedElemType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: array element got %s, expected %s", eType.Signature(), targetedElemType.Signature()))
+				c.appendError(fmt.Sprintf("type mismatch: array element got %s, expected %s", eType.Signature(), targetedElemType.Signature()), expr)
 				continue
 			}
 
@@ -547,10 +547,10 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			}
 
 			if !c.typesMatch(kType, keyType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: map key got %s, expected %s", kType.Signature(), keyType.Signature()))
+				c.appendError(fmt.Sprintf("type mismatch: map key got %s, expected %s", kType.Signature(), keyType.Signature()), expr)
 			}
 			if !c.typesMatch(valType, vType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch: map value got %s, expected %s", vType.Signature(), valType.Signature()))
+				c.appendError(fmt.Sprintf("type mismatch: map value got %s, expected %s", vType.Signature(), valType.Signature()), expr)
 			}
 			c.boxIfNecessary(k, kType, keyType)
 			c.boxIfNecessary(v, vType, valType)
@@ -568,7 +568,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	case *ast.Identifier:
 		t, _, ok := c.env.Get(expr.Value)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("undefined identifier: %s", expr.Value))
+			c.appendError(fmt.Sprintf("undefined identifier: %s", expr.Value), expr)
 			return types.Unit
 		}
 		expr.ResolvedType = t
@@ -577,20 +577,20 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	case *ast.InfixExpr:
 		lt := c.typeOf(expr.Left, nil)
 		rt := c.typeOf(expr.Right, nil)
-		resolved := c.checkInfixExpr(expr.Operator, lt, rt)
+		resolved := c.checkInfixExpr(expr.Operator, lt, rt, expr)
 		expr.ResolvedType = resolved
 		e = expr
 		return resolved
 	case *ast.PrefixExpr:
 		t := c.typeOf(expr.Right, nil)
-		resolved := c.checkPrefixExpr(expr.Operator, t)
+		resolved := c.checkPrefixExpr(expr.Operator, t, expr)
 		expr.ResolvedType = resolved
 		e = expr
 		return resolved
 	case *ast.IfExpr:
 		t := c.typeOf(expr.Condition, types.Bool)
 		if t != types.Bool {
-			c.errors = append(c.errors, fmt.Sprintf("cannot use expression of type %s for if condition", t))
+			c.appendError(fmt.Sprintf("cannot use expression of type %s for if condition", t), expr)
 			return nil
 		}
 		cType := c.check(expr.Consequence)
@@ -599,7 +599,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			aType = c.check(expr.Alternative)
 
 			if !c.typesMatch(cType, aType) {
-				c.errors = append(c.errors, fmt.Sprintf("consequence and alternative for if expression must result in same type"))
+				c.appendError(fmt.Sprintf("consequence and alternative for if expression must result in same type"), expr)
 				return types.Unit
 			}
 		}
@@ -620,16 +620,16 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		t := c.typeOf(expr.Left, nil)
 		structType, ok := t.(types.StructType)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("cannot access field of non-struct value %s of type %s", expr.Left.TokenLiteral(), t.Signature()))
+			c.appendError(fmt.Sprintf("cannot access field of non-struct value %s of type %s", expr.Left.TokenLiteral(), t.Signature()), expr)
 		}
 		val, ok := expr.Value.(*ast.Identifier)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("idk what to put here I'll figure it out later"))
+			c.appendError(fmt.Sprintf("idk what to put here I'll figure it out later"), expr)
 			return types.Unit
 		}
 		i := slices.Index(structType.Fields, val.Value)
 		if i == -1 {
-			c.errors = append(c.errors, fmt.Sprintf("field %s of struct type %s not found", val.Value, expr.Left.TokenLiteral()))
+			c.appendError(fmt.Sprintf("field %s of struct type %s not found", val.Value, expr.Left.TokenLiteral()), expr)
 			return types.Unit
 		}
 
@@ -655,7 +655,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			}
 
 			if !found {
-				c.errors = append(c.errors, fmt.Sprintf("unknown generic struct %s", expr.Name))
+				c.appendError(fmt.Sprintf("unknown generic struct %s", expr.Name), expr)
 				return types.Unit
 			}
 
@@ -673,14 +673,14 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			}
 
 			if !found {
-				c.errors = append(c.errors, fmt.Sprintf("unknown type %s:%s", expr.Module, expr.Name))
+				c.appendError(fmt.Sprintf("unknown type %s:%s", expr.Module, expr.Name), expr)
 				return types.Unit
 			}
 		} else {
 			var ok bool
 			structType, ok = c.definedStructs[expr.Name]
 			if !ok {
-				c.errors = append(c.errors, fmt.Sprintf("unknown type %s", expr.Name))
+				c.appendError(fmt.Sprintf("unknown type %s", expr.Name), expr)
 				return types.Unit
 			}
 		}
@@ -692,21 +692,21 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 
 		for _, expected := range structType.Fields {
 			if _, ok := providedFields[expected]; !ok {
-				c.errors = append(c.errors, fmt.Sprintf("missing field %s in struct literal %s", expected, expr.Name))
+				c.appendError(fmt.Sprintf("missing field %s in struct literal %s", expected, expr.Name), expr)
 			}
 		}
 
 		for i, fieldName := range expr.Fields {
 			idx := slices.Index(structType.Fields, fieldName)
 			if idx == -1 {
-				c.errors = append(c.errors, fmt.Sprintf("field %s of struct type %s not found", fieldName, expr.Name))
+				c.appendError(fmt.Sprintf("field %s of struct type %s not found", fieldName, expr.Name), expr)
 				continue
 			}
 
 			expectedType = structType.Types[idx]
 			actualType := c.typeOf(expr.Values[i], expectedType)
 			if !c.typesMatch(actualType, expectedType) {
-				c.errors = append(c.errors, fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()))
+				c.appendError(fmt.Sprintf("type mismatch for field %s in struct %s: expected %s, got %s", fieldName, expr.Name, expectedType.Signature(), actualType.Signature()), expr)
 			} else {
 				c.boxIfNecessary(expr.Values[i], actualType, expectedType)
 			}
@@ -718,12 +718,12 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	case *ast.ScopeAccessExpr:
 		pkgEnv, ok := c.packages[expr.Module.Value]
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("module %s not found", expr.Module.Value))
+			c.appendError(fmt.Sprintf("module %s not found", expr.Module.Value), expr)
 			return types.Unit
 		}
 		typ, _, found := pkgEnv.Get(expr.Member.Value)
 		if !found {
-			c.errors = append(c.errors, fmt.Sprintf("%s is not exported from module %s", expr.Member.Value, expr.Module.Value))
+			c.appendError(fmt.Sprintf("%s is not exported from module %s", expr.Member.Value, expr.Module.Value), expr)
 			return types.Unit
 		}
 
@@ -737,150 +737,150 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	return nil
 }
 
-func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type) types.Type {
+func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type, expr ast.Node) types.Type {
 	switch operator {
 	case "==":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		return types.Bool
 	case ">":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return types.Bool
 	case ">=":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return types.Bool
 	case "<":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return types.Bool
 	case "<=":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return types.Bool
 	case "!=":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		return types.Bool
 	case "&&":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 		if lt != types.Bool {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 		return types.Bool
 	case "||":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 		if lt != types.Bool {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 		return types.Bool
 	case "+":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot add types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot add types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.String && lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return lt
 
 	case "-":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot subtract types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot subtract types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return lt
 	case "*":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot multiply types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot multiply types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return lt
 	case "/":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot divide types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot divide types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Float && lt != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return lt
 	case "%":
 		if !c.typesMatch(lt, rt) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot modulo types %s and %s", lt.Signature(), rt.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot modulo types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		if lt != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
 		}
 
 		return types.Int
 	default:
-		c.errors = append(c.errors, fmt.Sprintf("unknown operator %s", operator))
+		c.appendError(fmt.Sprintf("unknown operator %s", operator), expr)
 		return nil
 	}
 }
 
-func (c *Checker) checkPrefixExpr(operator string, t types.Type) types.Type {
+func (c *Checker) checkPrefixExpr(operator string, t types.Type, expr ast.Node) types.Type {
 	if operator == "!" {
 		if t != types.Bool {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for %s", operator, t.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for %s", operator, t.Signature()), expr)
 			return nil
 		}
 		return t
 	} else if operator == "-" {
 		if t != types.Float && t != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("invalid operation: %s is not defined for %s", operator, t.Signature()))
+			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for %s", operator, t.Signature()), expr)
 			return nil
 		}
 
 		return t
 	}
 
-	c.errors = append(c.errors, fmt.Sprintf("unknown operator %s", operator))
+	c.appendError(fmt.Sprintf("unknown operator %s", operator), expr)
 	return nil
 }
 
@@ -888,7 +888,7 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 	if ident, ok := expr.Function.(*ast.Identifier); ok && len(expr.TypeArgs) > 0 {
 		template, ok := c.genericFunctions[ident.Value]
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("unknown generic function: %s", ident.Value))
+			c.appendError(fmt.Sprintf("unknown generic function: %s", ident.Value), expr)
 			return nil
 		}
 
@@ -899,7 +899,7 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 		if len(expr.Arguments) > 0 {
 			receiverType := c.typeOf(expr.Arguments[0], nil)
 			if receiverType == nil {
-				c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for %s function call", ident.Value))
+				c.appendError(fmt.Sprintf("cannot resolve type for %s function call", ident.Value), expr)
 				return nil
 			}
 			mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), ident.Value)
@@ -992,7 +992,7 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 
 func (c *Checker) checkLenBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("len() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("len() expects exactly 1 argument"), expr)
 		return types.Int
 	}
 
@@ -1000,7 +1000,7 @@ func (c *Checker) checkLenBuiltIn(expr *ast.CallExpr) types.Type {
 	_, isArray := argType.(types.ArrayType)
 	_, isMap := argType.(types.MapType)
 	if argType != types.String && !isArray && !isMap && !isString(argType) {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for len()", argType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for len()", argType.Signature()), expr)
 	}
 
 	return types.Int
@@ -1012,7 +1012,7 @@ func (c *Checker) checkPrintBuiltIn(_ *ast.CallExpr) types.Type {
 
 func (c *Checker) checkFirstBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("first() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("first() expects exactly 1 argument"), expr)
 		return types.Int
 	}
 
@@ -1020,7 +1020,7 @@ func (c *Checker) checkFirstBuiltIn(expr *ast.CallExpr) types.Type {
 	arrType, isArray := argType.(types.ArrayType)
 
 	if !isArray {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for first()", argType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for first()", argType.Signature()), expr)
 		return types.Unit
 	}
 
@@ -1029,7 +1029,7 @@ func (c *Checker) checkFirstBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkLastBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("last() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("last() expects exactly 1 argument"), expr)
 		return types.Int
 	}
 
@@ -1037,7 +1037,7 @@ func (c *Checker) checkLastBuiltIn(expr *ast.CallExpr) types.Type {
 	arrType, isArray := argType.(types.ArrayType)
 
 	if !isArray {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for last()", argType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for last()", argType.Signature()), expr)
 		return types.Unit
 	}
 
@@ -1046,7 +1046,7 @@ func (c *Checker) checkLastBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkAppendBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 2 {
-		c.errors = append(c.errors, fmt.Sprintf("append() expects exactly 2 arguments"))
+		c.appendError(fmt.Sprintf("append() expects exactly 2 arguments"), expr)
 		return types.Unit
 	}
 	argType := c.typeOf(expr.Arguments[0], nil)
@@ -1054,13 +1054,13 @@ func (c *Checker) checkAppendBuiltIn(expr *ast.CallExpr) types.Type {
 	arrType, isArray := argType.(types.ArrayType)
 
 	if !isArray {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for append()", argType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for append()", argType.Signature()), expr)
 		return types.Unit
 	}
 
 	valType := c.typeOf(expr.Arguments[1], nil)
 	if !c.typesMatch(valType, arrType.ElemType) && !arrType.IsEmpty {
-		c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for append() value", valType.Signature()))
+		c.appendError(fmt.Sprintf("type mismatch: got %s for append() value", valType.Signature()), expr)
 	}
 
 	return arrType
@@ -1068,13 +1068,13 @@ func (c *Checker) checkAppendBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkRestBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("rest() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("rest() expects exactly 1 argument"), expr)
 	}
 
 	argType := c.typeOf(expr.Arguments[0], nil)
 	arrType, isArray := argType.(types.ArrayType)
 	if !isArray {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for rest()", argType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for rest()", argType.Signature()), expr)
 		return types.Unit
 	}
 
@@ -1083,23 +1083,23 @@ func (c *Checker) checkRestBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkSliceBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 3 {
-		c.errors = append(c.errors, fmt.Sprintf("slice() expects exactly 3 arguments"))
+		c.appendError(fmt.Sprintf("slice() expects exactly 3 arguments"), expr)
 	}
 	arrayArgType := c.typeOf(expr.Arguments[0], nil)
 	startType := c.typeOf(expr.Arguments[1], types.Int)
 	endType := c.typeOf(expr.Arguments[2], types.Int)
 	arrType, isArray := arrayArgType.(types.ArrayType)
 	if !isArray {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()), expr)
 		return types.Unit
 	}
 
 	if startType != types.Int {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()), expr)
 	}
 
 	if endType != types.Int {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for slice()", arrType.Signature()), expr)
 	}
 
 	return arrType
@@ -1107,12 +1107,12 @@ func (c *Checker) checkSliceBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkKeysBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("keys() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("keys() expects exactly 1 argument"), expr)
 	}
 	t := c.typeOf(expr.Arguments[0], nil)
 	mapType, ok := t.(types.MapType)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for keys()", t.Signature()), expr)
 	}
 
 	return types.ArrayType{ElemType: mapType.KeyType}
@@ -1120,12 +1120,12 @@ func (c *Checker) checkKeysBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkValuesBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("values() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("values() expects exactly 1 argument"), expr)
 	}
 	t := c.typeOf(expr.Arguments[0], nil)
 	mapType, ok := t.(types.MapType)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for keys()", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for keys()", t.Signature()), expr)
 	}
 
 	return types.ArrayType{ElemType: mapType.ValueType}
@@ -1133,7 +1133,7 @@ func (c *Checker) checkValuesBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("ok() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("ok() expects exactly 1 argument"), expr)
 	}
 
 	t := c.typeOf(expr.Arguments[0], nil)
@@ -1145,18 +1145,18 @@ func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {
 
 func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, fmt.Sprintf("err() expects exactly 1 argument"))
+		c.appendError(fmt.Sprintf("err() expects exactly 1 argument"), expr)
 	}
 
 	t := c.typeOf(expr.Arguments[0], nil)
 	if t != types.String {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for err()", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for err()", t.Signature()), expr)
 	}
 
 	if contextType == nil && c.currentMatchResultType != nil {
 		contextType = c.currentMatchResultType
 	} else if contextType == nil {
-		c.errors = append(c.errors, "cannot infer result type for err()")
+		c.appendError("cannot infer result type for err()", expr)
 		return types.ResultType{T: types.Unit}
 	}
 	var resolved types.ResultType
@@ -1196,13 +1196,13 @@ func (c *Checker) registerImplementation(node *ast.InterfaceImplementationStmt) 
 	structName := node.StructName.Value
 	structType, ok := c.definedStructs[structName]
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("unknown struct %s", structName))
+		c.appendError(fmt.Sprintf("unknown struct %s", structName), node)
 	}
 
 	for _, name := range node.InterfaceNames {
 		interfaceType, ifaceName, ok := c.resolveInterfaceName(name)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("unknown interface %s", ifaceName))
+			c.appendError(fmt.Sprintf("unknown interface %s", ifaceName), node)
 			continue
 		}
 
@@ -1222,8 +1222,8 @@ func (c *Checker) validateImplementation(node *ast.InterfaceImplementationStmt) 
 			continue
 		}
 
-		if !c.structSatisfiesInterface(structType, interfaceType) {
-			c.errors = append(c.errors, fmt.Sprintf("struct %s does not satisfy interface %s", structName, ifaceName))
+		if !c.structSatisfiesInterface(structType, interfaceType, node) {
+			c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s", structName, ifaceName), node)
 			continue
 		}
 	}
@@ -1256,17 +1256,17 @@ func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
 
 func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type) types.Type {
 	if fnTypeRaw == nil || fnTypeRaw == types.Unit {
-		c.errors = append(c.errors, fmt.Sprintf("unresolved symbol: %s", expr.Function.String()))
+		c.appendError(fmt.Sprintf("unresolved symbol: %s", expr.Function.String()), expr)
 		return nil
 	}
 
 	fnType, ok := fnTypeRaw.(types.FunctionType)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("cannot call non-function %s %s", fnTypeRaw.Signature(), expr.Function.String()))
+		c.appendError(fmt.Sprintf("cannot call non-function %s %s", fnTypeRaw.Signature(), expr.Function.String()), expr)
 		return nil
 	}
 	if len(expr.Arguments) != len(fnType.Params) || fnType.Variadic {
-		c.errors = append(c.errors, fmt.Sprintf("wrong number of arguments for function %s, wanted %d, got %d", expr.Function.String(), len(expr.Arguments), len(fnType.Params)))
+		c.appendError(fmt.Sprintf("wrong number of arguments for function %s, wanted %d, got %d", expr.Function.String(), len(expr.Arguments), len(fnType.Params)), expr)
 		return nil
 	}
 
@@ -1274,7 +1274,7 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 		aType := c.typeOf(arg, nil)
 		pType := fnType.Params[i]
 		if !c.typesMatch(aType, pType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", aType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", aType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()), expr)
 			return nil
 		}
 		c.boxIfNecessary(expr.Arguments[i], aType, pType)
@@ -1283,7 +1283,7 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 	return fnType.Return
 }
 
-func (c *Checker) structSatisfiesInterface(s types.StructType, i types.InterfaceType) bool {
+func (c *Checker) structSatisfiesInterface(s types.StructType, i types.InterfaceType, node ast.Node) bool {
 	satisfies := true
 	for idx, method := range i.Methods {
 		emt := i.Types[idx].(types.FunctionType)
@@ -1291,14 +1291,14 @@ func (c *Checker) structSatisfiesInterface(s types.StructType, i types.Interface
 		mangledName := fmt.Sprintf("%s.%s", s.Name, method)
 		mtr, _, ok := c.env.Get(mangledName)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("struct %s does not satisfy interface %s, missing method %s", s.Name, i.Name, method))
+			c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, missing method %s", s.Name, i.Name, method), node)
 			satisfies = false
 			continue
 		}
 
 		mt := mtr.(types.FunctionType)
 		if !c.compareMethodSignature(mt, emt) {
-			c.errors = append(c.errors, fmt.Sprintf("struct %s does not satisfy interface %s, wrong signature for method %s. got %s, want %s", s.Name, i.Name, method, mt.Signature(), emt.Signature()))
+			c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, wrong signature for method %s. got %s, want %s", s.Name, i.Name, method, mt.Signature(), emt.Signature()), node)
 			satisfies = false
 			continue
 		}
@@ -1353,7 +1353,7 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 
 	if it, ok := toInterface(expected); ok {
 		if st, ok := toStruct(actual); ok {
-			return c.structSatisfiesInterface(st, it)
+			return c.structSatisfiesInterface(st, it, nil)
 		}
 	}
 
@@ -1453,13 +1453,13 @@ func (c *Checker) satisfiesSameInterface(actual, expected types.Type) bool {
 			for idx, iface := range es.Interfaces {
 				eIfaceType, ok := iface.(types.InterfaceType)
 				if !ok {
-					c.errors = append(c.errors, fmt.Sprintf("%s is not an interface", eIfaceType.Signature()))
+					c.appendError(fmt.Sprintf("%s is not an interface", eIfaceType.Signature()), nil)
 					satisfiesSameIface = false
 					continue
 				}
 				aIfaceType, ok := as.Interfaces[idx].(types.InterfaceType)
 				if !ok {
-					c.errors = append(c.errors, fmt.Sprintf("%s is not an interface", aIfaceType.Signature()))
+					c.appendError(fmt.Sprintf("%s is not an interface", aIfaceType.Signature()), nil)
 					satisfiesSameIface = false
 					continue
 				}
@@ -1487,19 +1487,19 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 	switch colType := t.(type) {
 	case types.ArrayType:
 		if indexOrKeyType != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", indexOrKeyType.Signature()))
+			c.appendError(fmt.Sprintf("index must be type int, got %s", indexOrKeyType.Signature()), node)
 		}
 
 		if !c.typesMatch(valType, colType.ElemType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to element of array of type %s", valType.Signature(), colType.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot assign %s to element of array of type %s", valType.Signature(), colType.Signature()), node)
 		}
 	case types.MapType:
 		if !c.typesMatch(indexOrKeyType, colType.KeyType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: key for map of type %s must be %s, got %s", colType.Signature(), colType.KeyType.Signature(), indexOrKeyType.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: key for map of type %s must be %s, got %s", colType.Signature(), colType.KeyType.Signature(), indexOrKeyType.Signature()), node)
 		}
 
 		if !c.typesMatch(valType, colType.ValueType) {
-			c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to entry of map of type %s", valType.Signature(), colType.Signature()))
+			c.appendError(fmt.Sprintf("type mismatch: cannot assign %s to entry of map of type %s", valType.Signature(), colType.Signature()), node)
 		}
 	}
 
@@ -1531,7 +1531,7 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 
 	fType, ok := fTypeRetrieved.(types.FunctionType)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("cannot use function declaration of %s", node.Name.Value))
+		c.appendError(fmt.Sprintf("cannot use function declaration of %s", node.Name.Value), node)
 	}
 
 	if !node.IsExtern {
@@ -1549,7 +1549,7 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 		c.check(node.Body)
 
 		if fType.Return != types.Unit && !allPathsReturn(node.Body) {
-			c.errors = append(c.errors, fmt.Sprintf("function %s missing return on all paths", node.Name.Value))
+			c.appendError(fmt.Sprintf("function %s missing return on all paths", node.Name.Value), node)
 		}
 
 		c.env = oldEnv
@@ -1593,14 +1593,14 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 
 	if lt == types.String {
 		if idxT != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("index must be type int, got %s", idxT.Signature()))
+			c.appendError(fmt.Sprintf("index must be type int, got %s", idxT.Signature()), expr)
 		}
 		return types.Byte
 	}
 
 	if aok {
 		if idxT != types.Int {
-			c.errors = append(c.errors, fmt.Sprintf("index type for array must be int, got %s", idxT.Signature()))
+			c.appendError(fmt.Sprintf("index type for array must be int, got %s", idxT.Signature()), expr)
 			return nil
 		}
 		expr.ResolvedType = at.ElemType
@@ -1609,7 +1609,7 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 		return at.ElemType
 	} else if mok {
 		if idxT != mt.KeyType {
-			c.errors = append(c.errors, fmt.Sprintf("index type for map %s must be %s, got %s", mt.Signature(), mt.KeyType.Signature(), idxT.Signature()))
+			c.appendError(fmt.Sprintf("index type for map %s must be %s, got %s", mt.Signature(), mt.KeyType.Signature(), idxT.Signature()), expr)
 			return nil
 		}
 
@@ -1619,7 +1619,7 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 		e = expr
 		return mt.ValueType
 	}
-	c.errors = append(c.errors, fmt.Sprintf("index operation undefined for type: %s", lt.Signature()))
+	c.appendError(fmt.Sprintf("index operation undefined for type: %s", lt.Signature()), expr)
 
 	return nil
 }
@@ -1647,7 +1647,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	subType := c.typeOf(expr.Subject, nil)
 	result, ok := subType.(types.ResultType)
 	if !ok {
-		c.errors = append(c.errors, fmt.Sprintf("can only match on result type"))
+		c.appendError(fmt.Sprintf("can only match on result type"), expr)
 		return nil
 	}
 	expr.SubjectType = result.T
@@ -1658,7 +1658,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	c.env = okEnv
 	okBranch := c.check(expr.OkArm.Body)
 	if okBranch == nil {
-		c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for ok branch"))
+		c.appendError(fmt.Sprintf("cannot resolve type for ok branch"), expr)
 		return nil
 	}
 	c.env = oldEnv
@@ -1675,11 +1675,11 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	}
 	errBranch := c.check(expr.ErrArm.Body)
 	if errBranch == nil {
-		c.errors = append(c.errors, fmt.Sprintf("cannot resolve type for err branch"))
+		c.appendError(fmt.Sprintf("cannot resolve type for err branch"), expr)
 		return nil
 	}
 	if !c.typesMatch(errBranch, okBranch) {
-		c.errors = append(c.errors, fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", okBranch.Signature(), errBranch.Signature()))
+		c.appendError(fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", okBranch.Signature(), errBranch.Signature()), expr)
 	}
 	c.env = oldEnv
 	c.currentMatchResultType = oldMatchResultType
@@ -1692,7 +1692,7 @@ func (c *Checker) resolveType(t types.Type) types.Type {
 	case types.ScopeType:
 		tt, ok := c.moduleTypes[t.Module][t.Name]
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("module %s type %s is not declared", t.Module, t.Name))
+			c.appendError(fmt.Sprintf("module %s type %s is not declared", t.Module, t.Name), nil)
 			return nil
 		}
 		return tt
@@ -1737,88 +1737,88 @@ func (c *Checker) resolveFunctionType(ft types.FunctionType) types.FunctionType 
 
 func (c *Checker) checkFopenBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, "fopen() expects exactly 1 argument")
+		c.appendError("fopen() expects exactly 1 argument", expr)
 		return &types.ResultType{T: types.Int}
 	}
 	t := c.typeOf(expr.Arguments[0], types.String)
 	if t != types.String {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fopen(), expected string", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for fopen(), expected string", t.Signature()), expr)
 	}
 	return types.ResultType{T: types.Int}
 }
 
 func (c *Checker) checkFreadBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, "fread() expects exactly 1 argument")
+		c.appendError("fread() expects exactly 1 argument", expr)
 		return &types.ResultType{T: types.String}
 	}
 	t := c.typeOf(expr.Arguments[0], types.Int)
 	if t != types.Int {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fread(), expected int", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for fread(), expected int", t.Signature()), expr)
 	}
 	return types.ResultType{T: types.String}
 }
 
 func (c *Checker) checkFwriteBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 2 {
-		c.errors = append(c.errors, "fwrite() expects exactly 2 arguments")
+		c.appendError("fwrite() expects exactly 2 arguments", expr)
 		return &types.ResultType{T: types.Int}
 	}
 	fdType := c.typeOf(expr.Arguments[0], types.Int)
 	if fdType != types.Int {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fwrite() fd, expected int", fdType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for fwrite() fd, expected int", fdType.Signature()), expr)
 	}
 	dataType := c.typeOf(expr.Arguments[1], types.String)
 	if dataType != types.String {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fwrite() data, expected string", dataType.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for fwrite() data, expected string", dataType.Signature()), expr)
 	}
 	return types.ResultType{T: types.Int}
 }
 
 func (c *Checker) checkFcloseBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, "fclose() expects exactly 1 argument")
+		c.appendError("fclose() expects exactly 1 argument", expr)
 		return &types.ResultType{T: types.Int}
 	}
 	t := c.typeOf(expr.Arguments[0], types.Int)
 	if t != types.Int {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for fclose(), expected int", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for fclose(), expected int", t.Signature()), expr)
 	}
 	return types.ResultType{T: types.Int}
 }
 
 func (c *Checker) checkIntBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, "int() expects exactly 1 argument")
+		c.appendError("int() expects exactly 1 argument", expr)
 		return types.Int
 	}
 	t := c.typeOf(expr.Arguments[0], types.Byte)
 	if t != types.Byte {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for int(), expected byte", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for int(), expected byte", t.Signature()), expr)
 	}
 	return types.Int
 }
 
 func (c *Checker) checkByteBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, "byte() expects exactly 1 argument")
+		c.appendError("byte() expects exactly 1 argument", expr)
 		return types.Byte
 	}
 	t := c.typeOf(expr.Arguments[0], types.Int)
 	if t != types.Int {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for byte(), expected int", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for byte(), expected int", t.Signature()), expr)
 	}
 	return types.Byte
 }
 
 func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
-		c.errors = append(c.errors, "char() expects exactly 1 argument")
+		c.appendError("char() expects exactly 1 argument", expr)
 		return types.String
 	}
 	t := c.typeOf(expr.Arguments[0], types.Byte)
 	if t != types.Byte {
-		c.errors = append(c.errors, fmt.Sprintf("invalid argument type %s for char(), expected byte", t.Signature()))
+		c.appendError(fmt.Sprintf("invalid argument type %s for char(), expected byte", t.Signature()), expr)
 	}
 	return types.String
 }
@@ -1828,7 +1828,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 	templateType := template.Type.(types.FunctionType)
 
 	if len(expr.TypeArgs) != len(template.TypeParams) {
-		c.errors = append(c.errors, fmt.Sprintf("%s expects exactly %d type arguments", ident.Value, len(template.TypeParams)))
+		c.appendError(fmt.Sprintf("%s expects exactly %d type arguments", ident.Value, len(template.TypeParams)), expr)
 		return nil
 	}
 
@@ -1882,7 +1882,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 
 func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template types.StructType) (types.StructType, bool) {
 	if len(expr.TypeArgs) != len(template.TypeParams) {
-		c.errors = append(c.errors, fmt.Sprintf("%s expects exactly %d type arguments", expr.Name, len(template.TypeParams)))
+		c.appendError(fmt.Sprintf("%s expects exactly %d type arguments", expr.Name, len(template.TypeParams)), expr)
 		return types.StructType{}, false
 	}
 
@@ -1965,4 +1965,13 @@ func mangleName(base string, tt []types.Type) string {
 	}
 
 	return strings.Join(parts, "__")
+}
+
+func (c *Checker) appendError(msg string, node ast.Node) {
+	if node == nil {
+		c.errors = append(c.errors, msg)
+		return
+	}
+	line, col := node.Pos()
+	c.errors = append(c.errors, fmt.Sprintf("%d:%d %s", line, col, msg))
 }
