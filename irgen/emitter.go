@@ -198,6 +198,30 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 			name: globalName,
 			typ:  SydneyTypeToIrType(node.Type),
 		}
+	case *ast.FunctionDeclarationStmt:
+		fType, _ := node.Type.(types.FunctionType)
+		name := node.Name.Value
+		if node.MangledName != "" {
+			name = node.MangledName
+		}
+
+		if e.currentModule != "" {
+			name = e.moduleMangle(e.currentModule, name)
+		}
+
+		paramIrTypes := make([]IrType, len(node.Params))
+		for i, p := range fType.Params {
+			paramIrTypes[i] = SydneyTypeToIrType(p)
+		}
+
+		ret := SydneyTypeToIrType(fType.Return)
+		e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
+		if node.MangledName != "" {
+			e.funcSigs[node.Name.Value] = e.funcSigs[name]
+			if e.currentModule != "" {
+				e.funcSigs[e.moduleMangle(e.currentModule, node.Name.Value)] = e.funcSigs[name]
+			}
+		}
 	}
 
 	e.collectStrings(n)
