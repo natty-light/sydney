@@ -27,7 +27,8 @@ type Checker struct {
 	genericStructs   map[string]*ast.StructDefinitionStmt    // templates
 	monomorphized    map[string]bool                         // "identity__int" → done
 
-	program *ast.Program
+	program       *ast.Program
+	currentModule string
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -114,6 +115,7 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 		pkgEnv := NewTypeEnv(nil)
 		pkgChecker := New(pkgEnv)
 		pkgChecker.packages = registry
+		pkgChecker.currentModule = pkg.Name
 
 		for _, program := range pkg.Programs {
 			pkgChecker.Check(program, nil)
@@ -1626,7 +1628,9 @@ func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, pkgName string) (string,
 	case *ast.FunctionDeclarationStmt:
 		return stmt.Name.Value, stmt.Type
 	case *ast.InterfaceDefinitionStmt:
-		return stmt.Name.Value, stmt.Type
+		it := stmt.Type
+		it.Module = pkgName
+		return stmt.Name.Value, it
 	}
 
 	return "", nil
@@ -1702,6 +1706,9 @@ func (c *Checker) resolveType(t types.Type) types.Type {
 	case types.InterfaceType:
 		for i, typ := range t.Types {
 			t.Types[i] = c.resolveType(typ)
+		}
+		if t.Module == "" && c.currentModule != "" {
+			t.Module = c.currentModule
 		}
 		return t
 	case types.ResultType:
