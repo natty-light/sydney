@@ -1213,6 +1213,7 @@ func (p *Parser) parseStructDefinitionStmt() ast.Stmt {
 		for _, t := range typeParams {
 			p.typeParameters[t.Name] = true
 		}
+		p.genericNames[stmt.Name.Value] = true
 	}
 
 	if !p.expectPeek(token.LeftCurlyBracket) {
