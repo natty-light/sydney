@@ -624,6 +624,9 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 	if castTo := expr.GetCastTo(); castTo != nil {
 		concreteName := e.getConcreteType(expr)
 		iface := castTo.Name
+		if castTo.Module != "" {
+			iface = e.moduleMangle(castTo.Module, iface)
+		}
 		ifaceAlloca := e.tmp()
 		e.emitAlloca(ifaceAlloca, IrFatPtr)
 
