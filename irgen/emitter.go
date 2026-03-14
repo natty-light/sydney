@@ -1110,7 +1110,7 @@ func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) (string, I
 	line := fmt.Sprintf("store %s %s, ptr %s", valType, val, irName)
 	e.emit(line)
 
-	return val, valType
+	return "", IrUnit
 }
 
 func (e *Emitter) getZeroValue(t types.Type) (string, IrType) {

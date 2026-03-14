@@ -157,7 +157,10 @@ func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
 		c.errors = append(c.errors, "return statement outside of function body")
 	}
 
-	valType := c.typeOf(node.ReturnValue, c.currentReturnType)
+	var valType types.Type = types.Unit
+	if node.ReturnValue != nil {
+		valType = c.typeOf(node.ReturnValue, c.currentReturnType)
+	}
 
 	if !c.typesMatch(valType, c.currentReturnType) {
 		c.errors = append(c.errors, fmt.Sprintf("cannot return %s from function expecting %s", valType.Signature(), c.currentReturnType.Signature()))
