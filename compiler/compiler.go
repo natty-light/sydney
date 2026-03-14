@@ -769,7 +769,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if castTo := expr.GetCastTo(); castTo != nil {
 			concreteName := getConcreteType(expr)
 
-			itabKey := getItabKey(concreteName, castTo.Name)
+			ifaceName := castTo.Name
+			if castTo.Module != "" {
+				ifaceName = c.mangleModule(castTo.Module, ifaceName)
+			}
+			itabKey := getItabKey(concreteName, ifaceName)
 			if itabIdx, ok := c.itabMapping[itabKey]; ok {
 				c.emit(code.OpBox, itabIdx)
 			} else {
@@ -1074,22 +1078,26 @@ func (c *Compiler) isInterfaceType(expr ast.Expr) (*types.InterfaceType, bool) {
 func (c *Compiler) compileInterfaceMethodCall(node *ast.CallExpr) error {
 	s := node.Function.(*ast.SelectorExpr) // prereq to being in this fn
 	if it, ok := c.isInterfaceType(s.Left); ok {
-		authIt, exists := c.fetchInterfaceType(it.Name)
+		fetchName := it.Name
+		if it.Module != "" {
+			fetchName = c.mangleModule(it.Module, fetchName)
+		}
+		authIt, exists := c.fetchInterfaceType(fetchName)
 		if exists {
 			it = &authIt
 		}
-		// compile interface object
-		err := c.Compile(s.Left)
-		if err != nil {
-			return err
-		}
-
 		// push args onto stack
 		for _, arg := range node.Arguments {
 			err := c.Compile(arg)
 			if err != nil {
 				return err
 			}
+		}
+
+		// compile interface object (must be on top of stack)
+		err := c.Compile(s.Left)
+		if err != nil {
+			return err
 		}
 
 		methodIdx, ok := it.MethodIndices[s.Value.String()]
@@ -1099,18 +1107,18 @@ func (c *Compiler) compileInterfaceMethodCall(node *ast.CallExpr) error {
 
 		c.emit(code.OpCallInterface, methodIdx, len(node.Arguments))
 	} else if it := s.Left.GetCastTo(); it != nil {
-		// compile interface object
-		err := c.Compile(s.Left)
-		if err != nil {
-			return err
-		}
-
 		// push args onto stack
 		for _, arg := range node.Arguments {
 			err := c.Compile(arg)
 			if err != nil {
 				return err
 			}
+		}
+
+		// compile interface object (must be on top of stack)
+		err := c.Compile(s.Left)
+		if err != nil {
+			return err
 		}
 
 		// get method from indices for dynamic dispatch
