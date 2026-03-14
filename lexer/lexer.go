@@ -41,6 +41,9 @@ type Lexer struct {
 	position     int
 	readPosition int
 	char         byte
+
+	line   int
+	column int
 }
 
 func New(source string) *Lexer {
@@ -58,6 +61,13 @@ func (l *Lexer) readChar() {
 
 	l.position = l.readPosition
 	l.readPosition += 1
+
+	if l.char == '\n' {
+		l.line++
+		l.column = 0
+	} else {
+		l.column += 1
+	}
 }
 
 func (l *Lexer) readIdentifer() string {
@@ -131,30 +141,32 @@ func (l *Lexer) peekChar() byte {
 func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
 	l.skipWhitespace()
+	tok.Line = l.line
+	tok.Column = l.column
 	switch l.char {
 	// grouping
 	case leftParen:
-		tok = token.MakeToken(token.LeftParen, l.char)
+		tok = l.makeToken(token.LeftParen, l.char)
 	case rightParen:
-		tok = token.MakeToken(token.RightParen, l.char)
+		tok = l.makeToken(token.RightParen, l.char)
 	case leftCurlyBracket:
-		tok = token.MakeToken(token.LeftCurlyBracket, l.char)
+		tok = l.makeToken(token.LeftCurlyBracket, l.char)
 	case rightCurlyBracket:
-		tok = token.MakeToken(token.RightCurlyBracket, l.char)
+		tok = l.makeToken(token.RightCurlyBracket, l.char)
 	case leftSquareBracket:
-		tok = token.MakeToken(token.LeftSquareBracket, l.char)
+		tok = l.makeToken(token.LeftSquareBracket, l.char)
 	case rightSquareBracket:
-		tok = token.MakeToken(token.RightSquareBracket, l.char)
+		tok = l.makeToken(token.RightSquareBracket, l.char)
 
 	// Punctuation
 	case semi:
-		tok = token.MakeToken(token.Semicolon, l.char)
+		tok = l.makeToken(token.Semicolon, l.char)
 	case comma:
-		tok = token.MakeToken(token.Comma, l.char)
+		tok = l.makeToken(token.Comma, l.char)
 	case colon:
-		tok = token.MakeToken(token.Colon, l.char)
+		tok = l.makeToken(token.Colon, l.char)
 	case dot:
-		tok = token.MakeToken(token.Dot, l.char)
+		tok = l.makeToken(token.Dot, l.char)
 	case quote:
 		tok.Type = token.String
 		tok.Literal = l.readString()
@@ -164,22 +176,22 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar() // advance past \\
 			switch l.char {
 			case 'n':
-				tok = token.MakeToken(token.Byte, '\n')
+				tok = l.makeToken(token.Byte, '\n')
 			case 't':
-				tok = token.MakeToken(token.Byte, '\t')
+				tok = l.makeToken(token.Byte, '\t')
 			case 'r':
-				tok = token.MakeToken(token.Byte, '\r')
+				tok = l.makeToken(token.Byte, '\r')
 			case backSlash:
-				tok = token.MakeToken(token.Byte, l.char)
+				tok = l.makeToken(token.Byte, l.char)
 			case '\'':
-				tok = token.MakeToken(token.Byte, '\'')
+				tok = l.makeToken(token.Byte, '\'')
 			case '0':
-				tok = token.MakeToken(token.Byte, '0')
+				tok = l.makeToken(token.Byte, '0')
 			default:
-				tok = token.MakeToken(token.Byte, l.char)
+				tok = l.makeToken(token.Byte, l.char)
 			}
 		} else {
-			tok = token.MakeToken(token.Byte, l.char)
+			tok = l.makeToken(token.Byte, l.char)
 		}
 		l.readChar()
 	// Symbols
@@ -190,10 +202,10 @@ func (l *Lexer) NextToken() token.Token {
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.EqualTo, Literal: literal}
 		} else {
-			tok = token.MakeToken(token.Assign, l.char)
+			tok = l.makeToken(token.Assign, l.char)
 		}
 	case plus:
-		tok = token.MakeToken(token.Plus, l.char)
+		tok = l.makeToken(token.Plus, l.char)
 	case minus:
 		if l.peekChar() == greaterThan {
 			char := l.char
@@ -201,10 +213,10 @@ func (l *Lexer) NextToken() token.Token {
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.Arrow, Literal: literal}
 		} else {
-			tok = token.MakeToken(token.Minus, l.char)
+			tok = l.makeToken(token.Minus, l.char)
 		}
 	case star:
-		tok = token.MakeToken(token.Star, l.char)
+		tok = l.makeToken(token.Star, l.char)
 	case slash:
 		if l.peekChar() == slash {
 			l.readChar()
@@ -213,9 +225,9 @@ func (l *Lexer) NextToken() token.Token {
 			}
 			return l.NextToken()
 		}
-		tok = token.MakeToken(token.Slash, l.char)
+		tok = l.makeToken(token.Slash, l.char)
 	case modulo:
-		tok = token.MakeToken(token.Modulo, l.char)
+		tok = l.makeToken(token.Modulo, l.char)
 	case greaterThan:
 		if l.peekChar() == eqSym {
 			char := l.char
@@ -223,7 +235,7 @@ func (l *Lexer) NextToken() token.Token {
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.GreaterThanEqualTo, Literal: literal}
 		} else {
-			tok = token.MakeToken(token.GreaterThan, l.char)
+			tok = l.makeToken(token.GreaterThan, l.char)
 		}
 	case lessThan:
 		if l.peekChar() == eqSym {
@@ -232,7 +244,7 @@ func (l *Lexer) NextToken() token.Token {
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.LessThanEqualTo, Literal: literal}
 		} else {
-			tok = token.MakeToken(token.LessThan, l.char)
+			tok = l.makeToken(token.LessThan, l.char)
 		}
 	case bang:
 		if l.peekChar() == eqSym {
@@ -241,7 +253,7 @@ func (l *Lexer) NextToken() token.Token {
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.NotEqualTo, Literal: literal}
 		} else {
-			tok = token.MakeToken(token.Bang, l.char)
+			tok = l.makeToken(token.Bang, l.char)
 		}
 	case ampersand:
 		if l.peekChar() == ampersand {
@@ -251,17 +263,17 @@ func (l *Lexer) NextToken() token.Token {
 			tok = token.Token{Type: token.And, Literal: literal}
 		} else {
 			// Single & is an illegal char
-			tok = token.MakeToken(token.Illegal, l.char)
+			tok = l.makeToken(token.Illegal, l.char)
 		}
 	case pipe:
 		if l.peekChar() == pipe {
 			char := l.char
 			l.readChar()
 			literal := string(char) + string(l.char)
-			tok = token.Token{Type: token.Or, Literal: literal}
+			tok = l.makeTokenStr(token.Or, literal)
 		} else {
 			// Single & is an illegal char
-			tok = token.MakeToken(token.Illegal, l.char)
+			tok = l.makeToken(token.Illegal, l.char)
 		}
 	case 0:
 		tok.Literal = ""
@@ -271,6 +283,8 @@ func (l *Lexer) NextToken() token.Token {
 		if utils.IsAlpha(string(l.char)) {
 			tok.Literal = l.readIdentifer()
 			tok.Type = LookupIdent(tok.Literal)
+			tok.Line = l.line
+			tok.Column = l.column
 			return tok // This is to avoid the l.readChar() call before this functions return
 		} else if utils.IsNumeric(string(l.char)) {
 
@@ -281,9 +295,11 @@ func (l *Lexer) NextToken() token.Token {
 				tok.Type = token.Integer
 			}
 			tok.Literal = literal
+			tok.Line = l.line
+			tok.Column = l.column
 			return tok // This is to avoid the l.readChar() call before this functions return
 		} else {
-			tok = token.MakeToken(token.Illegal, l.char)
+			tok = l.makeToken(token.Illegal, l.char)
 		}
 	}
 
@@ -340,4 +356,18 @@ func LookupIdent(ident string) token.TokenType {
 	}
 
 	return token.Identifier
+}
+
+func (l *Lexer) makeToken(t token.TokenType, char byte) token.Token {
+	tok := token.MakeToken(t, char)
+	tok.Line = l.line
+	tok.Column = l.column
+	return tok
+}
+
+func (l *Lexer) makeTokenStr(t token.TokenType, char string) token.Token {
+	tok := token.Token{Type: t, Literal: char}
+	tok.Line = l.line
+	tok.Column = l.column
+	return tok
 }
