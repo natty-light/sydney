@@ -281,7 +281,8 @@ func (c *Checker) checkSelectorAssignmentStmt(node *ast.SelectorAssignmentStmt) 
 		c.errors = append(c.errors, fmt.Sprintf("type mismatch: cannot assign %s to struct %s field of type %s", valType.Signature(), structType.Name, structType.Types[idx].Signature()))
 	}
 
-	node.Left.ResolvedType = structType
+	node.Left.ContainerType = structType
+	node.Left.ResolvedType = structType.Types[idx]
 
 	return types.Unit
 }
@@ -623,7 +624,8 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			return types.Unit
 		}
 
-		expr.ResolvedType = structType
+		expr.ContainerType = structType
+		expr.ResolvedType = structType.Types[i]
 		e = expr
 		return structType.Types[i]
 	case *ast.StructLiteral:
@@ -1158,6 +1160,29 @@ func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) ty
 	return resolved
 }
 
+func (c *Checker) resolveInterfaceName(expr ast.Expr) (types.InterfaceType, string, bool) {
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		t, _, ok := c.env.Get(e.Value)
+		if !ok {
+			return types.InterfaceType{}, e.Value, false
+		}
+		it, ok := t.(types.InterfaceType)
+		return it, e.Value, ok
+	case *ast.ScopeAccessExpr:
+		mod := e.Module.Value
+		name := e.Member.Value
+		if mt, ok := c.moduleTypes[mod]; ok {
+			if t, ok := mt[name]; ok {
+				it, ok := t.(types.InterfaceType)
+				return it, name, ok
+			}
+		}
+		return types.InterfaceType{}, name, false
+	}
+	return types.InterfaceType{}, "", false
+}
+
 func (c *Checker) registerImplementation(node *ast.InterfaceImplementationStmt) {
 	structName := node.StructName.Value
 	structType, ok := c.definedStructs[structName]
@@ -1166,14 +1191,9 @@ func (c *Checker) registerImplementation(node *ast.InterfaceImplementationStmt) 
 	}
 
 	for _, name := range node.InterfaceNames {
-		interfaceTypeRaw, _, ok := c.env.Get(name.Value)
+		interfaceType, ifaceName, ok := c.resolveInterfaceName(name)
 		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("unknown interface %s", name.Value))
-			continue
-		}
-		interfaceType, ok := interfaceTypeRaw.(types.InterfaceType)
-		if !ok {
-			c.errors = append(c.errors, fmt.Sprintf("non-interface value %s of type %s", name.Value, interfaceTypeRaw.Signature()))
+			c.errors = append(c.errors, fmt.Sprintf("unknown interface %s", ifaceName))
 			continue
 		}
 
@@ -1188,11 +1208,13 @@ func (c *Checker) validateImplementation(node *ast.InterfaceImplementationStmt) 
 	structType, _ := c.definedStructs[structName]
 
 	for _, name := range node.InterfaceNames {
-		interfaceTypeRaw, _, _ := c.env.Get(name.Value)
-		interfaceType, _ := interfaceTypeRaw.(types.InterfaceType)
+		interfaceType, ifaceName, ok := c.resolveInterfaceName(name)
+		if !ok {
+			continue
+		}
 
 		if !c.structSatisfiesInterface(structType, interfaceType) {
-			c.errors = append(c.errors, fmt.Sprintf("struct %s does not satisfy interface %s", structName, name.Value))
+			c.errors = append(c.errors, fmt.Sprintf("struct %s does not satisfy interface %s", structName, ifaceName))
 			continue
 		}
 	}

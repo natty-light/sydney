@@ -661,7 +661,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpStruct, idx, len(t.Fields))
 	case *ast.SelectorExpr:
-		t := node.ResolvedType.(types.StructType)
+		t := node.ContainerType.(types.StructType)
 		err := c.Compile(node.Left)
 		if err != nil {
 			return err
@@ -673,7 +673,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpGetField, idx)
 	case *ast.SelectorAssignmentStmt:
-		t := node.Left.ResolvedType.(types.StructType)
+		t := node.Left.ContainerType.(types.StructType)
 		err := c.Compile(node.Left.Left) // compile collection ident
 		if err != nil {
 			return err
@@ -977,7 +977,7 @@ func (c *Compiler) setStruct(name string, t types.StructType) {
 func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementationStmt) {
 	sn := impl.StructName.Value
 	for _, ident := range impl.InterfaceNames {
-		in := ident.Value
+		in := interfaceNameFromExpr(ident)
 		it, ok := c.fetchInterfaceType(in)
 		if !ok {
 			panic(fmt.Errorf("interface type %s not found", in))
@@ -1001,6 +1001,16 @@ func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementat
 		itabKey := getItabKey(sn, in)
 		c.itabMapping[itabKey] = itabIdx
 	}
+}
+
+func interfaceNameFromExpr(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		return e.Value
+	case *ast.ScopeAccessExpr:
+		return e.Module.Value + "__" + e.Member.Value
+	}
+	return ""
 }
 
 func (c *Compiler) setInterface(name string, t types.InterfaceType) {

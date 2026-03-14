@@ -179,14 +179,14 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 			name = e.moduleMangle(e.currentModule, name)
 		}
 
-		e.interfaceTypes[name] = node.Type
+		e.interfaceTypes[name] = t
 	case *ast.InterfaceImplementationStmt:
 		sname := node.StructName.Value
 		if e.vtables[sname] == nil {
 			e.vtables[sname] = make(map[string][]string)
 		}
 		for _, iname := range node.InterfaceNames {
-			e.vtables[sname][iname.Value] = nil
+			e.vtables[sname][interfaceNameFromExpr(iname)] = nil
 		}
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
@@ -476,6 +476,16 @@ func (e *Emitter) emitBypass(line string) {
 	e.buf.WriteString(withIndent)
 }
 
+func interfaceNameFromExpr(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		return e.Value
+	case *ast.ScopeAccessExpr:
+		return e.Module.Value + "__" + e.Member.Value
+	}
+	return ""
+}
+
 func (e *Emitter) label(prefix string) string {
 	name := fmt.Sprintf("%s.%d", prefix, e.lblIdx)
 	e.lblIdx++
@@ -692,7 +702,10 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	case *ast.SelectorExpr:
 		return e.emitSelectorExpr(expr)
 	case *ast.IndexExpr:
-		lt := expr.Left.GetResolvedType()
+		lt := expr.ContainerType
+		if lt == nil {
+			lt = expr.Left.GetResolvedType()
+		}
 
 		if lt == types.String {
 			return e.emitStringIndexExpr(expr)
@@ -1140,7 +1153,7 @@ func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (stri
 	val := st.Value.(*ast.Identifier).Value
 	fieldIdx := -1
 
-	t := st.ResolvedType.(types.StructType)
+	t := st.ContainerType.(types.StructType)
 	for i, fieldName := range t.Fields {
 		if fieldName == val {
 			fieldIdx = i
@@ -1521,7 +1534,7 @@ func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
 
 	val := expr.Value.(*ast.Identifier).Value // this needs to be changed since we might have Circle.Point.x
 
-	t := expr.ResolvedType.(types.StructType)
+	t := expr.ContainerType.(types.StructType)
 	fieldIdx := -1
 	for i, fieldName := range t.Fields {
 		if fieldName == val {

@@ -197,6 +197,10 @@ func (l *Loader) ExtractTypes(pkg *Package) map[string]types.Type {
 					tt[sd.Name.Value] = sd.Type
 				}
 				if id, ok := pub.Stmt.(*ast.InterfaceDefinitionStmt); ok {
+					id.Type.MethodIndices = make(map[string]int)
+					for i, mn := range id.Type.Methods {
+						id.Type.MethodIndices[mn] = i
+					}
 					tt[id.Name.Value] = id.Type
 				}
 			}

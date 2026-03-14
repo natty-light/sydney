@@ -1331,6 +1331,10 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 	}
 	t.Methods = methods
 	t.Types = tt
+	t.MethodIndices = make(map[string]int)
+	for i, mn := range methods {
+		t.MethodIndices[mn] = i
+	}
 	p.definedInterfaces[stmt.Name.Value] = t
 
 	stmt.Type = t
@@ -1351,16 +1355,26 @@ func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
 	}
 	p.nextToken() // move past ->
 
-	interfaceNames := make([]*ast.Identifier, 0)
-	interfaceNames = append(interfaceNames, &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal})
+	interfaceNames := make([]ast.Expr, 0)
+	var left ast.Expr = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+	if p.peekTokenIs(token.Colon) {
+		p.nextToken()
+		left = p.parseScopeAccessExpr(left)
+	}
+
+	interfaceNames = append(interfaceNames, left)
 	for p.peekTokenIs(token.Comma) {
 		p.nextToken()
-		p.nextToken()
-		if !p.currTokenIs(token.Identifier) {
+		if !p.expectPeek(token.Identifier) {
 			p.errors = append(p.errors, fmt.Sprintf("expected identifier, got %s", p.currToken.Literal))
 			return nil
 		}
-		interfaceNames = append(interfaceNames, &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal})
+		left = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+		if p.peekTokenIs(token.Colon) {
+			p.nextToken()
+			left = p.parseScopeAccessExpr(left)
+		}
+		interfaceNames = append(interfaceNames, left)
 	}
 
 	stmt.InterfaceNames = interfaceNames
