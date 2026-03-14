@@ -85,6 +85,8 @@ const (
 type Token struct {
 	Literal string
 	Type    TokenType
+	Line    int
+	Column  int
 }
 
 func MakeToken(Type TokenType, char byte) Token {

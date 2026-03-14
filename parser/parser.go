@@ -146,8 +146,8 @@ func (p *Parser) registerInfix(tokenType token.TokenType, fn infixParseFn) {
 	p.infixParseFns[tokenType] = fn
 }
 
-func (p *Parser) noPrefixParseFnError(t token.TokenType) {
-	msg := fmt.Sprintf("no prefix parse function for %s found", t)
+func (p *Parser) noPrefixParseFnError(t token.Token) {
+	msg := fmt.Sprintf("%d:%d no prefix parse function for %s found", t.Line, t.Column, t.Type)
 	p.errors = append(p.errors, msg)
 }
 
@@ -183,8 +183,8 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("expected next token to be %s, got %s instead",
-		t, p.peekToken.Type)
+	msg := fmt.Sprintf("%d:%d expected next token to be %s, got %s instead",
+		p.peekToken.Line, p.peekToken.Column, t, p.peekToken.Type)
 	p.errors = append(p.errors, msg)
 }
 
@@ -462,7 +462,7 @@ func (p *Parser) parseBlockStmt() *ast.BlockStmt {
 func (p *Parser) parseExpression(precedence Precedence) ast.Expr {
 	prefix := p.prefixParseFns[p.currToken.Type] // look for prefix function for p.currToken
 	if prefix == nil {
-		p.noPrefixParseFnError(p.currToken.Type)
+		p.noPrefixParseFnError(p.currToken)
 		return nil
 	}
 
@@ -1573,7 +1573,7 @@ func (p *Parser) parseTypeCast() ast.Expr {
 
 func (p *Parser) parseGenericType() *types.TypeParam {
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("expected ident, got %s", p.peekToken))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ident, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 	ident := p.parseIdentifier().(*ast.Identifier)
