@@ -970,6 +970,8 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 			return c.checkErrBuiltIn(expr, expected)
 		case "int":
 			return c.checkIntBuiltIn(expr)
+		case "float":
+			return c.checkFloatBuiltIn(expr)
 		case "byte":
 			return c.checkByteBuiltIn(expr)
 		case "char":
@@ -1797,6 +1799,19 @@ func (c *Checker) checkIntBuiltIn(expr *ast.CallExpr) types.Type {
 		c.appendError(fmt.Sprintf("invalid argument type %s for int(), expected byte", t.Signature()), expr)
 	}
 	return types.Int
+}
+
+func (c *Checker) checkFloatBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.appendError("float() expects exactly 1 argument", expr)
+		return types.Float
+	}
+	t := c.typeOf(expr.Arguments[0], nil)
+	if t != types.Int && t != types.Byte {
+		c.appendError(fmt.Sprintf("invalid argument type %s for float(), expected int or byte", t.Signature()), expr)
+	}
+
+	return types.Float
 }
 
 func (c *Checker) checkByteBuiltIn(expr *ast.CallExpr) types.Type {

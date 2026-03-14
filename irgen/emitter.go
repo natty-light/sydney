@@ -937,6 +937,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitIntConvCall(expr)
 		case "byte":
 			return e.emitByteConvCall(expr)
+		case "float":
+			return e.emitFloatConvCall(expr)
 		case "char":
 			return e.emitCharConvCall(expr)
 		case "append":

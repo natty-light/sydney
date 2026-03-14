@@ -119,6 +119,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.Colon, p.parseScopeAccessExpr)
 	p.registerPrefix(token.IntType, p.parseTypeCast)
 	p.registerPrefix(token.ByteType, p.parseTypeCast)
+	p.registerPrefix(token.FloatType, p.parseTypeCast)
 
 	p.definedStructs = make(map[string]types.Type)
 	p.definedInterfaces = make(map[string]types.Type)
