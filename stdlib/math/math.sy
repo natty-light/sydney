@@ -1,5 +1,9 @@
 module "math"
 
-pub func abs<T>(T val) -> T {
+pub func abs_int(int val) -> int {
     if (val < 0) { -val; } else { val };
+}
+
+pub func abs(float val) -> float {
+    if (val < 0.0) { -val; } else { val; };
 }
