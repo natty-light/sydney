@@ -862,59 +862,21 @@ func (p *Parser) parseNullLiteral() ast.Expr {
 	return &ast.NullLiteral{Token: p.currToken}
 }
 
-func (p *Parser) parseForStmt() *ast.ForStmt {
+func (p *Parser) parseForStmt() ast.Stmt {
 	forStmt := &ast.ForStmt{Token: p.currToken}
 	if !p.expectPeek(token.LeftParen) {
 		return nil
 	}
 	p.nextToken() // advance past (
 	if p.currTokenIs(token.Mut) || p.currTokenIs(token.Const) {
-		forStmt.Init = p.parseVarDeclarationStmt()
-		p.nextToken()
-		forStmt.Condition = p.parseExpression(LOWEST)
-		if !p.expectPeek(token.Semicolon) {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
-			return nil
-		}
-
-		p.nextToken()
-		forStmt.Post = p.parseExpressionOrAssignmentStmt()
-		if !p.expectPeek(token.RightParen) {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after post, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
-			return nil
-		}
+		p.parseDeclaredThreePartForStmt(forStmt)
 	} else {
 		expr := p.parseExpression(LOWEST)
 
 		if p.peekTokenIs(token.Assign) {
-			p.nextToken()
-			assignTok := p.currToken
-			p.nextToken()
-			value := p.parseExpression(LOWEST)
-			if ident, ok := expr.(*ast.Identifier); ok {
-				forStmt.Init = &ast.VarAssignmentStmt{
-					Identifier: ident,
-					Value:      value,
-					Token:      assignTok,
-				}
-			}
-
-			if !p.expectPeek(token.Semicolon) {
-				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after init, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
-				return nil
-			}
-			p.nextToken()
-			forStmt.Condition = p.parseExpression(LOWEST)
-			if !p.expectPeek(token.Semicolon) {
-				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
-				return nil
-			}
-			p.nextToken()
-			forStmt.Post = p.parseExpressionOrAssignmentStmt()
-			if !p.expectPeek(token.RightParen) {
-				p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after post, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
-				return nil
-			}
+			p.parseAssignedThreePartForStmt(expr, forStmt)
+		} else if p.peekTokenIs(token.In) || p.peekTokenIs(token.Comma) {
+			return p.parseForInStmt(forStmt.Token)
 		} else {
 			forStmt.Condition = expr
 			if !p.expectPeek(token.RightParen) {
@@ -1677,4 +1639,79 @@ func (p *Parser) parseSliceExpr(left ast.Expr) ast.Expr {
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {
 	return fmt.Sprintf("expected %q for %s type annotation, got %q", expected, name, got)
+}
+
+func (p *Parser) parseDeclaredThreePartForStmt(stmt *ast.ForStmt) {
+	stmt.Init = p.parseVarDeclarationStmt()
+	p.nextToken()
+	stmt.Condition = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.Semicolon) {
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		return
+	}
+
+	p.nextToken()
+	stmt.Post = p.parseExpressionOrAssignmentStmt()
+	if !p.expectPeek(token.RightParen) {
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after post, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		return
+	}
+}
+
+func (p *Parser) parseAssignedThreePartForStmt(expr ast.Expr, stmt *ast.ForStmt) {
+	p.nextToken()
+	assignTok := p.currToken
+	p.nextToken()
+	value := p.parseExpression(LOWEST)
+	if ident, ok := expr.(*ast.Identifier); ok {
+		stmt.Init = &ast.VarAssignmentStmt{
+			Identifier: ident,
+			Value:      value,
+			Token:      assignTok,
+		}
+	}
+
+	if !p.expectPeek(token.Semicolon) {
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after init, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		return
+	}
+	p.nextToken()
+	stmt.Condition = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.Semicolon) {
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ; after condition, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		return
+	}
+	p.nextToken()
+	stmt.Post = p.parseExpressionOrAssignmentStmt()
+	if !p.expectPeek(token.RightParen) {
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ) after post, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		return
+	}
+}
+
+func (p *Parser) parseForInStmt(tok token.Token) ast.Stmt {
+	stmt := &ast.ForInStmt{Token: tok}
+
+	if p.peekTokenIs(token.Comma) {
+		stmt.Key = p.parseIdentifier().(*ast.Identifier)
+		p.nextToken()
+		p.nextToken()
+		stmt.Value = p.parseIdentifier().(*ast.Identifier)
+	} else {
+		stmt.Value = p.parseIdentifier().(*ast.Identifier)
+	}
+	if !p.expectPeek(token.In) {
+		return nil
+	}
+	p.nextToken()
+	stmt.Iterable = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.RightParen) {
+		return nil
+	}
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStmt()
+
+	return stmt
 }
