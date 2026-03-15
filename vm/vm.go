@@ -417,6 +417,38 @@ func (vm *VM) Run() error {
 					return err
 				}
 			}
+		case code.OpSlice:
+			obj := vm.pop()
+			end := vm.pop().(*object.Integer).Value
+			start := vm.pop().(*object.Integer).Value
+
+			switch obj.(type) {
+			case *object.Array:
+				asArr := obj.(*object.Array)
+				if end == -1 {
+					end = int64(len(asArr.Elements))
+				}
+				newOjb := &object.Array{
+					Elements: asArr.Elements[start:end],
+				}
+				err := vm.push(newOjb)
+				if err != nil {
+					return err
+				}
+			case *object.String:
+				asStr := obj.(*object.String)
+				if end == -1 {
+					end = int64(len(asStr.Value))
+				}
+				newOjb := &object.String{
+					Value: asStr.Value[start:end],
+				}
+				err := vm.push(newOjb)
+				if err != nil {
+					return err
+				}
+			}
+
 		}
 	}
 	return nil
