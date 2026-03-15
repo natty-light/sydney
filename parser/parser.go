@@ -841,6 +841,10 @@ func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expr {
 }
 
 func (p *Parser) parseIndexExpr(left ast.Expr) ast.Expr {
+	if p.peekPeekTokenIs(token.Colon) || p.peekTokenIs(token.Colon) {
+		return p.parseSliceExpr(left)
+	}
+
 	expr := &ast.IndexExpr{Token: p.currToken, Left: left}
 
 	p.nextToken() // advance past [
@@ -1649,6 +1653,26 @@ func (p *Parser) parseTypeArgs() []types.Type {
 	}
 
 	return ta
+}
+
+func (p *Parser) parseSliceExpr(left ast.Expr) ast.Expr {
+	expr := &ast.SliceExpr{Token: p.currToken, Left: left}
+	if !p.peekTokenIs(token.Colon) {
+		p.nextToken()
+		expr.Start = p.parseExpression(SCOPEACCESS)
+	}
+	if !p.expectPeek(token.Colon) {
+		return nil
+	}
+
+	if !p.peekTokenIs(token.RightSquareBracket) {
+		p.nextToken()
+		expr.End = p.parseExpression(LOWEST)
+	}
+	if !p.expectPeek(token.RightSquareBracket) {
+		return nil
+	}
+	return expr
 }
 
 func getTypeParseError(name string, expected token.TokenType, got token.TokenType) string {
