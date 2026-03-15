@@ -8,6 +8,7 @@ import (
 	"sydney/code"
 	"sydney/loader"
 	"sydney/object"
+	"sydney/token"
 	"sydney/types"
 )
 
@@ -763,6 +764,44 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else {
 			c.emit(code.OpJump, loop.conditionPos)
 		}
+	case *ast.SliceExpr:
+		if node.Start != nil {
+			err := c.Compile(node.Start)
+			if err != nil {
+				return err
+			}
+		} else {
+			err := c.emitZeroValue(types.Int)
+			if err != nil {
+				return err
+			}
+		}
+
+		if node.End != nil {
+			err := c.Compile(node.End)
+			if err != nil {
+				return err
+			}
+		} else {
+			fake := &ast.IntegerLiteral{
+				Token: token.Token{
+					Type:    token.Integer,
+					Literal: "-1",
+					Line:    -1,
+					Column:  -1,
+				},
+				Value: -1,
+			}
+			err := c.Compile(fake)
+			if err != nil {
+				return err
+			}
+		}
+		err := c.Compile(node.Left)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpSlice)
 	}
 
 	if expr, ok := node.(ast.Expr); ok {
