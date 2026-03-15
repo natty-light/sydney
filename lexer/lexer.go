@@ -332,6 +332,7 @@ var keywords = map[string]token.TokenType{
 	"extern":         token.Extern,
 	"break":          token.Break,
 	"continue":       token.Continue,
+	"in":             token.In,
 }
 
 var types = map[string]token.TokenType{
