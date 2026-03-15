@@ -677,6 +677,9 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 	switch expr := expr.(type) {
 	case *ast.IntegerLiteral:
+		if expr.GetResolvedType() == types.Float {
+			return fmt.Sprintf("%d.0", expr.Value), IrFloat
+		}
 		return fmt.Sprintf("%d", expr.Value), IrInt
 	case *ast.ByteLiteral:
 		return fmt.Sprintf("%d", expr.Value), IrInt8

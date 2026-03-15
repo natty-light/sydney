@@ -1315,3 +1315,50 @@ func Dump(node Node, indent int) {
 func withIdent(text string, space int) string {
 	return strings.Repeat(" ", space) + text
 }
+
+func SubstituteTypeParams(block *BlockStmt, subs map[string]types.Type) {
+	for _, stmt := range block.Stmts {
+		substituteInStmt(stmt, subs)
+	}
+}
+
+func substituteInStmt(stmt Stmt, subs map[string]types.Type) {
+	switch s := stmt.(type) {
+	case *VarDeclarationStmt:
+		if s.Type != nil {
+			s.Type = types.SubstituteTypeParams(s.Type, subs)
+		}
+	case *BlockStmt:
+		SubstituteTypeParams(s, subs)
+	case *ExpressionStmt:
+		substituteInExpr(s.Expr, subs)
+	case *ReturnStmt:
+		substituteInExpr(s.ReturnValue, subs)
+	case *ForStmt:
+		if s.Init != nil {
+			substituteInStmt(s.Init, subs)
+		}
+		if s.Post != nil {
+			substituteInStmt(s.Post, subs)
+		}
+		SubstituteTypeParams(s.Body, subs)
+	case *PubStatement:
+		substituteInStmt(s.Stmt, subs)
+	}
+}
+
+func substituteInExpr(expr Expr, subs map[string]types.Type) {
+	switch e := expr.(type) {
+	case *FunctionLiteral:
+		e.Type = types.SubstituteTypeParams(e.Type, subs).(types.FunctionType)
+		SubstituteTypeParams(e.Body, subs)
+	case *IfExpr:
+		SubstituteTypeParams(e.Consequence, subs)
+		if e.Alternative != nil {
+			SubstituteTypeParams(e.Alternative, subs)
+		}
+	case *MatchExpr:
+		SubstituteTypeParams(e.OkArm.Body, subs)
+		SubstituteTypeParams(e.ErrArm.Body, subs)
+	}
+}

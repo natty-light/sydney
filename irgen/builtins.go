@@ -185,9 +185,12 @@ func (e *Emitter) emitByteConvCall(expr *ast.CallExpr) (string, IrType) {
 }
 
 func (e *Emitter) emitFloatConvCall(expr *ast.CallExpr) (string, IrType) {
-	result := e.tmp()
 	arg, argTyp := e.emitExpr(expr.Arguments[0])
-	line := fmt.Sprintf("%s = sitofp i64 %s to %s", result, arg, argTyp)
+	if argTyp == IrFloat {
+		return arg, argTyp
+	}
+	result := e.tmp()
+	line := fmt.Sprintf("%s = sitofp %s %s to double", result, argTyp, arg)
 	e.emit(line)
 	return result, IrFloat
 }

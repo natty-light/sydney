@@ -452,6 +452,10 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 
 	switch expr := e.(type) {
 	case *ast.IntegerLiteral:
+		if expectedType == types.Float {
+			expr.ResolvedType = types.Float
+			return types.Float
+		}
 		return types.Int
 	case *ast.StringLiteral:
 		return types.String
@@ -1807,7 +1811,7 @@ func (c *Checker) checkFloatBuiltIn(expr *ast.CallExpr) types.Type {
 		return types.Float
 	}
 	t := c.typeOf(expr.Arguments[0], nil)
-	if t != types.Int && t != types.Byte {
+	if t != types.Int && t != types.Byte && t != types.Float {
 		c.appendError(fmt.Sprintf("invalid argument type %s for float(), expected int or byte", t.Signature()), expr)
 	}
 
@@ -1870,6 +1874,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 
 		clonedFn.Name.Value = mangledName
 		clonedFn.TypeParams = nil // no longer generic
+		ast.SubstituteTypeParams(clonedFn.Body, subs)
 
 		c.checkFunctionDeclaration(clonedFn)
 

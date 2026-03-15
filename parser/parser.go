@@ -1028,6 +1028,10 @@ func (p *Parser) isPeekTokenType() bool {
 	}
 
 	_, ok := p.definedStructs[p.peekToken.Literal]
+	if ok {
+		return true
+	}
+	_, ok = p.typeParameters[p.peekToken.Literal]
 
 	return ok
 }
