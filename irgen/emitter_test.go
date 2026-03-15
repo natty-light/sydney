@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sydney/ast"
 	"sydney/lexer"
 	"sydney/parser"
 	"sydney/typechecker"
@@ -1140,6 +1141,7 @@ func runE2ETests(t *testing.T, tests []e2eTestCase) {
 			if len(c.Errors()) != 0 {
 				t.Fatalf("typechecker errors: %v", c.Errors())
 			}
+			ast.FilterGenericTemplates(program)
 			e := New()
 			if err := e.Emit(program, nil); err != nil {
 				t.Fatalf("emitter error: %v", err)
@@ -1255,6 +1257,107 @@ func TestE2EIfAsStatement(t *testing.T) {
 		{
 			source:   `mut r = 0; for (mut i = 0; i < 4; i = i + 1) { if (i % 2 == 0) { r = r + 1; } else { r = r + 10; } } print(r);`,
 			expected: "22\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2EArraySlice(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source:   `const a = [1, 2, 3, 4, 5]; const b = a[1:4]; print(len(b)); print(b[0]); print(b[1]); print(b[2]);`,
+			expected: "3\n2\n3\n4\n",
+		},
+		{
+			source:   `const a = [10, 20, 30]; const b = a[0:2]; print(len(b)); print(b[0]); print(b[1]);`,
+			expected: "2\n10\n20\n",
+		},
+		{
+			source:   `const a = [1, 2, 3, 4, 5]; const b = a[3:]; print(len(b)); print(b[0]); print(b[1]);`,
+			expected: "2\n4\n5\n",
+		},
+		{
+			source:   `const a = [1, 2, 3, 4, 5]; const b = a[:2]; print(len(b)); print(b[0]); print(b[1]);`,
+			expected: "2\n1\n2\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2EStringSlice(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source:   `const s = "Hello, World!"; print(s[0:5]);`,
+			expected: "Hello\n",
+		},
+		{
+			source:   `const s = "Hello, World!"; print(s[7:12]);`,
+			expected: "World\n",
+		},
+		{
+			source:   `const s = "abcdef"; print(s[2:]);`,
+			expected: "cdef\n",
+		},
+		{
+			source:   `const s = "abcdef"; print(s[:3]);`,
+			expected: "abc\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2EGenericFunctions(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source: `func identity<T>(T x) -> T { x; }
+			         print(identity<int>(42));`,
+			expected: "42\n",
+		},
+		{
+			source: `func identity<T>(T x) -> T { x; }
+			         print(identity<string>("hello"));`,
+			expected: "hello\n",
+		},
+		{
+			source: `func first<T>(array<T> a) -> T { a[0]; }
+			         print(first<int>([10, 20, 30]));`,
+			expected: "10\n",
+		},
+		{
+			source: `func sum<T>(array<T> vals) -> T {
+				mut T acc = 0;
+				for (mut i = 0; i < len(vals); i = i + 1) {
+					acc = acc + vals[i];
+				}
+				acc;
+			}
+			print(sum<int>([1, 2, 3, 4, 5]));`,
+			expected: "15\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2EGenericStructs(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source: `define struct Box<T> { value T }
+			         const b = Box<int> { value: 42 };
+			         print(b.value);`,
+			expected: "42\n",
+		},
+		{
+			source: `define struct Box<T> { value T }
+			         const b = Box<string> { value: "hello" };
+			         print(b.value);`,
+			expected: "hello\n",
+		},
+		{
+			source: `define struct Box<T> { value T }
+			         const a = Box<int> { value: 5 };
+			         const b = Box<int> { value: 10 };
+			         print(a.value + b.value);`,
+			expected: "15\n",
 		},
 	}
 	runE2ETests(t, tests)
