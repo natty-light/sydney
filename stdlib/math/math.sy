@@ -1,0 +1,5 @@
+module "math"
+
+pub func abs<T>(T val) -> T {
+    if (val < 0) { -val; } else { val };
+}

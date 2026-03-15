@@ -1,0 +1,10 @@
+module "stats"
+
+pub func mean<T>(array<T> vals) -> float {
+    mut T x = 0;
+    for (mut i = 0; i < len(vals); i = i + 1) {
+        x = x + vals[i];
+    }
+
+    float(x) / float(len(vals));
+}
