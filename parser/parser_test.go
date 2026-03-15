@@ -1922,6 +1922,98 @@ func TestThreePartForLoop(t *testing.T) {
 	}
 }
 
+func TestForRangeArray(t *testing.T) {
+	source := "for (x in arr) { print(x); }"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. want=1, got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ForInStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ForRangeStmt. got=%T", program.Stmts[0])
+	}
+
+	if stmt.Value.Value != "x" {
+		t.Fatalf("stmt.Value wrong. want=x, got=%s", stmt.Value.Value)
+	}
+
+	if stmt.Key != nil {
+		t.Fatalf("stmt.Index should be nil for single-binding form")
+	}
+
+	testIdentifier(t, stmt.Iterable, "arr")
+
+	if len(stmt.Body.Stmts) != 1 {
+		t.Fatalf("body should have 1 statement, got %d", len(stmt.Body.Stmts))
+	}
+}
+
+func TestForRangeWithIndex(t *testing.T) {
+	source := "for (i, v in arr) { print(i); print(v); }"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. want=1, got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ForInStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ForRangeStmt. got=%T", program.Stmts[0])
+	}
+
+	if stmt.Key.Value != "i" {
+		t.Fatalf("stmt.Index wrong. want=i, got=%s", stmt.Key.Value)
+	}
+
+	if stmt.Value.Value != "v" {
+		t.Fatalf("stmt.Value wrong. want=v, got=%s", stmt.Value.Value)
+	}
+
+	testIdentifier(t, stmt.Iterable, "arr")
+
+	if len(stmt.Body.Stmts) != 2 {
+		t.Fatalf("body should have 2 statements, got %d", len(stmt.Body.Stmts))
+	}
+}
+
+func TestForRangeMap(t *testing.T) {
+	source := `for (k, v in m) { print(k); }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. want=1, got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ForInStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ForRangeStmt. got=%T", program.Stmts[0])
+	}
+
+	if stmt.Key.Value != "k" {
+		t.Fatalf("stmt.Index wrong. want=k, got=%s", stmt.Key.Value)
+	}
+
+	if stmt.Value.Value != "v" {
+		t.Fatalf("stmt.Value wrong. want=v, got=%s", stmt.Value.Value)
+	}
+
+	testIdentifier(t, stmt.Iterable, "m")
+}
+
 func TestBreakContinueStatements(t *testing.T) {
 	source := `for (x < 10) { break; continue; }`
 

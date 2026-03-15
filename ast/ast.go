@@ -174,6 +174,15 @@ type (
 	ContinueStmt struct {
 		Token token.Token
 	}
+
+	ForInStmt struct {
+		Token    token.Token
+		Key      *Identifier
+		Value    *Identifier
+		Body     *BlockStmt
+		Iterable Expr
+		noCast
+	}
 )
 
 // Expressions and literals
@@ -512,6 +521,10 @@ func (c *ContinueStmt) TokenLiteral() string {
 
 func (s *SliceExpr) TokenLiteral() string {
 	return s.Token.Literal
+}
+
+func (f *ForInStmt) TokenLiteral() string {
+	return f.Token.Literal
 }
 
 // Statements
@@ -945,6 +958,23 @@ func (s *SliceExpr) String() string {
 	return out.String()
 }
 
+func (f *ForInStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("for ")
+	if f.Key != nil {
+		out.WriteString(f.Key.String())
+		out.WriteString(", ")
+	}
+	out.WriteString(f.Value.String())
+	out.WriteString(" in ")
+	out.WriteString(f.Iterable.String())
+	out.WriteString(" {\n")
+	out.WriteString(f.Body.String())
+	out.WriteString("\n}")
+
+	return out.String()
+}
+
 func (p *Program) Pos() (int, int) {
 	return 0, 0
 }
@@ -1015,6 +1045,10 @@ func (c *ContinueStmt) Pos() (int, int) {
 
 func (b *BreakStmt) Pos() (int, int) {
 	return b.Token.Line, b.Token.Column
+}
+
+func (f *ForInStmt) Pos() (int, int) {
+	return f.Token.Line, f.Token.Column
 }
 
 func (i *Identifier) Pos() (int, int) {
@@ -1099,6 +1133,7 @@ func (i *ImportStatement) statementNode()             {}
 func (p *PubStatement) statementNode()                {}
 func (c *ContinueStmt) statementNode()                {}
 func (b *BreakStmt) statementNode()                   {}
+func (f *ForInStmt) statementNode()                   {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}
