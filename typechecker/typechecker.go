@@ -889,17 +889,20 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type, expr ast.Node) 
 }
 
 func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.Type {
-	if ident, ok := expr.Function.(*ast.Identifier); ok && len(expr.TypeArgs) > 0 {
-		template, ok := c.genericFunctions[ident.Value]
-		if !ok {
-			c.appendError(fmt.Sprintf("unknown generic function: %s", ident.Value), expr)
-			return nil
+	if ident, ok := expr.Function.(*ast.Identifier); ok {
+		template, generic := c.genericFunctions[ident.Value]
+
+		if generic && len(expr.TypeArgs) == 0 {
+			typeArgs := c.inferTypeArgs(expr, template)
+			if typeArgs != nil {
+				expr.TypeArgs = typeArgs
+			}
 		}
 
-		return c.monomorphizeCall(expr, template)
-	}
+		if generic && len(expr.TypeArgs) > 0 {
+			return c.monomorphizeCall(expr, template)
+		}
 
-	if ident, ok := expr.Function.(*ast.Identifier); ok {
 		if len(expr.Arguments) > 0 {
 			receiverType := c.typeOf(expr.Arguments[0], nil)
 			if receiverType == nil {
@@ -1994,4 +1997,53 @@ func (c *Checker) appendError(msg string, node ast.Node) {
 	}
 	line, col := node.Pos()
 	c.errors = append(c.errors, fmt.Sprintf("%d:%d %s", line, col, msg))
+}
+
+func (c *Checker) inferTypeArgs(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) []types.Type {
+	templateType := template.Type.(types.FunctionType)
+	if len(expr.Arguments) != len(templateType.Params) {
+		c.appendError(fmt.Sprintf("type error: %s expects %d arguments", template.Name.Value, len(templateType.Params)), expr)
+		return nil
+	}
+
+	subs := make(map[string]types.Type)
+	for i, p := range templateType.Params {
+		argType := c.typeOf(expr.Arguments[i], nil)
+		c.unifyType(p, argType, subs)
+	}
+
+	result := make([]types.Type, len(templateType.Params))
+	for i, p := range template.TypeParams {
+		resolved, ok := subs[p.Name]
+		if !ok {
+			c.appendError(fmt.Sprintf("cannot infer type parameter %s for %s", p.Name, template.Name.Value), expr)
+			return nil
+		}
+
+		result[i] = resolved
+	}
+
+	return result
+}
+
+func (c *Checker) unifyType(p types.Type, arg types.Type, subs map[string]types.Type) {
+	switch t := p.(type) {
+	case *types.TypeParamRef:
+		if _, ok := subs[t.Name]; !ok {
+			subs[t.Name] = arg
+		}
+	case types.ArrayType:
+		if a, ok := arg.(types.ArrayType); ok {
+			c.unifyType(t.ElemType, a.ElemType, subs)
+		}
+	case types.MapType:
+		if a, ok := arg.(types.MapType); ok {
+			c.unifyType(t.KeyType, a.KeyType, subs)
+			c.unifyType(t.ValueType, a.ValueType, subs)
+		}
+	case types.ResultType:
+		if a, ok := arg.(types.ArrayType); ok {
+			c.unifyType(t.T, a.ElemType, subs)
+		}
+	}
 }
