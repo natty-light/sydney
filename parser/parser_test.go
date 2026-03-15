@@ -2262,6 +2262,86 @@ func TestGenericStructLiteral(t *testing.T) {
 	testBooleanLiteral(t, val.Values[1], true)
 }
 
+func TestSliceExpr(t *testing.T) {
+	tests := []struct {
+		source        string
+		expectedStart interface{}
+		expectedEnd   interface{}
+		expectedLeft  string
+	}{
+		{
+			source:        "a[1:5]",
+			expectedStart: int64(1),
+			expectedEnd:   int64(5),
+			expectedLeft:  "a",
+		},
+		{
+			source:        "a[:5]",
+			expectedStart: nil,
+			expectedEnd:   int64(5),
+			expectedLeft:  "a",
+		},
+		{
+			source:        "a[3:]",
+			expectedStart: int64(3),
+			expectedEnd:   nil,
+			expectedLeft:  "a",
+		},
+	}
+	for _, tt := range tests {
+		l := lexer.New(tt.source)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+		if !ok {
+			t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt, got=%T", program.Stmts[0])
+		}
+
+		expr, ok := stmt.Expr.(*ast.SliceExpr)
+		if !ok {
+			t.Fatalf("stmt.Expr is not *ast.SliceExpr, got=%T", stmt.Expr)
+		}
+
+		testIdentifier(t, expr.Left, tt.expectedLeft)
+
+		if expr.Start != nil {
+			if tt.expectedStart == nil {
+				t.Fatalf("expr.Start is not nil, got=%T", expr.Start)
+			}
+
+			i, ok := expr.Start.(*ast.IntegerLiteral)
+			if !ok {
+				t.Fatalf("expr.Start is not IntegerLiteral, got=%T", expr.Start)
+			}
+
+			if i.Value != tt.expectedStart {
+				t.Fatalf("expr.Start is not %v, got=%v", tt.expectedStart, i.Value)
+			}
+		} else if expr.Start == nil && tt.expectedStart != nil {
+			t.Fatalf("expr.Start is nil, want=%T", expr.Start)
+		}
+
+		if expr.End != nil {
+			if tt.expectedEnd == nil {
+				t.Fatalf("expr.End is not nil, got=%T", expr.End)
+			}
+
+			i, ok := expr.End.(*ast.IntegerLiteral)
+			if !ok {
+				t.Fatalf("expr.End is not IntegerLiteral, got=%T", expr.End)
+			}
+
+			if i.Value != tt.expectedEnd {
+				t.Fatalf("expr.End is not %v, got=%v", tt.expectedEnd, i.Value)
+			}
+		} else if expr.End == nil && tt.expectedEnd != nil {
+			t.Fatalf("expr.End is nil, want=%T", expr.End)
+		}
+	}
+}
+
 // Utilities
 
 func checkParserErrors(t *testing.T, p *Parser) {

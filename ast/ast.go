@@ -342,6 +342,15 @@ type (
 		noCast
 		resolvable
 	}
+
+	SliceExpr struct {
+		Token token.Token
+		Left  Expr
+		Start Expr
+		End   Expr
+		resolvable
+		noCast
+	}
 )
 
 // Node interfaces
@@ -499,6 +508,10 @@ func (b *BreakStmt) TokenLiteral() string {
 
 func (c *ContinueStmt) TokenLiteral() string {
 	return c.Token.Literal
+}
+
+func (s *SliceExpr) TokenLiteral() string {
+	return s.Token.Literal
 }
 
 // Statements
@@ -916,6 +929,22 @@ func (c *ContinueStmt) String() string {
 	return c.Token.Literal
 }
 
+func (s *SliceExpr) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Left.String())
+	out.WriteString("[")
+	if s.Start != nil {
+		out.WriteString(s.Start.String())
+	}
+	out.WriteString(":")
+	if s.End != nil {
+		out.WriteString(s.End.String())
+	}
+	out.WriteString("]")
+
+	return out.String()
+}
+
 func (p *Program) Pos() (int, int) {
 	return 0, 0
 }
@@ -1048,6 +1077,9 @@ func (m *MatchExpr) Pos() (int, int) {
 func (b *ByteLiteral) Pos() (int, int) {
 	return b.Token.Line, b.Token.Column
 }
+func (s *SliceExpr) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
 
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
@@ -1089,6 +1121,7 @@ func (s *SelectorExpr) expressionNode()    {}
 func (s *ScopeAccessExpr) expressionNode() {}
 func (m *MatchExpr) expressionNode()       {}
 func (b *ByteLiteral) expressionNode()     {}
+func (s *SliceExpr) expressionNode()       {}
 
 func Dump(node Node, indent int) {
 	prefix := func(label string) {
@@ -1306,6 +1339,15 @@ func Dump(node Node, indent int) {
 		}
 	case *ByteLiteral:
 		prefix(fmt.Sprintf("ByteLiteral(%d)", node.Value))
+	case *SliceExpr:
+		prefix("SliceExpr")
+		child("Left:", node.Left)
+		if node.Start != nil {
+			child("Start:", node.Start)
+		}
+		if node.End != nil {
+			child("End:", node.End)
+		}
 
 	default:
 		prefix(fmt.Sprintf("<%T>", node))

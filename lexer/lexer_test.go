@@ -41,6 +41,8 @@ func TestNextToken(t *testing.T) {
 	module "math"
 
 	mut byte b = 'a'
+	
+	a[1:5]
 	`
 
 	tests := []struct {
@@ -251,6 +253,13 @@ func TestNextToken(t *testing.T) {
 		{token.Identifier, "b"},
 		{token.Assign, "="},
 		{token.Byte, "a"},
+
+		{token.Identifier, "a"},
+		{token.LeftSquareBracket, "["},
+		{token.Integer, "1"},
+		{token.Colon, ":"},
+		{token.Integer, "5"},
+		{token.RightSquareBracket, "]"},
 
 		{token.EOF, ""},
 	}
