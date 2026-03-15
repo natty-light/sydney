@@ -754,6 +754,111 @@ func TestIfExpressionAsStatement(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestSliceExpressions(t *testing.T) {
+	tests := []vmTestCase{
+		// Array slicing with both bounds
+		{
+			source:   `const a = [1, 2, 3, 4, 5]; a[1:4];`,
+			expected: []int{2, 3, 4},
+		},
+		// Array slicing from start
+		{
+			source:   `const a = [10, 20, 30, 40]; a[0:2];`,
+			expected: []int{10, 20},
+		},
+		// Array slicing with omitted end
+		{
+			source:   `const a = [1, 2, 3, 4, 5]; a[2:-1];`,
+			expected: []int{3, 4, 5},
+		},
+		// String slicing with both bounds
+		{
+			source:   `const s = "Hello, World!"; s[0:5];`,
+			expected: "Hello",
+		},
+		// String slicing middle
+		{
+			source:   `const s = "Hello, World!"; s[7:12];`,
+			expected: "World",
+		},
+		// Single element array slice
+		{
+			source:   `const a = [1, 2, 3]; a[1:2];`,
+			expected: []int{2},
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestGenericFunctions(t *testing.T) {
+	tests := []vmTestCase{
+		// Generic identity function
+		{
+			source:   `func identity<T>(T x) -> T { x; } identity<int>(42);`,
+			expected: 42,
+		},
+		// Generic identity with string
+		{
+			source:   `func identity<T>(T x) -> T { x; } identity<string>("hello");`,
+			expected: "hello",
+		},
+		// Generic function with array parameter
+		{
+			source:   `func first<T>(array<T> a) -> T { a[0]; } first<int>([10, 20, 30]);`,
+			expected: 10,
+		},
+		// Generic function called with different types
+		{
+			source: `func identity<T>(T x) -> T { x; }
+			         const a = identity<int>(5);
+			         const b = identity<int>(10);
+			         a + b;`,
+			expected: 15,
+		},
+		// Generic function with type param in body
+		{
+			source: `func sum<T>(array<T> vals) -> T {
+				mut T acc = 0;
+				for (mut i = 0; i < len(vals); i = i + 1) {
+					acc = acc + vals[i];
+				}
+				acc;
+			}
+			sum<int>([1, 2, 3, 4, 5]);`,
+			expected: 15,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestGenericStructs(t *testing.T) {
+	tests := []vmTestCase{
+		// Generic struct field access
+		{
+			source: `define struct Box<T> { value T }
+			         const b = Box<int> { value: 42 };
+			         b.value;`,
+			expected: 42,
+		},
+		// Generic struct with string
+		{
+			source: `define struct Box<T> { value T }
+			         const b = Box<string> { value: "hello" };
+			         b.value;`,
+			expected: "hello",
+		},
+		// Multiple instantiations
+		{
+			source: `define struct Box<T> { value T }
+			         const a = Box<int> { value: 5 };
+			         const b = Box<int> { value: 10 };
+			         a.value + b.value;`,
+			expected: 15,
+		},
+	}
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 
@@ -765,6 +870,7 @@ func runVmTests(t *testing.T, tests []vmTestCase) {
 		if len(errors) != 0 {
 			t.Fatal(errors)
 		}
+		ast.FilterGenericTemplates(program)
 
 		comp := compiler.New()
 		err := comp.Compile(program)
