@@ -119,13 +119,26 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 
 		for _, program := range pkg.Programs {
 			pkgChecker.Check(program, nil)
+			for k, v := range pkgChecker.genericFunctions {
+				c.genericFunctions[k] = v
+			}
+			for k, v := range pkgChecker.genericStructs {
+				c.genericStructs[k] = v
+			}
 		}
-		c.errors = append(c.errors, pkgChecker.Errors()...)
+		if len(pkgChecker.errors) != 0 {
+			fmt.Println(pkgChecker.currentModule)
+			fmt.Println(pkgChecker.errors)
+		}
 
 		exportEnv := NewTypeEnv(nil)
 		for _, program := range pkg.Programs {
 			for _, stmt := range program.Stmts {
 				if pub, ok := stmt.(*ast.PubStatement); ok {
+					if fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn && len(fn.TypeParams) > 0 {
+						continue
+					}
+
 					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
 					exportEnv.Set(name, typ)
 
@@ -913,6 +926,21 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 			if t, _, ok := c.env.Get(mangled); ok {
 				return c.validateFunctionCall(expr, t)
 			}
+		}
+	}
+
+	if scope, ok := expr.Function.(*ast.ScopeAccessExpr); ok {
+		template, generic := c.genericFunctions[scope.Member.Value]
+
+		if generic && len(expr.TypeArgs) == 0 {
+			typeArgs := c.inferTypeArgs(expr, template)
+			if typeArgs != nil {
+				expr.TypeArgs = typeArgs
+			}
+		}
+
+		if generic && len(expr.TypeArgs) > 0 {
+			return c.monomorphizeCall(expr, template)
 		}
 	}
 
@@ -1846,11 +1874,17 @@ func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
 }
 
 func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) types.Type {
-	ident := expr.Function.(*ast.Identifier)
+	var funcName string
+	switch fn := expr.Function.(type) {
+	case *ast.Identifier:
+		funcName = fn.Value
+	case *ast.ScopeAccessExpr:
+		funcName = fn.Member.Value
+	}
 	templateType := template.Type.(types.FunctionType)
 
 	if len(expr.TypeArgs) != len(template.TypeParams) {
-		c.appendError(fmt.Sprintf("%s expects exactly %d type arguments", ident.Value, len(template.TypeParams)), expr)
+		c.appendError(fmt.Sprintf("%s expects exactly %d type arguments", funcName, len(template.TypeParams)), expr)
 		return nil
 	}
 
@@ -1859,7 +1893,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		subs[tp.Name] = expr.TypeArgs[i]
 	}
 
-	mangledName := mangleName(ident.Value, expr.TypeArgs)
+	mangledName := mangleName(funcName, expr.TypeArgs)
 
 	if !c.monomorphized[mangledName] {
 		cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{template}})
@@ -2002,7 +2036,7 @@ func (c *Checker) appendError(msg string, node ast.Node) {
 func (c *Checker) inferTypeArgs(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) []types.Type {
 	templateType := template.Type.(types.FunctionType)
 	if len(expr.Arguments) != len(templateType.Params) {
-		c.appendError(fmt.Sprintf("type error: %s expects %d arguments", template.Name.Value, len(templateType.Params)), expr)
+		c.appendError(fmt.Sprintf("%s expects %d arguments", template.Name.Value, len(templateType.Params)), expr)
 		return nil
 	}
 

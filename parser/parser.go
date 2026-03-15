@@ -1459,6 +1459,23 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 		return expr
 	}
 
+	// Check for generic call: module:func<Type>(args)
+	if p.peekTokenIs(token.LessThan) {
+		p.nextToken() // consume <
+		p.nextToken() // move to first type arg
+		typeArgs := p.parseTypeArgs()
+		if p.peekTokenIs(token.LeftParen) {
+			p.nextToken() // consume (
+			args := p.parseExpressionList(token.RightParen)
+			return &ast.CallExpr{
+				Token:     p.currToken,
+				Function:  &ast.ScopeAccessExpr{Member: member, Module: ident},
+				Arguments: args,
+				TypeArgs:  typeArgs,
+			}
+		}
+	}
+
 	return &ast.ScopeAccessExpr{Member: member, Module: ident}
 }
 
