@@ -829,3 +829,44 @@ func TestGenericStructErrors(t *testing.T) {
 	}
 	testTypeErrors(t, tests)
 }
+
+func TestSliceExpr(t *testing.T) {
+	sources := []string{
+		`mut s = "Hello, World!"; s[1:3]`,
+		`mut s = "Hello, World!"; s[:3]`,
+		`mut s = "Hello, World!"; s[1]`,
+		`mut a = [1, 2, 3, 4, 5]; a[1:3]`,
+	}
+
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestSliceExprErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `mut s = "Hello, World!"; s[:]`,
+			expectedError: "must provide start or end for slice expression",
+		},
+		{
+			input:         `mut m = { 1: 0, 2: 1, 3: 1 }; m[2:3]`,
+			expectedError: "unsupported slice type map<int, int>",
+		},
+		{
+			input:         `mut i = 5; i[1:]`,
+			expectedError: "unsupported slice type int",
+		},
+	}
+	testTypeErrors(t, tests)
+}

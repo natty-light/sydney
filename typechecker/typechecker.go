@@ -750,6 +750,35 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		expr.ResolvedType = resolved
 		e = expr
 		return resolved
+	case *ast.SliceExpr:
+		leftType := c.typeOf(expr.Left, nil)
+		if _, ok := toArray(leftType); !ok && !isString(leftType) {
+			c.appendError(fmt.Sprintf("unsupported slice type %s", leftType.Signature()), expr)
+			return types.Unit
+		}
+		var startType types.Type = nil
+		if expr.Start != nil {
+			startType = c.typeOf(expr.Start, types.Int)
+			if startType != types.Int {
+				c.appendError(fmt.Sprintf("unsupported start type %s", startType.Signature()), expr)
+				return types.Unit
+			}
+		}
+		var endType types.Type = nil
+		if expr.End != nil {
+			endType = c.typeOf(expr.End, types.Int)
+			if endType != types.Int {
+				c.appendError(fmt.Sprintf("unsupported end type %s", endType.Signature()), expr)
+				return types.Unit
+			}
+		}
+		if endType == nil && startType == nil {
+			c.appendError("must provide start or end for slice expression", expr)
+			return types.Unit
+		}
+		expr.SetResolvedType(leftType)
+
+		return leftType
 	}
 	return nil
 }
