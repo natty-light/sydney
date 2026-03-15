@@ -752,6 +752,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitScopeAccessExpr(expr)
 	case *ast.MatchExpr:
 		return e.emitMatchExpr(expr)
+	case *ast.SliceExpr:
+		return e.emitSliceExpr(expr)
 	}
 	return "", IrUnit
 }
@@ -2397,4 +2399,117 @@ func (e *Emitter) getLoop() *LoopLabels {
 		return nil
 	}
 	return e.loopStack[e.loopIdx-1]
+}
+
+func (e *Emitter) emitSliceExpr(expr *ast.SliceExpr) (string, IrType) {
+	var start string
+	var end string
+	size := irTypeSize(IrPtr)
+	var isArray bool
+
+	left, _ := e.emitExpr(expr.Left)
+	sydneyType := expr.Left.GetResolvedType()
+	at, ok := sydneyType.(types.ArrayType)
+	isArray = ok
+	if expr.Start != nil {
+		start, _ = e.emitExpr(expr.Start)
+	} else {
+		start = "0"
+	}
+
+	if expr.End != nil {
+		end, _ = e.emitExpr(expr.End)
+	} else {
+		end = e.tmp()
+		var line string
+		if isArray {
+			size = irTypeSize(SydneyTypeToIrType(at.ElemType))
+			lenPtr := e.tmp()
+			line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, left)
+			e.emit(line)
+			line = fmt.Sprintf("%s = load i64, ptr %s", end, lenPtr)
+		} else if sydneyType == types.String {
+			line = fmt.Sprintf("%s = call i64 @sydney_strlen(ptr %s)", end, left)
+		}
+		e.emit(line)
+	}
+
+	var result string
+
+	newLen := e.tmp()
+	op := e.infixOpStr("sub", IrInt, end, start)
+	line := fmt.Sprintf("%s = %s", newLen, op)
+	e.emit(line)
+	if isArray {
+		dataSize := e.tmp()
+		op = e.infixOpStr("mul", IrInt, size, newLen)
+		line = fmt.Sprintf("%s = %s", dataSize, op)
+		e.emit(line)
+		dataPtr := e.tmp()
+		line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %s)", dataPtr, dataSize)
+		e.emit(line)
+
+		srcDataPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", srcDataPtr, left)
+		e.emit(line)
+		srcData := e.tmp()
+		line = fmt.Sprintf("%s = load ptr, ptr %s", srcData, srcDataPtr)
+		e.emit(line)
+		srcOffset := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr i64, ptr %s, i64 %s", srcOffset, srcData, start)
+		e.emit(line)
+		line = fmt.Sprintf("call void @llvm.memcpy.p0.p0.i64(ptr %s, ptr %s, i64 %s, i1 false)", dataPtr, srcOffset, dataSize)
+		e.emit(line)
+
+		result = e.tmp()
+		line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", result)
+		e.emit(line)
+		lenPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, result)
+		e.emit(line)
+		line = fmt.Sprintf("store i64 %s, ptr %s", newLen, lenPtr)
+		e.emit(line)
+		dPtr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dPtr, result)
+		e.emit(line)
+		line = fmt.Sprintf("store ptr %s, ptr %s", dataPtr, dPtr)
+		e.emit(line)
+
+	} else {
+		allocSize := e.tmp()
+		op = e.infixOpStr("add", IrInt, newLen, "1") // null terminator
+		line = fmt.Sprintf("%s = %s", allocSize, op)
+		e.emit(line)
+
+		result = e.tmp()
+		line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %s)", result, allocSize)
+		e.emit(line)
+
+		src := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr i8, ptr %s, i64 %s", src, left, start)
+		e.emit(line)
+
+		line = fmt.Sprintf("call void @llvm.memcpy.p0.p0.i64(ptr %s, ptr %s, i64 %s, i1 false)", result, src, newLen)
+		e.emit(line)
+
+		nullptr := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr i8, ptr %s, i64 %s", nullptr, result, newLen)
+		e.emit(line)
+
+		line = fmt.Sprintf("store i8 0, ptr %s", nullptr)
+		e.emit(line)
+	}
+
+	return result, IrPtr
+}
+
+func irTypeSize(t IrType) string {
+	switch t {
+	case IrInt, IrFloat, IrPtr, IrFatPtr:
+		return "8"
+	case IrInt8, IrBool:
+		return "1"
+	default:
+		return "8"
+	}
 }
