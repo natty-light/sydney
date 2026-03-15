@@ -33,6 +33,7 @@ const (
 	Extern         TokenType = "Extern"
 	Continue       TokenType = "Continue"
 	Break          TokenType = "Break"
+	In             TokenType = "In"
 
 	// Types
 	IntType    TokenType = "IntegerType"

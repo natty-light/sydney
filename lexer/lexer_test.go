@@ -43,6 +43,7 @@ func TestNextToken(t *testing.T) {
 	mut byte b = 'a'
 	
 	a[1:5]
+	for (v in a) {}
 	`
 
 	tests := []struct {
@@ -260,6 +261,15 @@ func TestNextToken(t *testing.T) {
 		{token.Colon, ":"},
 		{token.Integer, "5"},
 		{token.RightSquareBracket, "]"},
+
+		{token.For, "for"},
+		{token.LeftParen, "("},
+		{token.Identifier, "v"},
+		{token.In, "in"},
+		{token.Identifier, "a"},
+		{token.RightParen, ")"},
+		{token.LeftCurlyBracket, "{"},
+		{token.RightCurlyBracket, "}"},
 
 		{token.EOF, ""},
 	}
