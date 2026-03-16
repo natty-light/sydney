@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strconv"
+	"strings"
 	"sydney/ast"
 	"sydney/code"
 	"sydney/types"
-
-	"strings"
 )
 
 type ObjectType string
@@ -38,6 +37,7 @@ const (
 	ItabObj             ObjectType = "Itab"
 	ResultObj           ObjectType = "Result"
 	ByteObj             ObjectType = "Byte"
+	ChannelObj          ObjectType = "Channel"
 )
 
 type (
@@ -162,6 +162,11 @@ type (
 		IsOk  bool
 		Value Object
 		Error *String
+	}
+
+	Channel struct {
+		chanId   int
+		ElemType types.Type
 	}
 )
 
