@@ -19,3 +19,6 @@ sydney
 .changelog
 .stdlib
 .generics
+.panic
+.sockets
+.concurrency
