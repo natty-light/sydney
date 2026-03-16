@@ -82,6 +82,13 @@ func test_contains_substr() {
         }
 }
 
+func test_to_lower() {
+    const str = "HeLLo, W0RlD!";
+    const expected = "hello, w0rld!";
+    const res = to_lower(str);
+    testing:assert_eq<string>(res, expected, msg_helper("test_to_lower", expected, res));
+}
+
 func msg_helper(string name, string expected, string received) -> string {
     name + " failed, wanted: " + expected + ", got: " + received;
 }
