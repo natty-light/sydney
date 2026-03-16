@@ -1,0 +1,10 @@
+module "strings"
+
+import "testing"
+
+func test_repeat() {
+    const input = "x";
+    const expected = "xxx";
+    const r = repeat(input, 3);
+    testing:assert_eq<string>(r, expected, "test_repeat failed, wanted: " + expected + ", got: " + r);
+}
