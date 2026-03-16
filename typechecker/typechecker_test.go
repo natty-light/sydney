@@ -942,3 +942,20 @@ func TestSpawnStmtTypeErrors(t *testing.T) {
 
 	testTypeErrors(t, tests)
 }
+
+func TestChannelTypeChecking(t *testing.T) {
+	source := `const chan<int> ch = chan<int>();
+ch <- 5;
+const int x = <- ch;`
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("input %q expected no errors, got %v", source, p.Errors())
+	}
+	c := New(nil)
+	c.Check(program, nil)
+	if len(c.Errors()) != 0 {
+		t.Fatalf("input %q expected no errors, got %v", source, c.Errors())
+	}
+}

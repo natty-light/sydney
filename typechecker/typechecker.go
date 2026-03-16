@@ -400,6 +400,24 @@ func (c *Checker) check(n ast.Node) types.Type {
 		}
 		c.typeOf(callExpr, nil)
 		return types.Unit
+	case *ast.SendStmt:
+		chTypeRaw := c.typeOf(node.Chan, nil)
+		if chTypeRaw == nil {
+			c.appendError(fmt.Sprintf("cannot resolve type for ident %s", node.Chan), node)
+			return types.Unit
+		}
+		chType, ok := chTypeRaw.(types.ChannelType)
+		if !ok {
+			c.appendError(fmt.Sprintf("%s is not a channel", node.Chan), node)
+			return types.Unit
+		}
+
+		valType := c.typeOf(node.Value, nil)
+
+		if !c.typesMatch(chType.ElemType, valType) {
+			c.appendError(fmt.Sprintf("type mismatch: cannot send value of type %s to channel expecting %s", valType, chType.ElemType.Signature()), node)
+		}
+		return types.Unit
 	}
 
 	return types.Unit
@@ -819,6 +837,27 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		expr.SetResolvedType(leftType)
 
 		return leftType
+	case *ast.ChannelConstructorExpr:
+		if expr.Capacity != nil {
+			capType := c.typeOf(expr.Capacity, types.Int)
+			if capType != types.Int {
+				c.appendError("channel capacity must be int", expr)
+				return types.Unit
+			}
+		}
+		expr.SetResolvedType(expr.Type)
+		return expr.Type
+	case *ast.ReceiveExpr:
+		chTypeRaw := c.typeOf(expr.Chan, nil)
+		if chTypeRaw == nil {
+			return types.Unit
+		}
+		chType, ok := chTypeRaw.(types.ChannelType)
+		if !ok {
+			c.appendError(fmt.Sprintf("only channels can receive, got %s", chTypeRaw.Signature()), expr)
+		}
+		expr.SetResolvedType(chType.ElemType)
+		return chType.ElemType
 	}
 	return nil
 }
@@ -1090,6 +1129,8 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 			return c.checkFwriteBuiltIn(expr)
 		case "panic":
 			return c.checkPanicCall(expr)
+		case "chan":
+			return c.checkChanBuiltIn(expr)
 		}
 	}
 
@@ -1275,6 +1316,19 @@ func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) ty
 	}
 	expr.ResolvedType = &resolved
 	return resolved
+}
+
+func (c *Checker) checkChanBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 0 {
+		c.appendError(fmt.Sprintf("chan() expects no arguments"), expr)
+		return nil
+	}
+	if len(expr.TypeArgs) != 1 {
+		c.appendError(fmt.Sprintf("chan() expects exactly 1 type argument argument"), expr)
+		return nil
+	}
+
+	return types.ChannelType{ElemType: expr.TypeArgs[0]}
 }
 
 func (c *Checker) resolveInterfaceName(expr ast.Expr) (types.InterfaceType, string, bool) {
