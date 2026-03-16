@@ -70,6 +70,10 @@ pub func parse_bool(string str) -> result<bool> {
     return err("invalid string");
 }
 
+pub func bool_to_str(bool b) -> string {
+    if (b) { "true"; } else { "false" };
+}
+
 pub func itob(int num) -> string {
  mut s = "";
     mut isNeg = false;
