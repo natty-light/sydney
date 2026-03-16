@@ -1362,3 +1362,47 @@ func TestE2EGenericStructs(t *testing.T) {
 	}
 	runE2ETests(t, tests)
 }
+
+func TestE2EForInArray(t *testing.T) {
+	tests := []e2eTestCase{
+		// Basic value iteration
+		{
+			source:   `const a = [1, 2, 3]; for (v in a) { print(v); }`,
+			expected: "1\n2\n3\n",
+		},
+		// Index and value iteration
+		{
+			source:   `const a = [10, 20, 30]; for (i, v in a) { print(i); print(v); }`,
+			expected: "0\n10\n1\n20\n2\n30\n",
+		},
+		// Sum with accumulator
+		{
+			source:   `mut s = 0; const a = [1, 2, 3, 4]; for (v in a) { s = s + v; } print(s);`,
+			expected: "10\n",
+		},
+		// Nested for-in
+		{
+			source: `const a = [1, 2];
+			         const b = [10, 20];
+			         for (x in a) { for (y in b) { print(x * y); } }`,
+			expected: "10\n20\n20\n40\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2EForInMap(t *testing.T) {
+	tests := []e2eTestCase{
+		// Map iteration - print values
+		{
+			source:   `mut s = 0; const m = {"a": 1, "b": 2, "c": 3}; for (k, v in m) { s = s + v; } print(s);`,
+			expected: "6\n",
+		},
+		// Map iteration with int keys
+		{
+			source:   `mut s = 0; const m = {1: 10, 2: 20}; for (k, v in m) { s = s + k + v; } print(s);`,
+			expected: "33\n",
+		},
+	}
+	runE2ETests(t, tests)
+}

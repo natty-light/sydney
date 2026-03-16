@@ -196,11 +196,41 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 	if node.Post != nil {
 		c.check(node.Post)
 	}
-	ret := c.check(node.Body)
+	c.check(node.Body)
 	c.env = oldEnv
 	c.inLoop = false
 
-	return ret
+	return types.Unit
+}
+
+func (c *Checker) checkForInStmt(node *ast.ForInStmt) types.Type {
+	oldEnv := c.pushScope()
+
+	iterType := c.typeOf(node.Iterable, nil)
+	m, mok := iterType.(types.MapType)
+	a, aok := iterType.(types.ArrayType)
+	if mok {
+		node.Key.SetResolvedType(m.KeyType)
+		node.Value.SetResolvedType(m.ValueType)
+		c.env.Set(node.Key.Value, m.KeyType)
+		c.env.Set(node.Value.Value, m.ValueType)
+	} else if aok {
+		if node.Key != nil {
+			node.Key.SetResolvedType(types.Int)
+			c.env.Set(node.Key.Value, types.Int)
+		}
+		node.Value.SetResolvedType(a.ElemType)
+		c.env.Set(node.Value.Value, a.ElemType)
+	} else {
+		c.appendError(fmt.Sprintf("cannot iterate over value of type %s", iterType.Signature()), node)
+	}
+
+	c.inLoop = true
+	c.check(node.Body)
+	c.env = oldEnv
+	c.inLoop = false
+
+	return types.Unit
 }
 
 func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
@@ -360,6 +390,8 @@ func (c *Checker) check(n ast.Node) types.Type {
 			return nil
 		}
 		return types.Unit
+	case *ast.ForInStmt:
+		c.checkForInStmt(node)
 	}
 
 	return types.Unit

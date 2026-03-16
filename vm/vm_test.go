@@ -1034,3 +1034,54 @@ func testStringObject(expected string, actual object.Object) error {
 
 	return nil
 }
+
+func TestForInArray(t *testing.T) {
+	tests := []vmTestCase{
+		// Basic value iteration
+		{
+			source:   `mut s = 0; const a = [1, 2, 3]; for (v in a) { s = s + v; } s;`,
+			expected: 6,
+		},
+		// Index and value iteration
+		{
+			source:   `mut s = 0; const a = [10, 20, 30]; for (i, v in a) { s = s + i + v; } s;`,
+			expected: 63, // (0+10) + (1+20) + (2+30)
+		},
+		// Empty array
+		{
+			source:   `mut s = 0; const a = []; for (v in a) { s = s + 1; } s;`,
+			expected: 0,
+		},
+		// String array
+		{
+			source:   `mut s = ""; const a = ["a", "b", "c"]; for (v in a) { s = s + v; } s;`,
+			expected: "abc",
+		},
+		// Nested for-in
+		{
+			source: `mut s = 0;
+			         const a = [1, 2];
+			         const b = [10, 20];
+			         for (x in a) { for (y in b) { s = s + x * y; } }
+			         s;`,
+			expected: 90, // 1*10 + 1*20 + 2*10 + 2*20
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestForInMap(t *testing.T) {
+	tests := []vmTestCase{
+		// Basic map iteration - sum values
+		{
+			source:   `mut s = 0; const m = {"a": 1, "b": 2, "c": 3}; for (k, v in m) { s = s + v; } s;`,
+			expected: 6,
+		},
+		// Map iteration with int keys
+		{
+			source:   `mut s = 0; const m = {1: 10, 2: 20}; for (k, v in m) { s = s + k + v; } s;`,
+			expected: 33, // (1+10) + (2+20)
+		},
+	}
+	runVmTests(t, tests)
+}

@@ -870,3 +870,36 @@ func TestSliceExprErrors(t *testing.T) {
 	}
 	testTypeErrors(t, tests)
 }
+
+func TestForInStmt(t *testing.T) {
+	tests := []string{
+		`const m = { 0: 0 };
+		for (k, v in m) {
+			print(k);
+			print(v);
+		}`,
+		`const a = [1, 2, 3];
+		for (i, v in a) {
+			print(v);
+			print(i);
+		}`,
+		`const a = [1, 2, 3];
+		for (v in a) {
+			print(v);
+		}`,
+	}
+
+	for _, src := range tests {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
