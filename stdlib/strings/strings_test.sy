@@ -68,6 +68,20 @@ func test_index_of() {
     }
 }
 
+define struct ContainsSubstrTestCase { str string, substr string, expected bool }
+
+func test_contains_substr() {
+    const cases = [
+        ContainsSubstrTestCase { str: "hello, world!", substr: "ello,", expected: true },
+        ContainsSubstrTestCase { str: "hello, world!", substr: "xyz", expected: false }
+    ]
+
+    for (case in cases) {
+            const res = contains_substr(case.str, case.substr);
+            testing:assert_eq<bool>(res, case.expected, msg_helper("test_index_of", conv:bool_to_str(case.expected), conv:bool_to_str(res)));
+        }
+}
+
 func msg_helper(string name, string expected, string received) -> string {
     name + " failed, wanted: " + expected + ", got: " + received;
 }
