@@ -321,7 +321,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpNull)
 		c.emit(code.OpPop) // this clears the condition value from the stack
-
+	case *ast.ForInStmt:
+		err := c.compileForInStmt(node)
+		if err != nil {
+			return err
+		}
 	case *ast.InfixExpr:
 		if node.Operator == "<" || node.Operator == "<=" {
 			err := c.Compile(node.Right)
@@ -1172,4 +1176,230 @@ func (c *Compiler) compileInterfaceMethodCall(node *ast.CallExpr) error {
 
 func (c *Compiler) mangleModule(module, name string) string {
 	return module + "__" + name
+}
+
+func (c *Compiler) compileForInStmt(node *ast.ForInStmt) error {
+	_, mok := node.Iterable.GetResolvedType().(types.MapType)
+	_, aok := node.Iterable.GetResolvedType().(types.ArrayType)
+	if mok {
+		return c.compileForInStmtMap(node)
+	}
+
+	if aok {
+		return c.compileForInStmtArr(node)
+	}
+
+	return nil
+}
+
+func (c *Compiler) getLoopHiddenVar(str string) string {
+	return fmt.Sprintf("__%s__%d__", str, c.loopIndex)
+}
+
+func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
+	iter := c.getLoopHiddenVar("forin_iter")
+	leng := c.getLoopHiddenVar("forin_len")
+	idx := c.getLoopHiddenVar("forin_idx")
+
+	err := c.Compile(node.Iterable)
+	if err != nil {
+		return err
+	}
+	// store iterable in hidden var
+	iterSym := c.symbolTable.DefineMutable(iter)
+	c.emitSet(iterSym)
+
+	// insert len compilation for array case
+	c.emit(code.OpGetBuiltIn, 0)
+	c.emitGet(iterSym)
+	c.emit(code.OpCall, 1)
+	lenSym := c.symbolTable.DefineMutable(leng)
+	c.emitSet(lenSym)
+
+	// Init index = 0
+	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 0}))
+	idxSym := c.symbolTable.DefineMutable(idx)
+	c.emitSet(idxSym)
+
+	conditionPos := len(c.currentInstructions())
+	c.enterLoop(conditionPos, true)
+	c.emitGet(lenSym)
+	c.emitGet(idxSym)
+	c.emit(code.OpGt)
+	jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+	// Bind loop variables
+	if node.Key != nil {
+		c.emitGet(idxSym)
+		keySym := c.symbolTable.DefineMutable(node.Key.Value)
+		c.emitSet(keySym)
+	}
+	c.emitGet(iterSym)
+	c.emitGet(idxSym)
+	c.emit(code.OpIndex)
+	valSym := c.symbolTable.DefineMutable(node.Value.Value)
+	c.emitSet(valSym)
+
+	// Compile body
+	err = c.Compile(node.Body)
+	if err != nil {
+		return err
+	}
+
+	postPos := len(c.currentInstructions())
+	loop := c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.continuePositions {
+			c.changeOperand(pos, postPos)
+		}
+	}
+	c.emitGet(idxSym)
+	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 1}))
+	c.emit(code.OpAdd)
+	c.emitSet(idxSym)
+
+	// 8. Jump back to condition
+	c.emit(code.OpJump, conditionPos)
+
+	// 9. Escape
+	escapePos := len(c.currentInstructions())
+	c.changeOperand(jumpNotTruthyPos, escapePos)
+	loop = c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.breakPositions {
+			c.changeOperand(pos, escapePos)
+		}
+	}
+	c.leaveLoop()
+
+	// 10. Clean up hidden symbols
+	delete(c.symbolTable.store, iter)
+	delete(c.symbolTable.store, leng)
+	delete(c.symbolTable.store, idx)
+	delete(c.symbolTable.store, node.Value.Value)
+	if node.Key != nil {
+		delete(c.symbolTable.store, node.Key.Value)
+	}
+
+	c.emit(code.OpNull)
+	c.emit(code.OpPop)
+
+	return nil
+}
+
+func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
+	iter := c.getLoopHiddenVar("forin_iter")
+	leng := c.getLoopHiddenVar("forin_len")
+	idx := c.getLoopHiddenVar("forin_idx")
+	keys := c.getLoopHiddenVar("forin_keys")
+
+	err := c.Compile(node.Iterable)
+	if err != nil {
+		return err
+	}
+	iterSym := c.symbolTable.DefineMutable(iter)
+	c.emitSet(iterSym)
+
+	c.emit(code.OpGetBuiltIn, 3) // keys builtin
+	c.emitGet(iterSym)
+	c.emit(code.OpCall, 1)
+	keysSym := c.symbolTable.DefineMutable(keys)
+	c.emitSet(keysSym)
+
+	// compute len(keys)
+	c.emit(code.OpGetBuiltIn, 0) // len builtin
+	c.emitGet(keysSym)
+	c.emit(code.OpCall, 1)
+	lenSym := c.symbolTable.DefineMutable(leng)
+	c.emitSet(lenSym)
+
+	// idx = 0
+	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 0}))
+	idxSym := c.symbolTable.DefineMutable(idx)
+	c.emitSet(idxSym)
+
+	// condition: len > idx
+	conditionPos := len(c.currentInstructions())
+	c.enterLoop(conditionPos, true)
+	c.emitGet(lenSym)
+	c.emitGet(idxSym)
+	c.emit(code.OpGt)
+	jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+	// k = keys[idx]
+	c.emitGet(keysSym)
+	c.emitGet(idxSym)
+	c.emit(code.OpIndex)
+	keySym := c.symbolTable.DefineMutable(node.Key.Value)
+	c.emitSet(keySym)
+
+	// v = map[k]
+	c.emitGet(iterSym)
+	c.emitGet(keySym)
+	c.emit(code.OpIndex)
+	valSym := c.symbolTable.DefineMutable(node.Value.Value)
+	c.emitSet(valSym)
+
+	// Compile body
+	err = c.Compile(node.Body)
+	if err != nil {
+		return err
+	}
+
+	postPos := len(c.currentInstructions())
+	loop := c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.continuePositions {
+			c.changeOperand(pos, postPos)
+		}
+	}
+	c.emitGet(idxSym)
+	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 1}))
+	c.emit(code.OpAdd)
+	c.emitSet(idxSym)
+
+	// Jump back to condition
+	c.emit(code.OpJump, conditionPos)
+
+	// Escape
+	escapePos := len(c.currentInstructions())
+	c.changeOperand(jumpNotTruthyPos, escapePos)
+	loop = c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.breakPositions {
+			c.changeOperand(pos, escapePos)
+		}
+	}
+	c.leaveLoop()
+
+	// Clean up hidden symbols
+	delete(c.symbolTable.store, iter)
+	delete(c.symbolTable.store, leng)
+	delete(c.symbolTable.store, idx)
+	delete(c.symbolTable.store, node.Value.Value)
+	if node.Key != nil {
+		delete(c.symbolTable.store, node.Key.Value)
+	}
+	delete(c.symbolTable.store, keys)
+
+	c.emit(code.OpNull)
+	c.emit(code.OpPop)
+
+	return nil
+}
+
+func (c *Compiler) emitSet(sym Symbol) {
+	if sym.Scope == GlobalScope {
+		c.emit(code.OpSetMutableGlobal, sym.Index)
+	} else {
+		c.emit(code.OpSetMutableLocal, sym.Index)
+	}
+}
+
+func (c *Compiler) emitGet(sym Symbol) {
+	if sym.Scope == GlobalScope {
+		c.emit(code.OpGetGlobal, sym.Index)
+	} else {
+		c.emit(code.OpGetLocal, sym.Index)
+	}
 }

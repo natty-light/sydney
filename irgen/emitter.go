@@ -263,6 +263,9 @@ func (e *Emitter) collectStrings(n ast.Node) {
 	case *ast.ForStmt:
 		e.collectStrings(node.Condition)
 		e.collectStrings(node.Body)
+	case *ast.ForInStmt:
+		e.collectStrings(node.Iterable)
+		e.collectStrings(node.Body)
 	case *ast.FunctionDeclarationStmt:
 		if !node.IsExtern {
 			e.collectStrings(node.Body)
@@ -600,6 +603,8 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 		e.blockTerminated = true
 	case *ast.ForStmt:
 		val, valType = e.emitForStmt(s)
+	case *ast.ForInStmt:
+		val, valType = e.emitForInStmt(s)
 	case *ast.SelectorAssignmentStmt:
 		val, valType = e.emitSelectorAssignment(s)
 	case *ast.IndexAssignmentStmt:
@@ -1263,6 +1268,223 @@ func (e *Emitter) emitForStmt(stmt *ast.ForStmt) (string, IrType) {
 	return "", IrUnit
 }
 
+func (e *Emitter) emitForInStmt(stmt *ast.ForInStmt) (string, IrType) {
+	_, isMap := stmt.Iterable.GetResolvedType().(types.MapType)
+	if isMap {
+		return e.emitForInStmtMap(stmt)
+	}
+	return e.emitForInStmtArr(stmt)
+}
+
+func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
+	condLabel := e.label("forin_cond")
+	loopLabel := e.label("forin_loop")
+	postLabel := e.label("forin_post")
+	escapeLabel := e.label("forin_escape")
+
+	e.enterLoop(condLabel, postLabel, escapeLabel)
+	e.pushScope()
+
+	// emit iterable, store in hidden var
+	iterVal, iterType := e.emitExpr(stmt.Iterable)
+	iterAlloca := e.alloca("forin_iter")
+	e.emitAlloca(iterAlloca, iterType)
+	e.emit(fmt.Sprintf("store %s %s, ptr %s", iterType, iterVal, iterAlloca))
+
+	// compute len(iterable) — length is first field of { i64, ptr }
+	lenPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, iterVal))
+	lenVal := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", lenVal, lenPtr))
+	lenAlloca := e.alloca("forin_len")
+	e.emitAlloca(lenAlloca, IrInt)
+	e.emit(fmt.Sprintf("store i64 %s, ptr %s", lenVal, lenAlloca))
+
+	// idx = 0
+	idxAlloca := e.alloca("forin_idx")
+	e.emitAlloca(idxAlloca, IrInt)
+	e.emit(fmt.Sprintf("store i64 0, ptr %s", idxAlloca))
+
+	// condition: idx < len
+	e.emitJmp(condLabel)
+	e.emitLabel(condLabel)
+	curIdx := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curIdx, idxAlloca))
+	curLen := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curLen, lenAlloca))
+	cond := e.tmp()
+	e.emit(fmt.Sprintf("%s = icmp slt i64 %s, %s", cond, curIdx, curLen))
+	e.emitBranch(cond, loopLabel, escapeLabel)
+
+	// loop body
+	e.emitLabel(loopLabel)
+
+	// bind key (index) if present
+	if stmt.Key != nil {
+		keyAlloca := e.alloca(stmt.Key.Value)
+		e.emitAlloca(keyAlloca, IrInt)
+		e.emit(fmt.Sprintf("store i64 %s, ptr %s", curIdx, keyAlloca))
+		e.locals[stmt.Key.Value] = irLocal{alloca: keyAlloca, typ: IrInt}
+	}
+
+	// bind value: v = arr[idx]
+	elemType := SydneyTypeToIrType(stmt.Value.GetResolvedType())
+	iter2 := e.tmp()
+	e.emit(fmt.Sprintf("%s = load %s, ptr %s", iter2, iterType, iterAlloca))
+	dataPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, iter2))
+	data := e.tmp()
+	e.emit(fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr))
+	elemPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", elemPtr, elemType, data, curIdx))
+	elemVal := e.tmp()
+	e.emit(fmt.Sprintf("%s = load %s, ptr %s", elemVal, elemType, elemPtr))
+
+	valAlloca := e.alloca(stmt.Value.Value)
+	e.emitAlloca(valAlloca, elemType)
+	e.emit(fmt.Sprintf("store %s %s, ptr %s", elemType, elemVal, valAlloca))
+	e.locals[stmt.Value.Value] = irLocal{alloca: valAlloca, typ: elemType}
+
+	// compile body
+	e.emitBlock(stmt.Body)
+
+	// post: idx = idx + 1
+	e.emitJmp(postLabel)
+	e.emitLabel(postLabel)
+	oldIdx := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", oldIdx, idxAlloca))
+	newIdx := e.tmp()
+	e.emit(fmt.Sprintf("%s = add i64 %s, 1", newIdx, oldIdx))
+	e.emit(fmt.Sprintf("store i64 %s, ptr %s", newIdx, idxAlloca))
+	e.emitJmp(condLabel)
+
+	// escape
+	e.emitLabel(escapeLabel)
+	e.popScope()
+	e.leaveLoop()
+
+	return "", IrUnit
+}
+
+func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
+	condLabel := e.label("forin_cond")
+	loopLabel := e.label("forin_loop")
+	postLabel := e.label("forin_post")
+	escapeLabel := e.label("forin_escape")
+
+	e.enterLoop(condLabel, postLabel, escapeLabel)
+	e.pushScope()
+
+	// emit map, store in hidden var
+	mapVal, mapType := e.emitExpr(stmt.Iterable)
+	mapAlloca := e.alloca("forin_map")
+	e.emitAlloca(mapAlloca, mapType)
+	e.emit(fmt.Sprintf("store %s %s, ptr %s", mapType, mapVal, mapAlloca))
+
+	// get keys array
+	mt := stmt.Iterable.GetResolvedType().(types.MapType)
+	keysVal := e.tmp()
+	if mt.KeyType == types.String {
+		e.emit(fmt.Sprintf("%s = call ptr @sydney_map_keys_str(ptr %s)", keysVal, mapVal))
+	} else {
+		e.emit(fmt.Sprintf("%s = call ptr @sydney_map_keys_int(ptr %s)", keysVal, mapVal))
+	}
+	keysAlloca := e.alloca("forin_keys")
+	e.emitAlloca(keysAlloca, IrPtr)
+	e.emit(fmt.Sprintf("store ptr %s, ptr %s", keysVal, keysAlloca))
+
+	// len(keys) — first field of { i64, ptr }
+	lenPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, keysVal))
+	lenVal := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", lenVal, lenPtr))
+	lenAlloca := e.alloca("forin_len")
+	e.emitAlloca(lenAlloca, IrInt)
+	e.emit(fmt.Sprintf("store i64 %s, ptr %s", lenVal, lenAlloca))
+
+	// idx = 0
+	idxAlloca := e.alloca("forin_idx")
+	e.emitAlloca(idxAlloca, IrInt)
+	e.emit(fmt.Sprintf("store i64 0, ptr %s", idxAlloca))
+
+	// condition: idx < len
+	e.emitJmp(condLabel)
+	e.emitLabel(condLabel)
+	curIdx := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curIdx, idxAlloca))
+	curLen := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curLen, lenAlloca))
+	cond := e.tmp()
+	e.emit(fmt.Sprintf("%s = icmp slt i64 %s, %s", cond, curIdx, curLen))
+	e.emitBranch(cond, loopLabel, escapeLabel)
+
+	// loop body
+	e.emitLabel(loopLabel)
+
+	// bind key: k = keys[idx]
+	keyType := SydneyTypeToIrType(mt.KeyType)
+	keys2 := e.tmp()
+	e.emit(fmt.Sprintf("%s = load ptr, ptr %s", keys2, keysAlloca))
+	keysDataPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", keysDataPtr, keys2))
+	keysData := e.tmp()
+	e.emit(fmt.Sprintf("%s = load ptr, ptr %s", keysData, keysDataPtr))
+	keyElemPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", keyElemPtr, keyType, keysData, curIdx))
+	keyVal := e.tmp()
+	e.emit(fmt.Sprintf("%s = load %s, ptr %s", keyVal, keyType, keyElemPtr))
+
+	keyAlloca := e.alloca(stmt.Key.Value)
+	e.emitAlloca(keyAlloca, keyType)
+	e.emit(fmt.Sprintf("store %s %s, ptr %s", keyType, keyVal, keyAlloca))
+	e.locals[stmt.Key.Value] = irLocal{alloca: keyAlloca, typ: keyType}
+
+	// bind value: v = map[k]
+	valType := SydneyTypeToIrType(mt.ValueType)
+	map2 := e.tmp()
+	e.emit(fmt.Sprintf("%s = load %s, ptr %s", map2, mapType, mapAlloca))
+	rawVal := e.tmp()
+	if mt.KeyType == types.String {
+		e.emit(fmt.Sprintf("%s = call i64 @sydney_map_get_str(ptr %s, ptr %s)", rawVal, map2, keyVal))
+	} else {
+		e.emit(fmt.Sprintf("%s = call i64 @sydney_map_get_int(ptr %s, %s %s)", rawVal, map2, keyType, keyVal))
+	}
+	// convert i64 result to proper type if needed
+	finalVal := rawVal
+	finalType := valType
+	if valType == IrPtr {
+		finalVal = e.emitIntToPtr(rawVal)
+	} else if valType == IrFloat {
+		finalVal = e.tmp()
+		e.emit(fmt.Sprintf("%s = bitcast i64 %s to double", finalVal, rawVal))
+	}
+
+	valAlloca := e.alloca(stmt.Value.Value)
+	e.emitAlloca(valAlloca, finalType)
+	e.emit(fmt.Sprintf("store %s %s, ptr %s", finalType, finalVal, valAlloca))
+	e.locals[stmt.Value.Value] = irLocal{alloca: valAlloca, typ: finalType}
+
+	// compile body
+	e.emitBlock(stmt.Body)
+
+	// post: idx = idx + 1
+	e.emitJmp(postLabel)
+	e.emitLabel(postLabel)
+	oldIdx := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", oldIdx, idxAlloca))
+	newIdx := e.tmp()
+	e.emit(fmt.Sprintf("%s = add i64 %s, 1", newIdx, oldIdx))
+	e.emit(fmt.Sprintf("store i64 %s, ptr %s", newIdx, idxAlloca))
+	e.emitJmp(condLabel)
+
+	// escape
+	e.emitLabel(escapeLabel)
+	e.popScope()
+	e.leaveLoop()
+
+	return "", IrUnit
+}
+
 func (e *Emitter) emitIfExpr(expr *ast.IfExpr) (string, IrType) {
 	cond, _ := e.emitExpr(expr.Condition) // emit condition, typechecker enforces this is bool
 
@@ -1818,6 +2040,9 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 		case *ast.ForStmt:
 			walk(n.Condition)
 			walk(n.Body)
+		case *ast.ForInStmt:
+			walk(n.Iterable)
+			walk(n.Body)
 		case *ast.InfixExpr:
 			walk(n.Left)
 			walk(n.Right)
@@ -2129,6 +2354,8 @@ func (e *Emitter) containsIdentifier(node ast.Node, name string) bool {
 		return e.containsIdentifier(node.Condition, name) || e.containsIdentifier(node.Consequence, name) || (node.Alternative != nil && e.containsIdentifier(node.Alternative, name))
 	case *ast.ForStmt:
 		return e.containsIdentifier(node.Body, name) || e.containsIdentifier(node.Condition, name)
+	case *ast.ForInStmt:
+		return e.containsIdentifier(node.Body, name) || e.containsIdentifier(node.Iterable, name)
 	case *ast.VarDeclarationStmt:
 		return e.containsIdentifier(node.Value, name)
 	case *ast.VarAssignmentStmt:
