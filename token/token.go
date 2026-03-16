@@ -34,6 +34,7 @@ const (
 	Continue       TokenType = "Continue"
 	Break          TokenType = "Break"
 	In             TokenType = "In"
+	Spawn          TokenType = "Spawn"
 
 	// Types
 	IntType    TokenType = "IntegerType"
