@@ -1,7 +1,5 @@
 module "conv"
 
-import "strings"
-
 pub extern func atof(string str) -> result<float>
 
 pub func atoi(string str) -> result<int> {
@@ -33,19 +31,34 @@ pub func itoa(int num) -> string {
     for (num != 0) {
         const digit = num % 10;
         const b = byte(digit + 48);
-        s = s + char(b);
+        s = char(b) + s ;
         num = num / 10;
     }
 
     if (isNeg) {
-        s = s + "-";
+        s = "-" + s;
     }
 
-    return strings:reverse(s);
+    return s;
+}
+
+func to_upper(string str) -> string {
+    mut r = "";
+    for (mut i = 0; i < len(str); i = i + 1) {
+        const chr = str[i];
+        if (chr >= 'a' && chr <= 'z') {
+            const uppered = byte(int(chr) - 32);
+            r = r + char(uppered);
+        } else {
+            r = r + char(chr);
+        }
+    }
+
+    return r;
 }
 
 pub func parse_bool(string str) -> result<bool> {
-    const upper = strings:to_upper(str);
+    const upper = to_upper(str);
     if (upper == "TRUE") {
         return ok(true);
     }
@@ -73,13 +86,13 @@ pub func itob(int num) -> string {
     for (num != 0) {
         const digit = num % 2;
         const b = byte(digit + 48);
-        s = s + char(b);
+        s = char(b) + s ;
         num = num / 2;
     }
 
     if (isNeg) {
-        s = s + "-";
+        s = "-" + s;
     }
 
-    return strings:reverse(s);
+    return s;
 }

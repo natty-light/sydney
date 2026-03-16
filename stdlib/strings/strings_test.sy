@@ -1,10 +1,73 @@
 module "strings"
 
 import "testing"
+import "conv"
 
 func test_repeat() {
     const input = "x";
     const expected = "xxx";
     const r = repeat(input, 3);
-    testing:assert_eq<string>(r, expected, "test_repeat failed, wanted: " + expected + ", got: " + r);
+    testing:assert_eq<string>(r, expected, msg_helper("test_repeat", expected, r));
+}
+
+func test_join() {
+    const a = "Hello, ";
+    const b = "World!";
+    const expected = "Hello, World!"
+    const r = join([a, b]);
+    testing:assert_eq<string>(r, expected, msg_helper("test_join", expected, r));
+}
+
+func test_join_with_delim() {
+    const a = "Hello";
+    const b = "World!";
+    const expected = "Hello_World!"
+    const r = join_with_delim([a, b], "_");
+    testing:assert_eq<string>(r, expected, msg_helper("test_join_with_delim", expected, r));
+}
+
+func test_char_count() {
+    const input = "xxxyyyzzz";
+    const expected = 3;
+    const r = char_count(input, 'y');
+    testing:assert_eq<int>(r, expected, msg_helper("test_char_count", conv:itoa(expected), conv:itoa(r)));
+}
+
+define struct CharAtTestCase { str string, idx int, expected string }
+
+func test_char_at() {
+    const cases = [
+       CharAtTestCase { str: "hello", idx: 99, expected: "index out of bounds" },
+       CharAtTestCase { str: "hello", idx: -99, expected: "index out of bounds" },
+       CharAtTestCase { str: "hello", idx: 2, expected: "l" }
+    ];
+
+    for (case in cases) {
+        const str = case.str;
+        const idx = case.idx;
+        const expected = case.expected;
+        const r = char_at(str, idx);
+        match r {
+            ok(chr) -> { testing:assert_eq<string>(chr, expected, msg_helper("test_char_at", expected, chr)); },
+            err(msg) -> { testing:assert_eq<string>(msg, expected, msg_helper("test_char_at", expected, msg)); },
+        }
+    }
+}
+
+define struct IndexOfTestCase { str string, chr byte, expected int }
+
+func test_index_of() {
+    const cases = [
+        IndexOfTestCase { str: "hello", chr: 'h', expected: 0 },
+        IndexOfTestCase { str: "hello", chr: 'z', expected: -1 }
+    ]
+
+    for (case in cases) {
+        const idx = index_of(case.str, case.chr);
+        testing:assert_eq<int>(idx, case.expected, msg_helper("test_index_of", conv:itoa(case.expected), conv:itoa(idx)));
+    }
+}
+
+func msg_helper(string name, string expected, string received) -> string {
+    name + " failed, wanted: " + expected + ", got: " + received;
 }
