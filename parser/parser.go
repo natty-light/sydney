@@ -98,6 +98,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.Macro, p.parseMacroLiteral)
 	p.registerPrefix(token.Match, p.parseMatchExpr)
 	p.registerPrefix(token.Byte, p.parseByteLiteral)
+	p.registerPrefix(token.InvArrow, p.parseReceiveExpr)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.Plus, p.parseInfixExpr)
@@ -443,6 +444,10 @@ func (p *Parser) parseExpressionOrAssignmentStmt() ast.Stmt {
 				Value:      value,
 			}
 		}
+	}
+
+	if p.peekTokenIs(token.InvArrow) {
+		return p.parseSendStmt(expr)
 	}
 
 	if p.peekTokenIs(token.Semicolon) {
@@ -1723,4 +1728,30 @@ func (p *Parser) parseForInStmt(tok token.Token) ast.Stmt {
 	stmt.Body = p.parseBlockStmt()
 
 	return stmt
+}
+
+func (p *Parser) parseSendStmt(ch ast.Expr) ast.Stmt {
+	stmt := &ast.SendStmt{
+		Chan: ch,
+	}
+	p.nextToken() // advance past ident
+	p.nextToken() // advance past <-
+
+	stmt.Value = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.Semicolon) {
+		return nil
+	}
+	return stmt
+}
+
+func (p *Parser) parseReceiveExpr() ast.Expr {
+	expr := &ast.ReceiveExpr{
+		Token: p.currToken,
+	}
+	p.nextToken()
+	expr.Chan = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.Semicolon) {
+		return nil
+	}
+	return expr
 }
