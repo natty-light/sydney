@@ -1,4 +1,4 @@
-package scheduler
+package vm
 
 import (
 	"sydney/object"

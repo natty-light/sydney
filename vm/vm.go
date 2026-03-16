@@ -17,14 +17,8 @@ var Null = &object.Null{}
 
 type VM struct {
 	constants []object.Object
-
-	stack []object.Object
-	sp    int // always points to next value. top of stack is stack[sp - 1]
-
-	globals []object.Object
-
-	frames      []*Frame
-	framesIndex int
+	scheduler *Scheduler
+	globals   []object.Object
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -33,20 +27,15 @@ func New(bytecode *compiler.Bytecode) *VM {
 	mainClosure := &object.Closure{Fn: mainFn}
 	mainFrame := NewFrame(mainClosure, 0)
 
-	frames := make([]*Frame, MaxFrames)
-	frames[0] = mainFrame
-
-	return &VM{
+	vm := &VM{
 		constants: bytecode.Constants,
-
-		stack: make([]object.Object, StackSize),
-		sp:    0,
-
-		globals: make([]object.Object, GlobalsSize),
-
-		frames:      frames,
-		framesIndex: 1,
+		globals:   make([]object.Object, GlobalsSize),
+		scheduler: NewScheduler(),
 	}
+	vm.scheduler.current.frames[0] = mainFrame
+	vm.scheduler.current.frameIdx = 1
+
+	return vm
 }
 
 func NewWithGlobalStore(bytecode *compiler.Bytecode, globals []object.Object) *VM {
@@ -56,10 +45,11 @@ func NewWithGlobalStore(bytecode *compiler.Bytecode, globals []object.Object) *V
 }
 
 func (vm *VM) StackTop() object.Object {
-	if vm.sp == 0 {
+	sp := vm.scheduler.current.sp
+	if sp == 0 {
 		return nil
 	}
-	return vm.stack[vm.sp-1]
+	return vm.scheduler.current.stack[sp-1]
 }
 
 func (vm *VM) Run() error {
@@ -163,8 +153,8 @@ func (vm *VM) Run() error {
 			vm.currentFrame().ip += 2 // move past operand
 
 			// create array and push it onto stack
-			array := vm.buildArray(vm.sp-numElements, vm.sp)
-			vm.sp -= numElements
+			array := vm.buildArray(vm.sp()-numElements, vm.sp())
+			vm.decSp(numElements)
 			err := vm.push(array)
 			if err != nil {
 				return err
@@ -175,12 +165,12 @@ func (vm *VM) Run() error {
 			vm.currentFrame().ip += 2 // move past operand
 
 			// create hash and push it onto stack
-			hash, err := vm.buildHash(vm.sp-numElements, vm.sp)
+			hash, err := vm.buildHash(vm.sp()-numElements, vm.sp())
 			if err != nil {
 				return err
 			}
 
-			vm.sp -= numElements
+			vm.decSp(numElements)
 			err = vm.push(hash)
 			if err != nil {
 				return err
@@ -210,7 +200,7 @@ func (vm *VM) Run() error {
 			// pop frame
 			frame := vm.popFrame()
 			// restore stack pointer
-			vm.sp = frame.basePointer - 1
+			vm.setSp(frame.basePointer - 1)
 
 			// push return value onto stack
 			err := vm.push(returnValue)
@@ -221,7 +211,7 @@ func (vm *VM) Run() error {
 			// pop frame
 			frame := vm.popFrame()
 			// restore stack pointer, also has effect of popping last value off stack
-			vm.sp = frame.basePointer - 1
+			vm.setSp(frame.basePointer - 1)
 
 			err := vm.push(Null)
 			if err != nil {
@@ -234,7 +224,7 @@ func (vm *VM) Run() error {
 
 			frame := vm.currentFrame()
 
-			vm.stack[frame.basePointer+int(localIdx)] = vm.pop()
+			vm.stack()[frame.basePointer+int(localIdx)] = vm.pop()
 		case code.OpGetLocal:
 			// get local index from operand
 			localIdx := code.ReadUint8(ins[ip+1:])
@@ -243,7 +233,7 @@ func (vm *VM) Run() error {
 			frame := vm.currentFrame()
 
 			// index into the reserved space for local variables in the stack and push the value onto the stack
-			err := vm.push(vm.stack[frame.basePointer+int(localIdx)])
+			err := vm.push(vm.stack()[frame.basePointer+int(localIdx)])
 			if err != nil {
 				return err
 			}
@@ -455,41 +445,77 @@ func (vm *VM) Run() error {
 }
 
 func (vm *VM) LastPoppedStackElem() object.Object {
-	return vm.stack[vm.sp]
+	return vm.stack()[vm.sp()]
 }
 
 func (vm *VM) push(o object.Object) error {
-	if vm.sp >= StackSize {
+	if vm.sp() >= StackSize {
 		return fmt.Errorf("stack overflow")
 	}
-	vm.stack[vm.sp] = o
-	vm.sp++
+	vm.stack()[vm.sp()] = o
+	vm.incSp(1)
 
 	return nil
 }
 
 func (vm *VM) pop() object.Object {
 	o := vm.head()
-	vm.sp--
+	vm.decSp(1)
 	return o
 }
 
+func (vm *VM) sp() int {
+	return vm.scheduler.current.sp
+}
+
+func (vm *VM) decSp(amt int) {
+	vm.scheduler.current.sp -= amt
+}
+
+func (vm *VM) incSp(amt int) {
+	vm.scheduler.current.sp += amt
+}
+
+func (vm *VM) setSp(sp int) {
+	vm.scheduler.current.sp = sp
+}
+
 func (vm *VM) head() object.Object {
-	return vm.stack[vm.sp-1]
+	return vm.scheduler.current.stack[vm.sp()-1]
+}
+
+func (vm *VM) stack() []object.Object {
+	return vm.scheduler.current.stack
+}
+
+func (vm *VM) frames() []*Frame {
+	return vm.scheduler.current.frames
+}
+
+func (vm *VM) frameIdx() int {
+	return vm.scheduler.current.frameIdx
+}
+
+func (vm *VM) incFrameIdx(amt int) {
+	vm.scheduler.current.frameIdx += amt
+}
+
+func (vm *VM) decFrameIdx(amt int) {
+	vm.scheduler.current.frameIdx -= amt
 }
 
 func (vm *VM) currentFrame() *Frame {
-	return vm.frames[vm.framesIndex-1]
+	return vm.frames()[vm.frameIdx()-1]
 }
 
 func (vm *VM) pushFrame(f *Frame) {
-	vm.frames[vm.framesIndex] = f
-	vm.framesIndex++
+	vm.frames()[vm.frameIdx()] = f
+	vm.incFrameIdx(1)
 }
 
 func (vm *VM) popFrame() *Frame {
-	vm.framesIndex--
-	return vm.frames[vm.framesIndex]
+	vm.decFrameIdx(1)
+	return vm.frames()[vm.frameIdx()]
 }
 
 func (vm *VM) executeBinaryOperation(op code.Opcode) error {
@@ -734,7 +760,7 @@ func (vm *VM) executeByteComparision(op code.Opcode, left, right object.Object) 
 func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
 	elements := make([]object.Object, endIndex-startIndex)
 	for i := startIndex; i < endIndex; i++ {
-		elements[i-startIndex] = vm.stack[i]
+		elements[i-startIndex] = vm.stack()[i]
 	}
 	return &object.Array{Elements: elements}
 }
@@ -742,8 +768,8 @@ func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
 func (vm *VM) buildHash(startIndex, endIndex int) (*object.Hash, error) {
 	hashedPairs := make(map[object.HashKey]object.HashPair)
 	for i := startIndex; i < endIndex; i += 2 {
-		key := vm.stack[i]
-		value := vm.stack[i+1]
+		key := vm.stack()[i]
+		value := vm.stack()[i+1]
 
 		hashKey, ok := key.(object.Hashable)
 		if !ok {
@@ -810,7 +836,7 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 
 func (vm *VM) executeCall(numArgs int) error {
 	// the function is at the bottom of the stack, below the args
-	callee := vm.stack[vm.sp-1-numArgs]
+	callee := vm.stack()[vm.sp()-1-numArgs]
 
 	switch callee := callee.(type) {
 	case *object.Closure:
@@ -830,20 +856,20 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 	// frame's base pointer is the first argument,
 	// since stack pointer is always pointing to the next value
 	// we need to subtract the number of arguments to get the base pointer
-	frame := NewFrame(cl, vm.sp-numArgs)
+	frame := NewFrame(cl, vm.sp()-numArgs)
 	vm.pushFrame(frame)
 
 	// set the stack pointer to the base pointer of the new frame
-	vm.sp = frame.basePointer + cl.Fn.NumLocals
+	vm.setSp(frame.basePointer + cl.Fn.NumLocals)
 
 	return nil
 }
 
 func (vm *VM) callBuiltIn(builtin *object.BuiltIn, numArgs int) error {
-	args := vm.stack[vm.sp-numArgs : vm.sp] // pull slice of args off stack
+	args := vm.stack()[vm.sp()-numArgs : vm.sp()] // pull slice of args off stack
 
 	result := builtin.Fn(args...)
-	vm.sp = vm.sp - numArgs - 1 // pop args and function
+	vm.setSp(vm.sp() - numArgs - 1) // pop args and function
 
 	if err, ok := result.(*object.Error); ok {
 		return fmt.Errorf(err.Message)
@@ -867,9 +893,9 @@ func (vm *VM) pushClosure(constIdx, numFree int) error {
 
 	free := make([]object.Object, numFree)
 	for i := 0; i < numFree; i++ {
-		free[i] = vm.stack[vm.sp-numFree+i]
+		free[i] = vm.stack()[vm.sp()-numFree+i]
 	}
-	vm.sp = vm.sp - numFree // clean up stack
+	vm.setSp(vm.sp() - numFree) // clean up stack
 	closure := &object.Closure{Fn: fn, Free: free}
 
 	return vm.push(closure)

@@ -1,4 +1,4 @@
-package scheduler
+package vm
 
 type Scheduler struct {
 	fibers   []*Fiber
@@ -6,7 +6,7 @@ type Scheduler struct {
 	current  *Fiber
 }
 
-func New() *Scheduler {
+func NewScheduler() *Scheduler {
 	return &Scheduler{
 		fibers:   make([]*Fiber, 0),
 		runQueue: make([]*Fiber, 0),

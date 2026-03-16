@@ -1,15 +1,14 @@
-package scheduler
+package vm
 
 import (
 	"sydney/object"
-	"sydney/vm"
 )
 
 type Fiber struct {
 	id         int
-	stack      []*object.Object
+	stack      []object.Object
 	sp         int
-	frames     []*vm.Frame
+	frames     []*Frame
 	frameIdx   int
 	state      FiberState
 	blockCause *Channel
@@ -27,9 +26,9 @@ const (
 func NewFiber(id int) *Fiber {
 	return &Fiber{
 		id:         id,
-		stack:      make([]*object.Object, vm.StackSize),
+		stack:      make([]object.Object, StackSize),
 		sp:         0,
-		frames:     make([]*vm.Frame, vm.MaxFrames),
+		frames:     make([]*Frame, MaxFrames),
 		frameIdx:   0,
 		state:      Ready,
 		blockCause: nil,
