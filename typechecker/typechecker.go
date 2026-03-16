@@ -392,6 +392,14 @@ func (c *Checker) check(n ast.Node) types.Type {
 		return types.Unit
 	case *ast.ForInStmt:
 		c.checkForInStmt(node)
+	case *ast.SpawnStmt:
+		callExpr, ok := node.CallExpr.(*ast.CallExpr)
+		if !ok {
+			c.appendError("must spawn function call", node)
+			return types.Unit
+		}
+		c.typeOf(callExpr, nil)
+		return types.Unit
 	}
 
 	return types.Unit

@@ -903,3 +903,42 @@ func TestForInStmt(t *testing.T) {
 		}
 	}
 }
+
+func TestSpawnStmt(t *testing.T) {
+	tests := []string{
+		`func work() { const x = 1; }
+		spawn work();`,
+
+		`func add(int a, int b) -> int { a + b; }
+		spawn add(1, 2);`,
+	}
+
+	for _, src := range tests {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("input %q expected no parse errors, got %v", src, p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestSpawnStmtTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         "spawn 5;",
+			expectedError: "must spawn function call",
+		},
+		{
+			input:         `func work(int a) { const x = a; } spawn work("hello");`,
+			expectedError: "type mismatch",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}

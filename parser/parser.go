@@ -305,6 +305,15 @@ func (p *Parser) parseStatement() ast.Stmt {
 			p.nextToken()
 		}
 		return stmt
+	case token.Spawn:
+		stmt := &ast.SpawnStmt{Token: p.currToken}
+		p.nextToken()
+		expr := p.parseExpression(LOWEST)
+		stmt.CallExpr = expr
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+		return stmt
 	default:
 		return p.parseExpressionOrAssignmentStmt()
 	}

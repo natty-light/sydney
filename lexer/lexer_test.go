@@ -511,3 +511,30 @@ func TestGenericFunctionLexing(t *testing.T) {
 		}
 	}
 }
+
+func TestSpawnToken(t *testing.T) {
+	source := `spawn foo();`
+
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.Spawn, "spawn"},
+		{token.Identifier, "foo"},
+		{token.LeftParen, "("},
+		{token.RightParen, ")"},
+		{token.Semicolon, ";"},
+		{token.EOF, ""},
+	}
+
+	lexer := New(source)
+	for i, tt := range tests {
+		tok := lexer.NextToken()
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}

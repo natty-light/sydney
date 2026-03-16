@@ -183,6 +183,11 @@ type (
 		Iterable Expr
 		noCast
 	}
+
+	SpawnStmt struct {
+		Token    token.Token
+		CallExpr Expr
+	}
 )
 
 // Expressions and literals
@@ -525,6 +530,10 @@ func (s *SliceExpr) TokenLiteral() string {
 
 func (f *ForInStmt) TokenLiteral() string {
 	return f.Token.Literal
+}
+
+func (s *SpawnStmt) TokenLiteral() string {
+	return s.Token.Literal
 }
 
 // Statements
@@ -975,80 +984,73 @@ func (f *ForInStmt) String() string {
 	return out.String()
 }
 
+func (s *SpawnStmt) String() string {
+	var out bytes.Buffer
+	out.WriteString("spawn ")
+	out.WriteString(s.CallExpr.String())
+
+	return out.String()
+}
+
 func (p *Program) Pos() (int, int) {
 	return 0, 0
 }
-
 func (v *VarDeclarationStmt) Pos() (int, int) {
 	return v.Token.Line, v.Token.Column
 }
-
 func (r *ReturnStmt) Pos() (int, int) {
 	return r.Token.Line, r.Token.Column
 }
-
 func (e *ExpressionStmt) Pos() (int, int) {
 	return e.Token.Line, e.Token.Column
 }
-
 func (b *BlockStmt) Pos() (int, int) {
 	return b.Token.Line, b.Token.Column
 }
-
 func (v *VarAssignmentStmt) Pos() (int, int) {
 	return v.Token.Line, v.Token.Column
 }
-
 func (f *ForStmt) Pos() (int, int) {
 	return f.Token.Line, f.Token.Column
 }
-
 func (i *IndexAssignmentStmt) Pos() (int, int) {
 	return i.Token.Line, i.Token.Column
 }
-
 func (f *FunctionDeclarationStmt) Pos() (int, int) {
 	return f.Token.Line, f.Token.Column
 }
-
 func (s *StructDefinitionStmt) Pos() (int, int) {
 	return s.Token.Line, s.Token.Column
 }
-
 func (s *SelectorAssignmentStmt) Pos() (int, int) {
 	return s.Token.Line, s.Token.Column
 }
-
 func (i *InterfaceDefinitionStmt) Pos() (int, int) {
 	return i.Token.Line, i.Token.Column
 }
-
 func (i *InterfaceImplementationStmt) Pos() (int, int) {
 	return i.Token.Line, i.Token.Column
 }
-
 func (m *ModuleDeclarationStmt) Pos() (int, int) {
 	return m.Token.Line, m.Token.Column
 }
-
 func (i *ImportStatement) Pos() (int, int) {
 	return i.Token.Line, i.Token.Column
 }
-
 func (p *PubStatement) Pos() (int, int) {
 	return p.Token.Line, p.Token.Column
 }
-
 func (c *ContinueStmt) Pos() (int, int) {
 	return c.Token.Line, c.Token.Column
 }
-
 func (b *BreakStmt) Pos() (int, int) {
 	return b.Token.Line, b.Token.Column
 }
-
 func (f *ForInStmt) Pos() (int, int) {
 	return f.Token.Line, f.Token.Column
+}
+func (s *SpawnStmt) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
 }
 
 func (i *Identifier) Pos() (int, int) {
@@ -1134,6 +1136,7 @@ func (p *PubStatement) statementNode()                {}
 func (c *ContinueStmt) statementNode()                {}
 func (b *BreakStmt) statementNode()                   {}
 func (f *ForInStmt) statementNode()                   {}
+func (s *SpawnStmt) statementNode()                   {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}

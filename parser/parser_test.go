@@ -2671,6 +2671,67 @@ func testFunctionType(t *testing.T, ty types.FunctionType, expectedParams []stri
 	}
 }
 
+func TestSpawnStmt(t *testing.T) {
+	source := "spawn do_work(x, y);"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. want=1, got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.SpawnStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.SpawnStmt. got=%T", program.Stmts[0])
+	}
+
+	callExpr, ok := stmt.CallExpr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("stmt.CallExpr is not *ast.CallExpr. got=%T", stmt.CallExpr)
+	}
+
+	testIdentifier(t, callExpr.Function, "do_work")
+
+	if len(callExpr.Arguments) != 2 {
+		t.Fatalf("wrong number of arguments. want=2, got=%d", len(callExpr.Arguments))
+	}
+
+	testIdentifier(t, callExpr.Arguments[0], "x")
+	testIdentifier(t, callExpr.Arguments[1], "y")
+}
+
+func TestSpawnStmtNoArgs(t *testing.T) {
+	source := "spawn do_work();"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. want=1, got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.SpawnStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.SpawnStmt. got=%T", program.Stmts[0])
+	}
+
+	callExpr, ok := stmt.CallExpr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("stmt.CallExpr is not *ast.CallExpr. got=%T", stmt.CallExpr)
+	}
+
+	testIdentifier(t, callExpr.Function, "do_work")
+
+	if len(callExpr.Arguments) != 0 {
+		t.Fatalf("wrong number of arguments. want=0, got=%d", len(callExpr.Arguments))
+	}
+}
+
 func testMatchArm(t *testing.T, arm *ast.MatchArm, binding string, isOk bool) bool {
 	if arm.Pattern.IsOk != isOk {
 		t.Errorf("arm.Pattern.IsOk wrong, want %t, got %t", isOk, arm.Pattern.IsOk)

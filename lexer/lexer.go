@@ -333,6 +333,7 @@ var keywords = map[string]token.TokenType{
 	"break":          token.Break,
 	"continue":       token.Continue,
 	"in":             token.In,
+	"spawn":          token.Spawn,
 }
 
 var types = map[string]token.TokenType{
