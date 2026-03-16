@@ -1080,6 +1080,8 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 			return c.checkFreadBuiltIn(expr)
 		case "fwrite":
 			return c.checkFwriteBuiltIn(expr)
+		case "panic":
+			return c.checkPanicCall(expr)
 		}
 	}
 
@@ -1932,6 +1934,19 @@ func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
 		c.appendError(fmt.Sprintf("invalid argument type %s for char(), expected byte", t.Signature()), expr)
 	}
 	return types.String
+}
+
+func (c *Checker) checkPanicCall(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.appendError("panic() expects exactly 1 argument", expr)
+		return types.Unit
+	}
+
+	t := c.typeOf(expr.Arguments[0], types.String)
+	if t != types.String {
+		c.appendError(fmt.Sprintf("invalid argument type %s for panic(), expected string", t.Signature()), expr)
+	}
+	return types.Unit
 }
 
 func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) types.Type {

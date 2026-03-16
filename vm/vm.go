@@ -845,6 +845,10 @@ func (vm *VM) callBuiltIn(builtin *object.BuiltIn, numArgs int) error {
 	result := builtin.Fn(args...)
 	vm.sp = vm.sp - numArgs - 1 // pop args and function
 
+	if err, ok := result.(*object.Error); ok {
+		return fmt.Errorf(err.Message)
+	}
+
 	if result != nil {
 		vm.push(result)
 	} else {

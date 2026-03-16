@@ -1,0 +1,13 @@
+module "testing"
+
+pub func assert(bool condition, string msg) {
+    if (!condition) {
+        panic(msg);
+    }
+}
+
+pub func assert_eq<T>(T a, T b, string msg) {
+    if (a != b) {
+        panic(msg);
+    }
+}

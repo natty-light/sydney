@@ -362,6 +362,7 @@ func (e *Emitter) preamble() {
 	e.emit("declare ptr @sydney_map_keys_int(ptr)")
 	e.emit("declare ptr @sydney_map_values_int(ptr)")
 	e.emit("declare ptr @sydney_atof(ptr)")
+	e.emit("declare void @sydney_panic(ptr)")
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -967,6 +968,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 				}
 				return e.emitIntValuesCall(expr)
 			}
+		case "panic":
+			return e.emitPanicCall(expr)
 		}
 
 		if fn, ok := runtimeBuiltins[name]; ok {
@@ -2739,4 +2742,12 @@ func irTypeSize(t IrType) string {
 	default:
 		return "8"
 	}
+}
+
+func (e *Emitter) emitPanicCall(expr *ast.CallExpr) (string, IrType) {
+	arg, _ := e.emitExpr(expr.Arguments[0])
+	line := fmt.Sprintf("call void @sydney_panic(ptr %s)", arg)
+	e.emit(line)
+	e.emit("unreachable")
+	return "", IrUnit
 }

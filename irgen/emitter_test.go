@@ -42,7 +42,8 @@ declare ptr @sydney_map_keys_str(ptr)
 declare ptr @sydney_map_values_str(ptr)
 declare ptr @sydney_map_keys_int(ptr)
 declare ptr @sydney_map_values_int(ptr)
-declare ptr @sydney_atof(ptr)`
+declare ptr @sydney_atof(ptr)
+declare void @sydney_panic(ptr)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"

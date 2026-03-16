@@ -241,6 +241,35 @@ var Builtins = []struct {
 			T: types.FunctionType{Params: []types.Type{types.Byte}, Return: types.String},
 		},
 	},
+	{
+		"float",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				switch arg := args[0].(type) {
+				case *Integer:
+					return &Float{Value: float64(arg.Value)}
+				case *Float:
+					return arg
+				}
+
+				return newError("Argument to `float` not supported")
+			},
+			T: types.FunctionType{Params: []types.Type{types.Byte}, Return: types.String},
+		},
+	},
+	{
+		"panic",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				if len(args) != 1 {
+					return newError("`panic` expects one argument")
+				}
+				msg := args[0].(*String).Value
+				return &Error{Message: "panic: " + msg}
+			},
+			T: types.FunctionType{Params: []types.Type{types.String}, Return: types.Unit},
+		},
+	},
 }
 
 var BuiltInMap = map[string]bool{
@@ -258,6 +287,8 @@ var BuiltInMap = map[string]bool{
 	"int":    true,
 	"byte":   true,
 	"char":   true,
+	"float":  true,
+	"panic":  true,
 }
 
 func GetBuiltInByName(name string) *BuiltIn {
