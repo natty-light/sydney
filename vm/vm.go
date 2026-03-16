@@ -35,6 +35,8 @@ func New(bytecode *compiler.Bytecode) *VM {
 	vm.scheduler.current.frames[0] = mainFrame
 	vm.scheduler.current.frameIdx = 1
 
+	vm.scheduler.runQueue = append(vm.scheduler.runQueue, vm.scheduler.current)
+
 	return vm
 }
 
@@ -53,7 +55,24 @@ func (vm *VM) StackTop() object.Object {
 }
 
 func (vm *VM) Run() error {
+	for {
+		fiber := vm.scheduler.next()
+		if fiber == nil {
+			break
+		}
+		vm.scheduler.current = fiber
+		fiber.state = Running
 
+		err := vm.runFiber()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (vm *VM) runFiber() error {
 	var ip int
 	var ins code.Instructions
 	var op code.Opcode
@@ -207,6 +226,9 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
+			if vm.frameIdx() == 0 {
+				return nil
+			}
 		case code.OpReturn:
 			// pop frame
 			frame := vm.popFrame()
@@ -216,6 +238,9 @@ func (vm *VM) Run() error {
 			err := vm.push(Null)
 			if err != nil {
 				return err
+			}
+			if vm.frameIdx() == 0 {
+				return nil
 			}
 		case code.OpSetImmutableLocal, code.OpSetMutableLocal:
 			// get local index from operand
@@ -438,9 +463,28 @@ func (vm *VM) Run() error {
 					return err
 				}
 			}
+		case code.OpSpawn:
+			numArgs := int(code.ReadUint8(ins[ip+1:]))
+			vm.currentFrame().ip += 1
 
+			args := make([]object.Object, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			cl := vm.pop().(*object.Closure)
+			fiber := NewFiber(len(vm.scheduler.fibers) - 1)
+			fiber.stack[0] = cl
+			for i, arg := range args {
+				fiber.stack[i+1] = arg
+			}
+
+			frame := NewFrame(cl, 1)
+			fiber.PushFrame(frame, cl)
+
+			vm.scheduler.Add(fiber)
 		}
 	}
+	vm.scheduler.current.state = Done
 	return nil
 }
 

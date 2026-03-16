@@ -56,6 +56,7 @@ const (
 	OpResultValue
 	OpModulo
 	OpSlice
+	OpSpawn
 )
 
 type (
@@ -111,6 +112,7 @@ var definitions = map[Opcode]*Definition{
 	OpResultValue:        {"OpResultValue", []int{}},
 	OpModulo:             {"OpModulo", []int{}},
 	OpSlice:              {"OpSlice", []int{}},
+	OpSpawn:              {"OpSpawn", []int{1}}, // num args
 }
 
 func Lookup(op byte) (*Definition, error) {

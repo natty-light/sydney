@@ -800,6 +800,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		c.emit(code.OpSlice)
+	case *ast.SpawnStmt:
+		callExpr := node.CallExpr.(*ast.CallExpr)
+		err := c.Compile(callExpr.Function)
+		if err != nil {
+			return err
+		}
+		for _, arg := range callExpr.Arguments {
+			err = c.Compile(arg)
+			if err != nil {
+				return err
+			}
+		}
+		c.emit(code.OpSpawn, len(callExpr.Arguments))
 	}
 
 	if expr, ok := node.(ast.Expr); ok {
