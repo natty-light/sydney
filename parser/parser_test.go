@@ -2732,6 +2732,54 @@ func TestSpawnStmtNoArgs(t *testing.T) {
 	}
 }
 
+func TestSendStmt(t *testing.T) {
+	source := "ch <- 5;"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.SendStmt)
+	if !ok {
+		t.Fatalf("stmt is not ast.SendStmt. got=%T", program.Stmts[0])
+	}
+
+	testIdentifier(t, stmt.Chan, "ch")
+	i, ok := stmt.Value.(*ast.IntegerLiteral)
+	if !ok {
+		t.Fatalf("stmt.Value is not *ast.IntegerLiteral. got=%T", stmt.Value)
+	}
+	if i.Value != 5 {
+		t.Errorf("i.Value not %d. got=%d", 5, i.Value)
+	}
+}
+
+func TestReceiveExpr(t *testing.T) {
+	source := "<- ch;"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("stmt is not ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.ReceiveExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.ReceiveExpr. got=%T", stmt.Expr)
+	}
+
+	testIdentifier(t, expr.Chan, "ch")
+}
+
 func testMatchArm(t *testing.T, arm *ast.MatchArm, binding string, isOk bool) bool {
 	if arm.Pattern.IsOk != isOk {
 		t.Errorf("arm.Pattern.IsOk wrong, want %t, got %t", isOk, arm.Pattern.IsOk)

@@ -188,6 +188,13 @@ type (
 		Token    token.Token
 		CallExpr Expr
 	}
+
+	SendStmt struct {
+		Token token.Token
+		Chan  Expr
+		Value Expr
+		noCast
+	}
 )
 
 // Expressions and literals
@@ -365,6 +372,13 @@ type (
 		resolvable
 		noCast
 	}
+
+	ReceiveExpr struct {
+		Token token.Token
+		Chan  Expr
+		noCast
+		resolvable
+	}
 )
 
 // Node interfaces
@@ -534,6 +548,14 @@ func (f *ForInStmt) TokenLiteral() string {
 
 func (s *SpawnStmt) TokenLiteral() string {
 	return s.Token.Literal
+}
+
+func (s *SendStmt) TokenLiteral() string {
+	return s.Token.Literal
+}
+
+func (r *ReceiveExpr) TokenLiteral() string {
+	return r.Token.Literal
 }
 
 // Statements
@@ -992,6 +1014,14 @@ func (s *SpawnStmt) String() string {
 	return out.String()
 }
 
+func (s *SendStmt) String() string {
+	return s.Chan.String() + " <- " + s.Value.String()
+}
+
+func (r *ReceiveExpr) String() string {
+	return "<- " + r.Chan.String()
+}
+
 func (p *Program) Pos() (int, int) {
 	return 0, 0
 }
@@ -1050,6 +1080,9 @@ func (f *ForInStmt) Pos() (int, int) {
 	return f.Token.Line, f.Token.Column
 }
 func (s *SpawnStmt) Pos() (int, int) {
+	return s.Token.Line, s.Token.Column
+}
+func (s *SendStmt) Pos() (int, int) {
 	return s.Token.Line, s.Token.Column
 }
 
@@ -1116,6 +1149,9 @@ func (b *ByteLiteral) Pos() (int, int) {
 func (s *SliceExpr) Pos() (int, int) {
 	return s.Token.Line, s.Token.Column
 }
+func (r *ReceiveExpr) Pos() (int, int) {
+	return r.Token.Line, r.Token.Column
+}
 
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
@@ -1137,6 +1173,7 @@ func (c *ContinueStmt) statementNode()                {}
 func (b *BreakStmt) statementNode()                   {}
 func (f *ForInStmt) statementNode()                   {}
 func (s *SpawnStmt) statementNode()                   {}
+func (s *SendStmt) statementNode()                    {}
 
 // Expressions
 func (i *Identifier) expressionNode()      {}
@@ -1160,6 +1197,7 @@ func (s *ScopeAccessExpr) expressionNode() {}
 func (m *MatchExpr) expressionNode()       {}
 func (b *ByteLiteral) expressionNode()     {}
 func (s *SliceExpr) expressionNode()       {}
+func (r *ReceiveExpr) expressionNode()     {}
 
 func Dump(node Node, indent int) {
 	prefix := func(label string) {
@@ -1386,7 +1424,13 @@ func Dump(node Node, indent int) {
 		if node.End != nil {
 			child("End:", node.End)
 		}
-
+	case *SendStmt:
+		prefix("SendStmt")
+		child("Value: ", node.Value)
+		child("Chan: ", node.Chan)
+	case *ReceiveExpr:
+		prefix("ReceiveExpr")
+		child("Chan: ", node.Chan)
 	default:
 		prefix(fmt.Sprintf("<%T>", node))
 	}
