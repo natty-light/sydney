@@ -262,11 +262,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpReturnValue)
 	case *ast.ForStmt:
-		var initVarName string
+		c.pushBlockScope()
 		if node.Init != nil {
-			if varDecl, ok := node.Init.(*ast.VarDeclarationStmt); ok {
-				initVarName = varDecl.Name.Value
-			}
 			err := c.Compile(node.Init)
 			if err != nil {
 				return err
@@ -314,10 +311,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 		c.leaveLoop()
-
-		if initVarName != "" {
-			delete(c.symbolTable.store, initVarName)
-		}
+		c.popBlockScope()
 
 		c.emit(code.OpNull)
 		c.emit(code.OpPop) // this clears the condition value from the stack
@@ -1201,6 +1195,7 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	leng := c.getLoopHiddenVar("forin_len")
 	idx := c.getLoopHiddenVar("forin_idx")
 
+	c.pushBlockScope()
 	err := c.Compile(node.Iterable)
 	if err != nil {
 		return err
@@ -1271,15 +1266,7 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 		}
 	}
 	c.leaveLoop()
-
-	// 10. Clean up hidden symbols
-	delete(c.symbolTable.store, iter)
-	delete(c.symbolTable.store, leng)
-	delete(c.symbolTable.store, idx)
-	delete(c.symbolTable.store, node.Value.Value)
-	if node.Key != nil {
-		delete(c.symbolTable.store, node.Key.Value)
-	}
+	c.popBlockScope()
 
 	c.emit(code.OpNull)
 	c.emit(code.OpPop)
@@ -1288,6 +1275,7 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 }
 
 func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
+	c.pushBlockScope()
 	iter := c.getLoopHiddenVar("forin_iter")
 	leng := c.getLoopHiddenVar("forin_len")
 	idx := c.getLoopHiddenVar("forin_idx")
@@ -1371,16 +1359,7 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 		}
 	}
 	c.leaveLoop()
-
-	// Clean up hidden symbols
-	delete(c.symbolTable.store, iter)
-	delete(c.symbolTable.store, leng)
-	delete(c.symbolTable.store, idx)
-	delete(c.symbolTable.store, node.Value.Value)
-	if node.Key != nil {
-		delete(c.symbolTable.store, node.Key.Value)
-	}
-	delete(c.symbolTable.store, keys)
+	c.popBlockScope()
 
 	c.emit(code.OpNull)
 	c.emit(code.OpPop)
@@ -1402,4 +1381,12 @@ func (c *Compiler) emitGet(sym Symbol) {
 	} else {
 		c.emit(code.OpGetLocal, sym.Index)
 	}
+}
+
+func (c *Compiler) pushBlockScope() {
+	c.symbolTable = NewBlockScopedSymbolTable(c.symbolTable)
+}
+
+func (c *Compiler) popBlockScope() {
+	c.symbolTable = c.symbolTable.Outer
 }

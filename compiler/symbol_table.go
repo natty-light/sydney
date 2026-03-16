@@ -23,6 +23,7 @@ type SymbolTable struct {
 	store          map[string]Symbol
 	numDefinitions int
 	FreeSymbols    []Symbol
+	isBlockScoped  bool
 }
 
 func NewSymbolTable() *SymbolTable {
@@ -31,9 +32,19 @@ func NewSymbolTable() *SymbolTable {
 	return &SymbolTable{store: s, FreeSymbols: free}
 }
 
+func (s *SymbolTable) isGlobalScope() bool {
+	if s.Outer == nil {
+		return true
+	}
+	if s.isBlockScoped {
+		return s.Outer.isGlobalScope()
+	}
+	return false
+}
+
 func (s *SymbolTable) DefineMutable(name string) Symbol {
 	symbol := Symbol{Name: name, Index: s.numDefinitions, IsConstant: false}
-	if s.Outer == nil {
+	if s.isGlobalScope() {
 		symbol.Scope = GlobalScope
 	} else {
 		symbol.Scope = LocalScope
@@ -41,12 +52,15 @@ func (s *SymbolTable) DefineMutable(name string) Symbol {
 
 	s.store[name] = symbol
 	s.numDefinitions++
+	if s.isBlockScoped {
+		s.Outer.numDefinitions = s.numDefinitions
+	}
 	return symbol
 }
 
 func (s *SymbolTable) DefineImmutable(name string) Symbol {
 	symbol := Symbol{Name: name, Index: s.numDefinitions, IsConstant: true}
-	if s.Outer == nil {
+	if s.isGlobalScope() {
 		symbol.Scope = GlobalScope
 	} else {
 		symbol.Scope = LocalScope
@@ -54,6 +68,9 @@ func (s *SymbolTable) DefineImmutable(name string) Symbol {
 
 	s.store[name] = symbol
 	s.numDefinitions++
+	if s.isBlockScoped {
+		s.Outer.numDefinitions = s.numDefinitions
+	}
 	return symbol
 }
 
@@ -87,6 +104,10 @@ func (s *SymbolTable) Resolve(name string) (Symbol, bool, bool) {
 			return symbol, true, ok
 		}
 
+		if s.isBlockScoped {
+			return symbol, true, true
+		}
+
 		free := s.defineFree(symbol)
 		return free, true, true
 	}
@@ -97,6 +118,14 @@ func (s *SymbolTable) Resolve(name string) (Symbol, bool, bool) {
 func NewEnclosedSymbolTable(outer *SymbolTable) *SymbolTable {
 	s := NewSymbolTable()
 	s.Outer = outer
+	return s
+}
+
+func NewBlockScopedSymbolTable(outer *SymbolTable) *SymbolTable {
+	s := NewSymbolTable()
+	s.Outer = outer
+	s.isBlockScoped = true
+	s.numDefinitions = outer.numDefinitions
 	return s
 }
 
