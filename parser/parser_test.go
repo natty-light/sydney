@@ -2780,6 +2780,39 @@ func TestReceiveExpr(t *testing.T) {
 	testIdentifier(t, expr.Chan, "ch")
 }
 
+func TestChannelConstructor(t *testing.T) {
+	source := "chan<int>(5)"
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("program.Stmts has wrong length. got=%d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("stmt is not ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+
+	expr, ok := stmt.Expr.(*ast.ChannelConstructorExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not ast.ChannelConstructorExpr. got=%T", program.Stmts[0])
+	}
+
+	testIntegerLiteral(t, expr.Capacity, 5)
+
+	chType, ok := expr.Type.(types.ChannelType)
+	if !ok {
+		t.Fatalf("expr.Type is not types.ChannelType. got=%T", expr.Type)
+	}
+
+	if chType.ElemType != types.Int {
+		t.Errorf("expr.Type not %s. got=%s", types.Int, expr.Type)
+	}
+}
+
 func testMatchArm(t *testing.T, arm *ast.MatchArm, binding string, isOk bool) bool {
 	if arm.Pattern.IsOk != isOk {
 		t.Errorf("arm.Pattern.IsOk wrong, want %t, got %t", isOk, arm.Pattern.IsOk)

@@ -70,6 +70,10 @@ type TypeParamRef struct {
 	Name string
 }
 
+type ChannelType struct {
+	ElemType Type
+}
+
 const (
 	Int    BasicType = "int"
 	Float  BasicType = "float"
@@ -148,6 +152,10 @@ func (t TypeParam) Signature() string {
 
 func (t TypeParamRef) Signature() string {
 	return t.Name
+}
+
+func (t ChannelType) Signature() string {
+	return "chan<" + t.ElemType.Signature() + ">"
 }
 
 func SubstituteTypeParams(t Type, subs map[string]Type) Type {

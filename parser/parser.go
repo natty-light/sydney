@@ -99,6 +99,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.Match, p.parseMatchExpr)
 	p.registerPrefix(token.Byte, p.parseByteLiteral)
 	p.registerPrefix(token.InvArrow, p.parseReceiveExpr)
+	p.registerPrefix(token.ChannelType, p.parseChannelConstructor)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.Plus, p.parseInfixExpr)
@@ -999,6 +1000,8 @@ func (p *Parser) isPeekTokenType() bool {
 		fallthrough
 	case token.ByteType:
 		fallthrough
+	case token.ChannelType:
+		fallthrough
 	case token.ArrayType:
 		return true
 	}
@@ -1038,6 +1041,8 @@ func (p *Parser) parseType() types.Type {
 		return p.parseFunctionType()
 	case token.ResultType:
 		return p.parseResultType()
+	case token.ChannelType:
+		return p.parseChannelType()
 	case token.Identifier:
 		var t types.Type = nil
 		var ok bool
@@ -1171,6 +1176,22 @@ func (p *Parser) parseResultType() types.Type {
 	}
 
 	return types.ResultType{T: t}
+}
+
+func (p *Parser) parseChannelType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("chan", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	t := p.parseType()
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("chan", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.ChannelType{ElemType: t}
 }
 
 func (p *Parser) parseArrayType() types.Type {
@@ -1754,4 +1775,24 @@ func (p *Parser) parseReceiveExpr() ast.Expr {
 		return nil
 	}
 	return expr
+}
+
+func (p *Parser) parseChannelConstructor() ast.Expr {
+	typ := p.parseChannelType()
+
+	if !p.expectPeek(token.LeftParen) {
+		return nil
+	}
+
+	var capacity ast.Expr
+	if !p.peekTokenIs(token.RightParen) {
+		p.nextToken()
+		capacity = p.parseExpression(LOWEST)
+	}
+
+	if !p.expectPeek(token.RightParen) {
+		return nil
+	}
+
+	return &ast.ChannelConstructorExpr{Type: typ, Capacity: capacity}
 }

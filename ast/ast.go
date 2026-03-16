@@ -379,6 +379,14 @@ type (
 		noCast
 		resolvable
 	}
+
+	ChannelConstructorExpr struct {
+		Token    token.Token
+		Type     types.Type
+		Capacity Expr
+		noCast
+		resolvable
+	}
 )
 
 // Node interfaces
@@ -555,6 +563,10 @@ func (s *SendStmt) TokenLiteral() string {
 }
 
 func (r *ReceiveExpr) TokenLiteral() string {
+	return r.Token.Literal
+}
+
+func (r *ChannelConstructorExpr) TokenLiteral() string {
 	return r.Token.Literal
 }
 
@@ -1022,6 +1034,19 @@ func (r *ReceiveExpr) String() string {
 	return "<- " + r.Chan.String()
 }
 
+func (c *ChannelConstructorExpr) String() string {
+	var out bytes.Buffer
+	out.WriteString("channel<")
+	out.WriteString(c.Type.Signature())
+	out.WriteString(">(")
+	if c.Capacity != nil {
+		out.WriteString(c.Capacity.String())
+	}
+	out.WriteString(")")
+
+	return out.String()
+}
+
 func (p *Program) Pos() (int, int) {
 	return 0, 0
 }
@@ -1152,6 +1177,9 @@ func (s *SliceExpr) Pos() (int, int) {
 func (r *ReceiveExpr) Pos() (int, int) {
 	return r.Token.Line, r.Token.Column
 }
+func (c *ChannelConstructorExpr) Pos() (int, int) {
+	return c.Token.Line, c.Token.Column
+}
 
 // Statements
 func (v *VarDeclarationStmt) statementNode()          {}
@@ -1176,28 +1204,29 @@ func (s *SpawnStmt) statementNode()                   {}
 func (s *SendStmt) statementNode()                    {}
 
 // Expressions
-func (i *Identifier) expressionNode()      {}
-func (i *IntegerLiteral) expressionNode()  {}
-func (p *PrefixExpr) expressionNode()      {}
-func (i *InfixExpr) expressionNode()       {}
-func (b *BooleanLiteral) expressionNode()  {}
-func (i *IfExpr) expressionNode()          {}
-func (f *FunctionLiteral) expressionNode() {}
-func (c *CallExpr) expressionNode()        {}
-func (s *StringLiteral) expressionNode()   {}
-func (a *ArrayLiteral) expressionNode()    {}
-func (i *IndexExpr) expressionNode()       {}
-func (n *NullLiteral) expressionNode()     {}
-func (h *HashLiteral) expressionNode()     {}
-func (f *FloatLiteral) expressionNode()    {}
-func (m *MacroLiteral) expressionNode()    {}
-func (s *StructLiteral) expressionNode()   {}
-func (s *SelectorExpr) expressionNode()    {}
-func (s *ScopeAccessExpr) expressionNode() {}
-func (m *MatchExpr) expressionNode()       {}
-func (b *ByteLiteral) expressionNode()     {}
-func (s *SliceExpr) expressionNode()       {}
-func (r *ReceiveExpr) expressionNode()     {}
+func (i *Identifier) expressionNode()             {}
+func (i *IntegerLiteral) expressionNode()         {}
+func (p *PrefixExpr) expressionNode()             {}
+func (i *InfixExpr) expressionNode()              {}
+func (b *BooleanLiteral) expressionNode()         {}
+func (i *IfExpr) expressionNode()                 {}
+func (f *FunctionLiteral) expressionNode()        {}
+func (c *CallExpr) expressionNode()               {}
+func (s *StringLiteral) expressionNode()          {}
+func (a *ArrayLiteral) expressionNode()           {}
+func (i *IndexExpr) expressionNode()              {}
+func (n *NullLiteral) expressionNode()            {}
+func (h *HashLiteral) expressionNode()            {}
+func (f *FloatLiteral) expressionNode()           {}
+func (m *MacroLiteral) expressionNode()           {}
+func (s *StructLiteral) expressionNode()          {}
+func (s *SelectorExpr) expressionNode()           {}
+func (s *ScopeAccessExpr) expressionNode()        {}
+func (m *MatchExpr) expressionNode()              {}
+func (b *ByteLiteral) expressionNode()            {}
+func (s *SliceExpr) expressionNode()              {}
+func (r *ReceiveExpr) expressionNode()            {}
+func (c *ChannelConstructorExpr) expressionNode() {}
 
 func Dump(node Node, indent int) {
 	prefix := func(label string) {
