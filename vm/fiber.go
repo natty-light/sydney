@@ -34,3 +34,9 @@ func NewFiber(id int) *Fiber {
 		blockCause: nil,
 	}
 }
+
+func (f *Fiber) PushFrame(frame *Frame, cl *object.Closure) {
+	f.frames[0] = frame
+	f.frameIdx = 1
+	f.sp = 1 + cl.Fn.NumLocals
+}
