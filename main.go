@@ -37,6 +37,7 @@ var commands = map[string]CommandFunc{
 	"version": Version,
 	"compile": Compile,
 	"run":     Run,
+	"test":    Test,
 }
 
 // TODO : unfuck this
@@ -237,6 +238,214 @@ func Compile(args []string, flags map[Flag]bool) int {
 	i.Write(strings.Replace(filename, ".sy", ".ll", -1))
 
 	return 0
+}
+
+func Test(args []string, flags map[Flag]bool) int {
+	dir := "."
+	if len(args) > 0 {
+		dir = args[0]
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Printf("cannot read directory %s\n", dir)
+		return 1
+	}
+
+	var testFiles []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), "_test.sy") {
+			testFiles = append(testFiles, filepath.Join(dir, e.Name()))
+		}
+	}
+
+	if len(testFiles) == 0 {
+		fmt.Println("no test files found")
+		return 0
+	}
+
+	totalPassed, totalFailed := 0, 0
+	for _, filename := range testFiles {
+		fmt.Printf("--- %s\n", filepath.Base(filename))
+		p, f := runTestFile(filename)
+		totalPassed += p
+		totalFailed += f
+	}
+
+	fmt.Printf("\n%d passed, %d failed, %d total\n", totalPassed, totalFailed, totalPassed+totalFailed)
+	if totalFailed > 0 {
+		return 1
+	}
+	return 0
+}
+
+func runTestFile(filename string) (passed, failed int) {
+	file, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Printf("  cannot read file %s\n", filename)
+		return 0, 1
+	}
+
+	src := string(file)
+
+	// Collect imports from the test file and all sibling module files
+	allImports := loader.ScanImports(src)
+	sourceDir := filepath.Dir(filename)
+	siblingStmts, siblingImports := loadSiblingModuleFiles(sourceDir, filepath.Base(filename))
+	for _, imp := range siblingImports {
+		allImports = appendUnique(allImports, imp)
+	}
+
+	ld := loader.NewFromImports(allImports)
+	cwd, _ := os.Getwd()
+	stdLib := filepath.Join(cwd, "stdlib")
+	ld.SetPaths(stdLib, sourceDir)
+	packages, tt, gns, err := ld.Load(make(map[string]bool))
+	if err != nil {
+		fmt.Printf("  loader error: %s\n", err)
+		return 0, 1
+	}
+
+	l := lexer.New(src)
+	p := parser.NewWithGenericNames(l, gns)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		printParserErrors(os.Stdout, p.Errors())
+		return 0, 1
+	}
+
+	// Prepend sibling module declarations into the test program
+	program.Stmts = append(siblingStmts, program.Stmts...)
+
+	c := typechecker.NewWithModuleTypes(nil, tt)
+	typeErrs := c.Check(program, packages)
+	if len(typeErrs) != 0 {
+		printParserErrors(os.Stdout, typeErrs)
+		return 0, 1
+	}
+
+	ast.FilterGenericTemplates(program)
+	for _, pkg := range packages {
+		for _, prog := range pkg.Programs {
+			ast.FilterGenericTemplates(prog)
+		}
+	}
+
+	// Collect test function names
+	var testFns []string
+	for _, stmt := range program.Stmts {
+		if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok {
+			if strings.HasPrefix(fn.Name.Value, "test_") {
+				testFns = append(testFns, fn.Name.Value)
+			}
+		}
+	}
+
+	if len(testFns) == 0 {
+		fmt.Println("  no test functions found")
+		return 0, 0
+	}
+
+	// Run each test in isolation
+	for _, name := range testFns {
+		cloned := ast.Clone(program)
+		callStmt := &ast.ExpressionStmt{
+			Expr: &ast.CallExpr{
+				Function:  &ast.Identifier{Value: name},
+				Arguments: []ast.Expr{},
+			},
+		}
+		cloned.Stmts = append(cloned.Stmts, callStmt)
+
+		symbolTable := compiler.NewSymbolTable()
+		for i, v := range object.Builtins {
+			symbolTable.DefineBuiltin(i, v.Name)
+		}
+		comp := compiler.NewWithState(symbolTable, []object.Object{})
+		err := comp.CompilePackages(packages)
+		if err != nil {
+			fmt.Printf("  FAIL  %s: compile error: %s\n", name, err)
+			failed++
+			continue
+		}
+		err = comp.Compile(cloned)
+		if err != nil {
+			fmt.Printf("  FAIL  %s: compile error: %s\n", name, err)
+			failed++
+			continue
+		}
+
+		globals := make([]object.Object, vm.GlobalsSize)
+		machine := vm.NewWithGlobalStore(comp.Bytecode(), globals)
+		err = machine.Run()
+
+		if err != nil {
+			fmt.Printf("  FAIL  %s: %s\n", name, err)
+			failed++
+		} else {
+			fmt.Printf("  PASS  %s\n", name)
+			passed++
+		}
+	}
+
+	return passed, failed
+}
+
+// loadSiblingModuleFiles reads all non-test .sy files from the same directory,
+// parses them, and returns their statements (excluding module/import declarations)
+// plus any imports they declare.
+func loadSiblingModuleFiles(dir string, testFilename string) ([]ast.Stmt, []string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil
+	}
+
+	var stmts []ast.Stmt
+	var imports []string
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == testFilename || !strings.HasSuffix(e.Name(), ".sy") || strings.HasSuffix(e.Name(), "_test.sy") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+
+		src := string(data)
+		imports = append(imports, loader.ScanImports(src)...)
+
+		l := lexer.New(src)
+		p := parser.New(l)
+		prog := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			continue
+		}
+
+		// Include all statements except module and import declarations
+		// Unwrap pub statements so functions are accessible without prefix
+		for _, stmt := range prog.Stmts {
+			switch s := stmt.(type) {
+			case *ast.ModuleDeclarationStmt, *ast.ImportStatement:
+				continue
+			case *ast.PubStatement:
+				stmts = append(stmts, s.Stmt)
+			default:
+				stmts = append(stmts, stmt)
+			}
+		}
+	}
+
+	return stmts, imports
+}
+
+func appendUnique(slice []string, item string) []string {
+	for _, s := range slice {
+		if s == item {
+			return slice
+		}
+	}
+	return append(slice, item)
 }
 
 func printParserErrors(out io.Writer, errors []string) {

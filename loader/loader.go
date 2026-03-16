@@ -84,7 +84,7 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 	}
 	pkg := &Package{}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sy") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sy") || strings.HasSuffix(entry.Name(), "_test.sy") {
 			continue
 		}
 
