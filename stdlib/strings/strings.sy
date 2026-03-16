@@ -19,7 +19,6 @@ pub func join(array<string> strs) -> string {
 }
 
 pub func join_with_delim(array<string> strs, string delim) -> string {
-
     mut r = "";
     for (mut i = 0; i < len(strs); i = i + 1) {
         r = r + strs[i]
