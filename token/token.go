@@ -47,6 +47,7 @@ const (
 	FunctionType TokenType = "FunctionType"
 	ResultType   TokenType = "ResultType"
 	ByteType     TokenType = "ByteType"
+	ChannelType  TokenType = "ChannelType"
 
 	// Grouping
 	LeftParen          TokenType = "LeftParen"
