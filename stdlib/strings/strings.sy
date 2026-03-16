@@ -138,6 +138,21 @@ pub func to_upper(string str) -> string {
     return r;
 }
 
+pub func to_lower(string str) -> string {
+    mut r = ""
+    for (mut i = 0; i < len(str); i = i + 1) {
+        const chr = str[i];
+        if (chr >= 'A' && chr <= 'Z') {
+            const lowered = byte(int(chr) + 32);
+            r = r + char(lowered);
+        } else {
+            r = r + char(chr);
+        }
+    }
+
+    return r;
+}
+
 pub func trim(string str) -> string {
     mut start = 0;
     for (mut i = 0; i < len(str); i = i + 1) {
