@@ -7,3 +7,11 @@ pub func abs_int(int val) -> int {
 pub func abs(float val) -> float {
     if (val < 0.0) { -val; } else { val; };
 }
+
+pub func min<T>(T a, T b) -> T {
+    if (a < b) { a; } else { b; };
+}
+
+pub func max<T>(T a, T b) -> T {
+    if (a > b) { a; } else { b; }
+}

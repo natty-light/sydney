@@ -92,10 +92,7 @@ pub func contains_substr(string str, string substr) -> bool {
     mut window_end = window_start + substr_len;
 
     for (mut i = 0; i < len(str) - substr_len + 1; i = i + 1) {
-        mut cmp_str = ""
-        for (mut j = 0; j < substr_len; j = j + 1) {
-            cmp_str = cmp_str + char(str[j + i]);
-        }
+        mut cmp_str = str[i:substr_len];
 
         if (substr == cmp_str) {
             return true
@@ -106,8 +103,6 @@ pub func contains_substr(string str, string substr) -> bool {
 }
 
 pub func substring(string str, int start, int end) -> result<string> {
-    mut r = "";
-
     if (start < 0) {
         return err("start out of bounds");
     }
@@ -116,11 +111,7 @@ pub func substring(string str, int start, int end) -> result<string> {
         return err("end out of bounds");
     }
 
-    for (mut i = start; i < end; i = i + 1) {
-        r = r + char(str[i]);
-    }
-
-    return ok(r);
+    return ok(str[start:end]);
 }
 
 pub func reverse(string str) -> string {
