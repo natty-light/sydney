@@ -243,6 +243,11 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar() // advance past first equals
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.LessThanEqualTo, Literal: literal}
+		} else if l.peekChar() == minus {
+			char := l.char
+			l.readChar()
+			literal := string(char) + string(l.char)
+			tok = token.Token{Type: token.InvArrow, Literal: literal}
 		} else {
 			tok = l.makeToken(token.LessThan, l.char)
 		}

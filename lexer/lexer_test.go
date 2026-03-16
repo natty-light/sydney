@@ -44,6 +44,9 @@ func TestNextToken(t *testing.T) {
 	
 	a[1:5]
 	for (v in a) {}
+	
+	x <- 5;
+	<- x;
 	`
 
 	tests := []struct {
@@ -270,6 +273,15 @@ func TestNextToken(t *testing.T) {
 		{token.RightParen, ")"},
 		{token.LeftCurlyBracket, "{"},
 		{token.RightCurlyBracket, "}"},
+
+		{token.Identifier, "x"},
+		{token.InvArrow, "<-"},
+		{token.Integer, "5"},
+		{token.Semicolon, ";"},
+
+		{token.InvArrow, "<-"},
+		{token.Identifier, "x"},
+		{token.Semicolon, ";"},
 
 		{token.EOF, ""},
 	}
