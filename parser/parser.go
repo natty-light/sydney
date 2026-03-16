@@ -1771,8 +1771,8 @@ func (p *Parser) parseReceiveExpr() ast.Expr {
 	}
 	p.nextToken()
 	expr.Chan = p.parseExpression(LOWEST)
-	if !p.expectPeek(token.Semicolon) {
-		return nil
+	if p.peekTokenIs(token.Semicolon) {
+		p.nextToken()
 	}
 	return expr
 }
