@@ -562,7 +562,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.symbolTable.DefineFunctionName(node.Name.Value)
 		for _, p := range node.Params {
-			c.symbolTable.DefineImmutable(p.Value)
+			c.symbolTable.DefineMutable(p.Value)
 		}
 
 		err := c.Compile(node.Body)
