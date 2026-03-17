@@ -58,6 +58,9 @@ func (vm *VM) Run() error {
 	for {
 		fiber := vm.scheduler.next()
 		if fiber == nil {
+			if vm.scheduler.hasBlockedFibers() {
+				return fmt.Errorf("deadlock: all fibers blocked")
+			}
 			break
 		}
 		vm.scheduler.current = fiber
@@ -482,6 +485,25 @@ func (vm *VM) runFiber() error {
 			fiber.PushFrame(frame, cl)
 
 			vm.scheduler.Add(fiber)
+		case code.OpMakeChannel:
+			capacity := vm.pop().(*object.Integer).Value
+			ch := &object.Channel{
+				Id: vm.scheduler.nextChannelId(),
+			}
+			vm.scheduler.registerChannel(ch.Id, int(capacity))
+			err := vm.push(ch)
+			if err != nil {
+				return err
+			}
+		case code.OpSend:
+			val := vm.pop()
+			ch := vm.pop().(*object.Channel)
+			vm.scheduler.send(ch.Id, val)
+			return nil // yield
+		case code.OpReceive:
+			ch := vm.pop().(*object.Channel)
+			vm.scheduler.receive(ch.Id)
+			return nil
 		}
 	}
 	vm.scheduler.current.state = Done
@@ -489,7 +511,7 @@ func (vm *VM) runFiber() error {
 }
 
 func (vm *VM) LastPoppedStackElem() object.Object {
-	return vm.stack()[vm.sp()]
+	return vm.scheduler.mainFiber.stack[vm.scheduler.mainFiber.sp]
 }
 
 func (vm *VM) push(o object.Object) error {
