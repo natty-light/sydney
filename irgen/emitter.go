@@ -288,6 +288,7 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		e.collectStrings(node.Index)
 
 	case *ast.CallExpr:
+		e.collect(node.Function)
 		for _, arg := range node.Arguments {
 			e.collectStrings(arg)
 		}
@@ -321,6 +322,17 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		e.collectStrings(node.Subject)
 		e.collectStrings(node.OkArm.Body)
 		e.collectStrings(node.ErrArm.Body)
+	case *ast.SpawnStmt:
+		e.collectStrings(node.CallExpr)
+	case *ast.SendStmt:
+		e.collectStrings(node.Chan)
+		e.collectStrings(node.Value)
+	case *ast.ReceiveExpr:
+		e.collectStrings(node.Chan)
+	case *ast.ChannelConstructorExpr:
+		if node.Capacity != nil {
+			e.collectStrings(node.Capacity)
+		}
 	}
 
 }
@@ -330,39 +342,45 @@ func (e *Emitter) CollectPackage() {
 }
 
 func (e *Emitter) preamble() {
-	e.emit("declare void @sydney_print_int(i64)")
-	e.emit("declare void @sydney_print_float(double)")
-	e.emit("declare void @sydney_print_string(ptr)")
-	e.emit("declare void @sydney_print_byte(i8)")
-	e.emit("declare ptr @sydney_strcat(ptr, ptr)")
-	e.emit("declare void @sydney_print_newline()")
-	e.emit("declare void @sydney_gc_init()")
-	e.emit("declare void @sydney_print_bool(i8)")
-	e.emit("declare ptr @sydney_gc_alloc(i64)")
-	e.emit("declare void @sydney_gc_collect()")
-	e.emit("declare void @sydney_gc_add_global_root(ptr)")
-	e.emit("declare void @sydney_gc_shutdown()")
-	e.emit("declare i64 @sydney_strlen(ptr)")
-	e.emit("declare ptr @sydney_map_create_int()")
-	e.emit("declare ptr @sydney_map_create_string()")
-	e.emit("declare void @sydney_map_set_str(ptr, ptr, i64)")
-	e.emit("declare i64 @sydney_map_get_str(ptr, ptr)")
-	e.emit("declare void @sydney_map_set_int(ptr, i64, i64)")
-	e.emit("declare i64 @sydney_map_get_int(ptr, i64)")
-	e.emit("declare i64 @sydney_file_open(ptr)")
-	e.emit("declare ptr @sydney_file_read(i64)")
-	e.emit("declare i64 @sydney_file_write(i64, ptr)")
-	e.emit("declare i64 @sydney_file_close(i64)")
-	e.emit("declare ptr @sydney_get_last_error()")
-	e.emit("declare ptr @sydney_byte_to_string(i8)")
-	e.emit("declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)")
-	e.emit("declare i1 @sydney_str_equals(ptr, ptr)")
-	e.emit("declare ptr @sydney_map_keys_str(ptr)")
-	e.emit("declare ptr @sydney_map_values_str(ptr)")
-	e.emit("declare ptr @sydney_map_keys_int(ptr)")
-	e.emit("declare ptr @sydney_map_values_int(ptr)")
-	e.emit("declare ptr @sydney_atof(ptr)")
-	e.emit("declare void @sydney_panic(ptr)")
+	e.emit(`declare void @sydney_print_int(i64)
+declare void @sydney_print_float(double)
+declare void @sydney_print_string(ptr)
+declare void @sydney_print_byte(i8)
+declare ptr @sydney_strcat(ptr, ptr)
+declare void @sydney_print_newline()
+declare void @sydney_gc_init()
+declare void @sydney_print_bool(i8)
+declare ptr @sydney_gc_alloc(i64)
+declare void @sydney_gc_collect()
+declare void @sydney_gc_add_global_root(ptr)
+declare void @sydney_gc_shutdown()
+declare i64 @sydney_strlen(ptr)
+declare ptr @sydney_map_create_int()
+declare ptr @sydney_map_create_string()
+declare void @sydney_map_set_str(ptr, ptr, i64)
+declare i64 @sydney_map_get_str(ptr, ptr)
+declare void @sydney_map_set_int(ptr, i64, i64)
+declare i64 @sydney_map_get_int(ptr, i64)
+declare i64 @sydney_file_open(ptr)
+declare ptr @sydney_file_read(i64)
+declare i64 @sydney_file_write(i64, ptr)
+declare i64 @sydney_file_close(i64)
+declare ptr @sydney_get_last_error()
+declare ptr @sydney_byte_to_string(i8)
+declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
+declare i1 @sydney_str_equals(ptr, ptr)
+declare ptr @sydney_map_keys_str(ptr)
+declare ptr @sydney_map_values_str(ptr)
+declare ptr @sydney_map_keys_int(ptr)
+declare ptr @sydney_map_values_int(ptr)
+declare ptr @sydney_atof(ptr)
+declare void @sydney_panic(ptr)
+declare i64 @sydney_channel_create(i64)
+declare void @sydney_channel_send(i64, i64)
+declare i64 @sydney_channel_recv(i64)
+declare void @sydney_spawn(ptr, ptr)
+declare void @sydney_join_all()`)
+
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
@@ -437,6 +455,7 @@ func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.emit("call void @sydney_gc_init()")
 	e.emitPackageInits()
 	e.main(node)
+	e.emit("call void @sydney_join_all()")
 	e.emit("call void @sydney_gc_shutdown()")
 	e.emit("ret i32 0")
 
@@ -633,6 +652,10 @@ func (e *Emitter) emitStmt(stmt ast.Node) (string, IrType, bool) {
 		}
 		e.blockTerminated = true
 		return "", IrUnit, false
+	case *ast.SpawnStmt:
+		e.emitSpawn(s)
+	case *ast.SendStmt:
+		e.emitSend(s)
 	}
 	return val, valType, hasReturn
 }
@@ -760,6 +783,10 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitMatchExpr(expr)
 	case *ast.SliceExpr:
 		return e.emitSliceExpr(expr)
+	case *ast.ReceiveExpr:
+		return e.emitReceive(expr)
+	case *ast.ChannelConstructorExpr:
+		return e.emitChannelConstructor(expr)
 	}
 	return "", IrUnit
 }
@@ -2074,6 +2101,17 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 			}
 		case *ast.FunctionLiteral:
 			walk(n.Body)
+		case *ast.SpawnStmt:
+			walk(n.CallExpr)
+		case *ast.SendStmt:
+			walk(n.Chan)
+			walk(n.Value)
+		case *ast.ReceiveExpr:
+			walk(n.Chan)
+		case *ast.ChannelConstructorExpr:
+			if n.Capacity != nil {
+				walk(n.Capacity)
+			}
 
 		}
 	}
@@ -2369,6 +2407,17 @@ func (e *Emitter) containsIdentifier(node ast.Node, name string) bool {
 		return e.containsIdentifier(node.Left, name)
 	case *ast.FunctionLiteral:
 		return e.containsIdentifier(node.Body, name)
+	case *ast.SpawnStmt:
+		return e.containsIdentifier(node.CallExpr, name)
+	case *ast.SendStmt:
+		return e.containsIdentifier(node.Chan, name) || e.containsIdentifier(node.Value, name)
+	case *ast.ReceiveExpr:
+		return e.containsIdentifier(node.Chan, name)
+	case *ast.ChannelConstructorExpr:
+		if node.Capacity != nil {
+			return e.containsIdentifier(node.Capacity, name)
+		}
+
 	}
 
 	return false
@@ -2750,4 +2799,114 @@ func (e *Emitter) emitPanicCall(expr *ast.CallExpr) (string, IrType) {
 	e.emit(line)
 	e.emit("unreachable")
 	return "", IrUnit
+}
+
+func (e *Emitter) emitChannelConstructor(expr *ast.ChannelConstructorExpr) (string, IrType) {
+	var capacity string
+	if expr.Capacity != nil {
+		capacity, _ = e.emitExpr(expr.Capacity)
+	} else {
+		capacity = e.tmp()
+		line := fmt.Sprintf("%s = add i64 0, 0", capacity)
+		e.emit(line)
+	}
+
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_channel_create(i64 %s)", result, capacity)
+	e.emit(line)
+
+	return result, IrInt
+}
+
+func (e *Emitter) emitSend(stmt *ast.SendStmt) {
+	chanReg, _ := e.emitExpr(stmt.Chan)
+	valReg, valType := e.emitExpr(stmt.Value)
+
+	valAsI64 := e.toI64(valReg, valType)
+	line := fmt.Sprintf("call void @sydney_channel_send(i64 %s, i64 %s)", chanReg, valAsI64)
+	e.emit(line)
+}
+
+func (e *Emitter) emitReceive(expr *ast.ReceiveExpr) (string, IrType) {
+	chanReg, _ := e.emitExpr(expr.Chan)
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_channel_recv(i64 %s)", result, chanReg)
+	e.emit(line)
+
+	// cast i64 back to the channel's element type
+	chanType := expr.Chan.GetResolvedType().(types.ChannelType)
+	elemType := SydneyTypeToIrType(chanType.ElemType)
+	return e.fromI64(result, elemType)
+}
+
+func (e *Emitter) emitSpawn(stmt *ast.SpawnStmt) {
+	callExpr := stmt.CallExpr.(*ast.CallExpr)
+
+	// emit the closure (this gives us the fat pointer: {fn_ptr, env_ptr})
+	closureReg, _ := e.emitExpr(callExpr.Function)
+
+	// extract fn ptr from slot 0
+	fnPtrSlot := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnPtrSlot, closureReg)
+	e.emit(line)
+	fnPtr := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnPtrSlot)
+	e.emit(line)
+
+	// extract env ptr from slot 1
+	envPtrSlot := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envPtrSlot, closureReg)
+	e.emit(line)
+	envPtr := e.tmp()
+	line = fmt.Sprintf("%s = load ptr, ptr %s", envPtr, envPtrSlot)
+	e.emit(line)
+
+	line = fmt.Sprintf("call void @sydney_spawn(ptr %s, ptr %s)", fnPtr, envPtr)
+	e.emit(line)
+}
+
+func (e *Emitter) toI64(reg string, typ IrType) string {
+	switch typ {
+	case IrInt:
+		return reg
+	case IrFloat:
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = bitcast double %s to i64", r, reg))
+		return r
+	case IrBool:
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = zext i1 %s to i64", r, reg))
+		return r
+	case IrInt8:
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = zext i8 %s to i64", r, reg))
+		return r
+	default: // ptr
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = ptrtoint ptr %s to i64", r, reg))
+		return r
+	}
+}
+
+func (e *Emitter) fromI64(reg string, typ IrType) (string, IrType) {
+	switch typ {
+	case IrInt:
+		return reg, IrInt
+	case IrFloat:
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = bitcast i64 %s to double", r, reg))
+		return r, IrFloat
+	case IrBool:
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = trunc i64 %s to i1", r, reg))
+		return r, IrBool
+	case IrInt8:
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = trunc i64 %s to i8", r, reg))
+		return r, IrInt8
+	default: // ptr
+		r := e.tmp()
+		e.emit(fmt.Sprintf("%s = inttoptr i64 %s to ptr", r, reg))
+		return r, IrPtr
+	}
 }

@@ -18,13 +18,13 @@ type Precedence int
 
 const (
 	LOWEST Precedence = iota + 1
-	SCOPEACCESS
-	ANDOR // I think this is right
+	ANDOR             // I think this is right
 	EQUALS
 	LESSGREATEREQUAL
 	LESSGREATER
 	SUM
 	PRODUCT
+	SCOPEACCESS
 	PREFIX
 	CALL
 	INDEX
