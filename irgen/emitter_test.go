@@ -43,7 +43,12 @@ declare ptr @sydney_map_values_str(ptr)
 declare ptr @sydney_map_keys_int(ptr)
 declare ptr @sydney_map_values_int(ptr)
 declare ptr @sydney_atof(ptr)
-declare void @sydney_panic(ptr)`
+declare void @sydney_panic(ptr)
+declare i64 @sydney_channel_create(i64)
+declare void @sydney_channel_send(i64, i64)
+declare i64 @sydney_channel_recv(i64)
+declare void @sydney_spawn(ptr, ptr)
+declare void @sydney_join_all()`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -53,6 +58,7 @@ entry:
   %t0 = add i64 1, 2
   call void @sydney_print_int(i64 %t0)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -73,6 +79,7 @@ entry:
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -96,6 +103,7 @@ entry:
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -156,6 +164,7 @@ merge.5:
   %t7 = load i64, ptr @z
   call void @sydney_print_int(i64 %t7)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -189,6 +198,7 @@ loop.1:
     store i64 %t4, ptr @i
   br label %cond.0
 escape.2:
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -233,6 +243,7 @@ merge.4:
     store i64 %t7, ptr @i
   br label %cond.0
 escape.2:
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -316,6 +327,7 @@ entry:
   %t6 = load i64, ptr @xPlusSix
   call void @sydney_print_int(i64 %t6)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -350,6 +362,7 @@ entry:
   %t8 = load i64, ptr %t7
   call void @sydney_print_int(i64 %t8)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -405,6 +418,7 @@ entry:
   %t18 = load i64, ptr %t17
   call void @sydney_print_int(i64 %t18)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -543,6 +557,7 @@ entry:
   %t16 = load double, ptr @circA
   call void @sydney_print_float(double %t16)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -582,6 +597,7 @@ entry:
   %t12 = load i64, ptr %t11
   call void @sydney_print_int(i64 %t12)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -637,6 +653,7 @@ entry:
   %t18 = load i64, ptr @sum
   call void @sydney_print_int(i64 %t18)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -689,6 +706,7 @@ entry:
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -764,6 +782,7 @@ entry:
   %t26 = call i64 %t23(ptr %t25, i64 5)
   call void @sydney_print_int(i64 %t26)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -824,6 +843,7 @@ entry:
   %t0 = call i64 @addTwo(i64 3)
   call void @sydney_print_int(i64 %t0)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -861,6 +881,7 @@ entry:
   %t7 = call i64 @sydney_map_get_int(ptr %t6, i64 2)
   call void @sydney_print_int(i64 %t7)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -937,6 +958,7 @@ entry:
   %t36 = load i64, ptr %t35
   call void @sydney_print_int(i64 %t36)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -971,6 +993,7 @@ entry:
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
@@ -1040,6 +1063,7 @@ entry:
   %t0 = call i64 @callCountDown()
   call void @sydney_print_int(i64 %t0)
   call void @sydney_print_newline()
+  call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
 }
