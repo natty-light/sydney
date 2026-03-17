@@ -1407,3 +1407,28 @@ func TestE2EForInMap(t *testing.T) {
 	}
 	runE2ETests(t, tests)
 }
+
+func TestE2EBufferedChannel(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source:   `const ch = chan<int>(1); ch <- 42; const val = <- ch; print(val);`,
+			expected: "42\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2ESpawnWithChannel(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source: `const ch = chan<int>();
+			spawn func() {
+				ch <- 99;
+			}();
+			const val = <- ch;
+			print(val);`,
+			expected: "99\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
