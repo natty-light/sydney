@@ -69,6 +69,8 @@ type Parser struct {
 
 	genericNames   map[string]bool
 	typeParameters map[string]bool
+
+	suppressColon bool
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -192,6 +194,9 @@ func (p *Parser) peekError(t token.TokenType) {
 }
 
 func (p *Parser) peekPrecedence() Precedence {
+	if p.suppressColon && p.peekToken.Type == token.Colon {
+		return LOWEST
+	}
 	if p, ok := precedences[p.peekToken.Type]; ok {
 		return p
 	}
@@ -916,7 +921,9 @@ func (p *Parser) parseHashLiteral() ast.Expr {
 
 	for !p.peekTokenIs(token.RightCurlyBracket) {
 		p.nextToken()
-		key := p.parseExpression(SCOPEACCESS) // this is required since colon is an infix parse function for scope accesses
+		p.suppressColon = true
+		key := p.parseExpression(LOWEST)
+		p.suppressColon = false
 		if !p.expectPeek(token.Colon) {
 			return nil
 		}
@@ -1656,7 +1663,9 @@ func (p *Parser) parseSliceExpr(left ast.Expr) ast.Expr {
 	expr := &ast.SliceExpr{Token: p.currToken, Left: left}
 	if !p.peekTokenIs(token.Colon) {
 		p.nextToken()
-		expr.Start = p.parseExpression(SCOPEACCESS)
+		p.suppressColon = true
+		expr.Start = p.parseExpression(LOWEST)
+		p.suppressColon = false
 	}
 	if !p.expectPeek(token.Colon) {
 		return nil
