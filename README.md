@@ -95,6 +95,18 @@ a; // [1, 2, 1];
 const b = append(a, 4); // [1, 2, 1, 4]
 ```
 
+### Slicing
+Arrays and strings support slice syntax for extracting subsequences:
+```
+const a = [1, 2, 3, 4, 5];
+a[1:3]; // [2, 3]
+a[2:];  // [3, 4, 5]
+a[:3];  // [1, 2, 3]
+
+const s = "hello";
+s[1:4]; // "ell"
+```
+
 ### Structs
 Structs allow for the creation of custom data types with named fields. They must be defined before they can be used.
 
@@ -135,6 +147,29 @@ sum(p);     // these two calls
 p.sum();    // are equivalent
 ```
 
+### Generics
+Functions and structs can be parameterized with type variables:
+```
+func identity<T>(T val) -> T {
+    return val;
+}
+
+identity<int>(42);       // 42
+identity<string>("hi");  // "hi"
+```
+
+Generic structs:
+```
+define struct Box<T> {
+    value T
+}
+
+const b = Box<int> { value: 42 };
+b.value; // 42
+```
+
+Generic types are monomorphized at compile time — the compiler generates specialized versions for each concrete type used.
+
 ## Control flow
 
 ### If-else expressions
@@ -167,6 +202,20 @@ for (x < 10) {
 
 Loop variables declared in the init clause are scoped to the loop.
 
+### For-in loops
+`for-in` iterates over arrays and maps:
+```
+const nums = [1, 2, 3];
+for (n in nums) {
+    print(n);
+}
+
+const m = {"a": 1, "b": 2};
+for (k, v in m) {
+    print(k, v);
+}
+```
+
 ### Break and continue
 `break` exits a loop early. `continue` skips to the next iteration:
 ```
@@ -198,6 +247,51 @@ func safeParse(string s) -> result<int> {
     return err("not implemented");
 }
 ```
+
+## Concurrency
+
+Sydney supports concurrency with fibers and channels. On the VM, fibers are cooperatively scheduled lightweight threads that yield at channel operations. When compiled to native, fibers map to OS threads with channels backed by `std::sync::mpsc`.
+
+### Spawning fibers
+Use `spawn` to run a function concurrently:
+```
+spawn func() {
+    print("running in a fiber");
+}();
+```
+
+### Channels
+Channels are typed conduits for communication between fibers. Create them with `chan<T>()` for unbuffered or `chan<T>(n)` for buffered:
+```
+const ch = chan<int>();      // unbuffered
+const bch = chan<int>(5);    // buffered, capacity 5
+```
+
+Send with `<-` and receive with `<-`:
+```
+ch <- 42;           // send
+const val = <- ch;  // receive
+```
+
+### Example
+```
+const ch = chan<int>(1);
+
+spawn func() {
+    ch <- 10;
+    ch <- 20;
+    ch <- 30;
+}();
+
+spawn func() {
+    const a = <- ch;
+    const b = <- ch;
+    const c = <- ch;
+    print(a, b, c);
+}();
+```
+
+Unbuffered channels synchronize sender and receiver — a send blocks until a receiver is ready, and vice versa. Buffered channels allow sends to proceed without blocking until the buffer is full.
 
 ## Operators
 Sydney supports standard arithmetic, comparison, and logical operators.
@@ -261,6 +355,17 @@ print(strings:repeat("ha", 3)); // "hahaha"
 ```
 
 Module functions are accessed with the `:` scope operator.
+
+### Standard library
+Sydney ships with standard library modules in `stdlib/`:
+- `strings` — string manipulation (repeat, contains, split, join, etc.)
+- `conv` — type conversions (itoa, atof)
+- `math` — mathematical functions
+- `stats` — statistical functions
+- `sort` — sorting algorithms (heapsort)
+- `io` — file I/O wrappers with result types
+- `heap` — min-heap data structure
+- `testing` — test assertion utilities
 
 ## Interfaces and Implementations
 Sydney supports interfaces, which allow for polymorphism and dynamic dispatch. An interface defines a set of method signatures that a struct can implement.
@@ -344,7 +449,7 @@ Sydney has two compilation targets:
 ```
 ./sydney run file.sy
 ```
-Compiles to bytecode and executes on a stack-based virtual machine.
+Compiles to bytecode and executes on a stack-based virtual machine with a cooperative fiber scheduler.
 
 ### Native (LLVM IR)
 ```
@@ -353,7 +458,13 @@ llc -filetype=obj file.ll -o file.o
 clang file.o -Lsydney_rt/target/release -lsydney_rt -o file
 ./file
 ```
-Compiles to LLVM IR, then assembles and links against a Rust runtime library that provides garbage collection, string operations, and print functions.
+Compiles to LLVM IR, then assembles and links against a Rust runtime library that provides garbage collection, string operations, print functions, and thread-based concurrency.
+
+### Testing Sydney programs
+```
+./sydney test [directory]
+```
+Runs all `*_test.sy` files in the given directory (or current directory). Test files use the `testing` stdlib module for assertions.
 
 ### Building
 ```bash
@@ -361,7 +472,7 @@ go build -o sydney                              # build the compiler
 cd sydney_rt && cargo build --release            # build the runtime
 ```
 
-### Testing
+### Testing the compiler
 ```bash
 go test ./...
 ```
