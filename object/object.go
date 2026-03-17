@@ -165,8 +165,7 @@ type (
 	}
 
 	Channel struct {
-		chanId   int
-		ElemType types.Type
+		Id int
 	}
 )
 
@@ -256,6 +255,10 @@ func (r *Result) Type() ObjectType {
 
 func (b *Byte) Type() ObjectType {
 	return ByteObj
+}
+
+func (c *Channel) Type() ObjectType {
+	return ChannelObj
 }
 
 func (i *Integer) Inspect() string {
@@ -427,6 +430,15 @@ func (r *Result) Inspect() string {
 
 func (b *Byte) Inspect() string {
 	return fmt.Sprintf("%s", string(b.Value))
+}
+
+func (c *Channel) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString("channel ")
+	out.WriteString(strconv.Itoa(c.Id))
+	out.WriteString(" ")
+
+	return out.String()
 }
 
 // HashKey functions
