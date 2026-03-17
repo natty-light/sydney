@@ -6,3 +6,4 @@ mod file;
 mod error;
 mod floats;
 mod panic;
+mod channel;
