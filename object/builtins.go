@@ -272,25 +272,6 @@ var Builtins = []struct {
 	},
 }
 
-var BuiltInMap = map[string]bool{
-	"len":    true,
-	"print":  true,
-	"append": true,
-	"keys":   true,
-	"values": true,
-	"ok":     true,
-	"err":    true,
-	"fopen":  true,
-	"fread":  true,
-	"fwrite": true,
-	"fclose": true,
-	"int":    true,
-	"byte":   true,
-	"char":   true,
-	"float":  true,
-	"panic":  true,
-}
-
 func GetBuiltInByName(name string) *BuiltIn {
 	for _, bi := range Builtins {
 		if bi.Name == name {
