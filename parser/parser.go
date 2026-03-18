@@ -1005,6 +1005,8 @@ func (p *Parser) isPeekTokenType() bool {
 		fallthrough
 	case token.ResultType:
 		fallthrough
+	case token.OptionType:
+		fallthrough
 	case token.ByteType:
 		fallthrough
 	case token.ChannelType:
@@ -1048,6 +1050,8 @@ func (p *Parser) parseType() types.Type {
 		return p.parseFunctionType()
 	case token.ResultType:
 		return p.parseResultType()
+	case token.OptionType:
+		return p.parseOptionType()
 	case token.ChannelType:
 		return p.parseChannelType()
 	case token.Identifier:
@@ -1183,6 +1187,22 @@ func (p *Parser) parseResultType() types.Type {
 	}
 
 	return types.ResultType{T: t}
+}
+
+func (p *Parser) parseOptionType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("option", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	t := p.parseType()
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("option", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.OptionType{T: t}
 }
 
 func (p *Parser) parseChannelType() types.Type {
@@ -1509,57 +1529,25 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 		return nil
 	}
 	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok or err, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-		return nil
-	}
-	okArm := &ast.MatchArm{}
-	errArm := &ast.MatchArm{}
-
-	if p.currToken.Literal == "ok" {
-		err := p.parseMatchArm(okArm, true)
-		if err != nil {
-			p.errors = append(p.errors, err.Error())
-			return nil
-		}
-		if !p.expectPeek(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-			return nil
-		}
-		if p.currToken.Literal != "err" {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected err, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-			return nil
-		}
-		err = p.parseMatchArm(errArm, false)
-		if err != nil {
-			p.errors = append(p.errors, err.Error())
-			return nil
-		}
-	} else if p.currToken.Literal == "err" {
-		err := p.parseMatchArm(errArm, false)
-		if err != nil {
-			p.errors = append(p.errors, err.Error())
-			return nil
-		}
-		if !p.expectPeek(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-			return nil
-		}
-		if p.currToken.Literal != "ok" {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
-			return nil
-		}
-		err = p.parseMatchArm(okArm, true)
-		if err != nil {
-			p.errors = append(p.errors, err.Error())
-			return nil
-		}
-	} else {
-		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok or err, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok, err, some, or none, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
 
-	m.OkArm = okArm
-	m.ErrArm = errArm
+	switch p.currToken.Literal {
+	case "ok", "err":
+		if err := p.parseResultMatch(m, p.currToken.Literal); err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+	case "some", "none":
+		if err := p.parseOptionMatch(m, p.currToken.Literal); err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+	default:
+		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ok, err, some, or none, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
+		return nil
+	}
 
 	if !p.expectPeek(token.RightCurlyBracket) {
 		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected }, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
@@ -1569,8 +1557,8 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 	return m
 }
 
-func (p *Parser) parseMatchArm(a *ast.MatchArm, isOk bool) error {
-	pattern := &ast.MatchPattern{IsOk: isOk}
+func (p *Parser) parseMatchArmWithBinding(a *ast.MatchArm, isOk bool, isSome bool) error {
+	pattern := &ast.MatchPattern{IsOk: isOk, IsSome: isSome}
 	if !p.expectPeek(token.LeftParen) {
 		return fmt.Errorf("%d:%d expected (, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
@@ -1586,14 +1574,98 @@ func (p *Parser) parseMatchArm(a *ast.MatchArm, isOk bool) error {
 	if !p.expectPeek(token.Arrow) {
 		return fmt.Errorf("%d:%d expected ->, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
-	p.nextToken() // advance past ->
-
-	body := p.parseBlockStmt()
-	a.Body = body
+	p.nextToken()
+	a.Body = p.parseBlockStmt()
 	if !p.expectPeek(token.Comma) {
 		return fmt.Errorf("%d:%d expected , got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
 	}
+	return nil
+}
 
+func (p *Parser) parseResultArmPair(okArm *ast.MatchArm, errArm *ast.MatchArm, first string) error {
+	if first == "ok" {
+		if err := p.parseMatchArmWithBinding(okArm, true, false); err != nil {
+			return err
+		}
+		if !p.expectPeek(token.Identifier) {
+			return fmt.Errorf("%d:%d expected Identifer, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Type)
+		}
+		if p.currToken.Literal != "err" {
+			return fmt.Errorf("%d:%d expected err, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
+		}
+		return p.parseMatchArmWithBinding(errArm, false, false)
+	}
+
+	if err := p.parseMatchArmWithBinding(errArm, false, false); err != nil {
+		return err
+	}
+	if !p.expectPeek(token.Identifier) {
+		return fmt.Errorf("%d:%d expected Identifier got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Type)
+	}
+	if p.currToken.Literal != "ok" {
+		return fmt.Errorf("%d:%d expected ok, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
+	}
+	return p.parseMatchArmWithBinding(okArm, true, false)
+}
+
+func (p *Parser) parseResultMatch(m *ast.MatchExpr, first string) error {
+	okArm := &ast.MatchArm{}
+	errArm := &ast.MatchArm{}
+	if err := p.parseResultArmPair(okArm, errArm, first); err != nil {
+		return err
+	}
+	m.OkArm = okArm
+	m.ErrArm = errArm
+	return nil
+}
+
+func (p *Parser) parseOptionMatch(m *ast.MatchExpr, first string) error {
+	someArm := &ast.MatchArm{}
+	noneArm := &ast.MatchArm{}
+
+	if first == "some" {
+		if err := p.parseMatchArmWithBinding(someArm, false, true); err != nil {
+			return err
+		}
+		if !p.expectPeek(token.Identifier) {
+			return fmt.Errorf("%d:%d expected none, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
+		}
+		if p.currToken.Literal != "none" {
+			return fmt.Errorf("%d:%d expected none, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
+		}
+		if err := p.parseMatchArmNone(noneArm); err != nil {
+			return err
+		}
+	} else {
+		if err := p.parseMatchArmNone(noneArm); err != nil {
+			return err
+		}
+		if !p.expectPeek(token.Identifier) {
+			return fmt.Errorf("%d:%d expected some, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
+		}
+		if p.currToken.Literal != "some" {
+			return fmt.Errorf("%d:%d expected some, got %s", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
+		}
+		if err := p.parseMatchArmWithBinding(someArm, false, true); err != nil {
+			return err
+		}
+	}
+
+	m.SomeArm = someArm
+	m.NoneArm = noneArm
+	return nil
+}
+
+func (p *Parser) parseMatchArmNone(a *ast.MatchArm) error {
+	a.Pattern = &ast.MatchPattern{IsSome: false}
+	if !p.expectPeek(token.Arrow) {
+		return fmt.Errorf("%d:%d expected ->, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
+	}
+	p.nextToken()
+	a.Body = p.parseBlockStmt()
+	if !p.expectPeek(token.Comma) {
+		return fmt.Errorf("%d:%d expected , got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal)
+	}
 	return nil
 }
 
