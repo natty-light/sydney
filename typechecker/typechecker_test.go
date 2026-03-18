@@ -566,6 +566,82 @@ func TestMatchExprTypeErrorChecking(t *testing.T) {
 	testTypeErrors(t, tt)
 }
 
+func TestOptionMatchTypeChecking(t *testing.T) {
+	sources := []string{
+		// basic option match
+		`const option<int> x = some(5);
+		const y = match x {
+			some(val) -> { val + 1; },
+			none -> { 0; },
+		};`,
+		// none first
+		`const option<int> x = some(5);
+		const y = match x {
+			none -> { 0; },
+			some(val) -> { val + 1; },
+		};`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestOptionMatchTypeErrorChecking(t *testing.T) {
+	tt := []TypeErrorTest{
+		{
+			input: `const option<int> x = some(5);
+			const y = match x {
+				some(val) -> { val + 1; },
+				none -> { "nope"; },
+			};`,
+			expectedError: "type mismatch: match arms must result in same type, got int and string",
+		},
+		{
+			input: `const x = 5;
+			match x {
+				some(val) -> { val; },
+				none -> { 0; },
+			};`,
+			expectedError: "can only match on result or option type",
+		},
+	}
+	testTypeErrors(t, tt)
+}
+
+func TestSomeNoneBuiltInTypeChecking(t *testing.T) {
+	sources := []string{
+		`const option<int> x = some(5);`,
+		`const option<string> x = some("hello");`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestNoneBuiltInTypeErrorChecking(t *testing.T) {
+	tt := []TypeErrorTest{
+		{
+			input:         "const x = none()",
+			expectedError: "cannot infer option type for none()",
+		},
+	}
+	testTypeErrors(t, tt)
+}
+
 func TestBreakContinueOutsideLoop(t *testing.T) {
 	tests := []TypeErrorTest{
 		{"break;", "break statement cannot be outside of loop"},

@@ -2824,3 +2824,111 @@ func testMatchArm(t *testing.T, arm *ast.MatchArm, binding string, isOk bool) bo
 	}
 	return true
 }
+
+func TestOptionMatchExpr(t *testing.T) {
+	source := `match x {
+		some(val) -> { val * 2; },
+		none -> { 0; },
+	}`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.MatchExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.MatchExpr. got=%T", stmt.Expr)
+	}
+
+	testIdentifier(t, expr.Subject, "x")
+
+	if expr.OkArm != nil {
+		t.Fatal("OkArm should be nil for option match")
+	}
+	if expr.ErrArm != nil {
+		t.Fatal("ErrArm should be nil for option match")
+	}
+
+	// some arm
+	if expr.SomeArm == nil {
+		t.Fatal("SomeArm is nil")
+	}
+	if !expr.SomeArm.Pattern.IsSome {
+		t.Error("SomeArm.Pattern.IsSome should be true")
+	}
+	if expr.SomeArm.Pattern.Binding.Value != "val" {
+		t.Errorf("SomeArm binding wrong, want val, got %s", expr.SomeArm.Pattern.Binding.Value)
+	}
+	if len(expr.SomeArm.Body.Stmts) != 1 {
+		t.Fatalf("some arm body should have 1 statement, got %d", len(expr.SomeArm.Body.Stmts))
+	}
+	someBody, ok := expr.SomeArm.Body.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("some arm body stmt is not *ast.ExpressionStmt. got=%T", expr.SomeArm.Body.Stmts[0])
+	}
+	testInfixExpr(t, someBody.Expr, "val", "*", 2)
+
+	// none arm
+	if expr.NoneArm == nil {
+		t.Fatal("NoneArm is nil")
+	}
+	if expr.NoneArm.Pattern.IsSome {
+		t.Error("NoneArm.Pattern.IsSome should be false")
+	}
+	if expr.NoneArm.Pattern.Binding != nil {
+		t.Error("NoneArm.Pattern.Binding should be nil")
+	}
+	if len(expr.NoneArm.Body.Stmts) != 1 {
+		t.Fatalf("none arm body should have 1 statement, got %d", len(expr.NoneArm.Body.Stmts))
+	}
+	noneBody, ok := expr.NoneArm.Body.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("none arm body stmt is not *ast.ExpressionStmt. got=%T", expr.NoneArm.Body.Stmts[0])
+	}
+	testIntegerLiteral(t, noneBody.Expr, 0)
+}
+
+func TestOptionMatchExprNoneFirst(t *testing.T) {
+	source := `match x {
+		none -> { 0; },
+		some(val) -> { val; },
+	}`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.MatchExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.MatchExpr. got=%T", stmt.Expr)
+	}
+
+	if expr.SomeArm == nil {
+		t.Fatal("SomeArm is nil")
+	}
+	if expr.NoneArm == nil {
+		t.Fatal("NoneArm is nil")
+	}
+	if !expr.SomeArm.Pattern.IsSome {
+		t.Error("SomeArm.Pattern.IsSome should be true")
+	}
+	if expr.SomeArm.Pattern.Binding.Value != "val" {
+		t.Errorf("SomeArm binding wrong, want val, got %s", expr.SomeArm.Pattern.Binding.Value)
+	}
+}
