@@ -7,3 +7,4 @@ mod error;
 mod floats;
 mod panic;
 mod channel;
+mod socket;
