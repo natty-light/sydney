@@ -8,3 +8,4 @@ mod floats;
 mod panic;
 mod channel;
 mod socket;
+mod tls;

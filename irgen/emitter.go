@@ -400,7 +400,11 @@ declare i64 @sydney_tcp_accept(i64)
 declare ptr @sydney_tcp_read(i64, i64)
 declare i64 @sydney_tcp_write(i64, ptr, i64)
 declare i64 @sydney_tcp_close_stream(i64)
-declare i64 @sydney_tcp_close_listener(i64)`)
+declare i64 @sydney_tcp_close_listener(i64)
+declare i64 @sydney_tls_connect(ptr, i64)
+declare ptr @sydney_tls_read(i64, i64)
+declare i64 @sydney_tls_write(i64, ptr, i64)
+declare ptr @sydney_tls_close(i64)`)
 
 	e.emit("")
 
@@ -2886,6 +2890,14 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 		return e.emitTcpCloseStreamCall(expr)
 	case "sydney_tcp_close_listener":
 		return e.emitTcpCloseListenerCall(expr)
+	case "sydney_tls_connect":
+		return e.emitTlsConnectCall(expr)
+	case "sydney_tls_read":
+		return e.emitTlsReadCall(expr)
+	case "sydney_tls_write":
+		return e.emitTlsWriteCall(expr)
+	case "sydney_tls_close":
+		return e.emitTlsCloseCall(expr)
 	}
 
 	return "", IrUnit

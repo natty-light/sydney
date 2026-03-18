@@ -63,7 +63,11 @@ declare i64 @sydney_tcp_accept(i64)
 declare ptr @sydney_tcp_read(i64, i64)
 declare i64 @sydney_tcp_write(i64, ptr, i64)
 declare i64 @sydney_tcp_close_stream(i64)
-declare i64 @sydney_tcp_close_listener(i64)`
+declare i64 @sydney_tcp_close_listener(i64)
+declare i64 @sydney_tls_connect(ptr, i64)
+declare ptr @sydney_tls_read(i64, i64)
+declare i64 @sydney_tls_write(i64, ptr, i64)
+declare ptr @sydney_tls_close(i64)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -1557,7 +1561,7 @@ match cr {
 		t.Fatalf("llc failed: %s\n%s", err, out)
 	}
 
-	cmd = exec.Command("clang", objFile, "-L"+rtLib, "-lsydney_rt", "-o", binFile)
+	cmd = exec.Command("clang", objFile, "-L"+rtLib, "-lsydney_rt", "-L/opt/homebrew/opt/openssl/lib", "-lssl", "-lcrypto", "-o", binFile)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("clang failed: %s\n%s", err, out)
 	}

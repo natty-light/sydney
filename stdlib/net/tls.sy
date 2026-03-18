@@ -1,0 +1,28 @@
+module "net"
+
+pub extern func tls_conn(string host, int port) -> result<int>
+pub extern func tls_read(int handle, int length) -> result<string>
+pub extern func tls_write(int handle, string data, int length) -> result<int>
+pub extern func tls_close_stream(int handle) -> result<int>
+
+pub define struct TlsSocket { handle int }
+
+pub func tlsconnect(string host, int port) -> result<TlsSocket> {
+    const result<int> r = tls_conn(host, port);
+    match r {
+        ok(h) -> { ok(Socket { handle: h }); },
+        err(msg) -> { err(msg); },
+    }
+}
+
+pub func tlsread(TlsSocket s, int length) -> result<string> {
+    return tls_read(s.handle, length);
+}
+
+pub func tlswrite(TlsSocket s, string data, int length) -> result<int> {
+    return tls_write(s.handle, data, length);
+}
+
+pub func tlsclose(TlsSocket s) -> result<int> {
+    return tls_close_stream(s.handle);
+}

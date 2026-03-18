@@ -8,13 +8,13 @@ build-rt:
 build-smoke:
     ./sydney compile smoke.sy
     llc -filetype=obj smoke.ll -o smoke.o
-    clang smoke.o -Lsydney_rt/target/release -lsydney_rt -o smoke
+    clang smoke.o -Lsydney_rt/target/release -L/opt/homebrew/opt/openssl/lib -lsydney_rt -lssl -lcrypto -o smoke
 
 build-smoke-opt:
     ./sydney compile smoke.sy
     opt -O2 -S smoke.ll -o smoke_opt.ll
     llc -filetype=obj smoke_opt.ll -o smoke.o
-    clang smoke.o -Lsydney_rt/target/release -lsydney_rt -o smoke
+    clang smoke.o -Lsydney_rt/target/release -L/opt/homebrew/opt/openssl/lib -lsydney_rt -lssl -lcrypto  -o smoke
 
 clean-smoke:
     rm smoke.o

@@ -1,19 +1,20 @@
-use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_char;
+use std::sync::{LazyLock, Mutex};
 
 use crate::error::LAST_ERROR;
 
-
-// Thread-local storage for active connections.
+// Global storage for active connections.
 // Each handle is an index into these vecs.
 // Using Option so we can reuse slots after close.
-thread_local! {
-    static STREAMS: RefCell<Vec<Option<TcpStream>>> = RefCell::new(Vec::new());
-    static LISTENERS: RefCell<Vec<Option<TcpListener>>> = RefCell::new(Vec::new());
-}
+// Mutex-protected so handles are valid across OS threads (spawn).
+static STREAMS: LazyLock<Mutex<Vec<Option<TcpStream>>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+static LISTENERS: LazyLock<Mutex<Vec<Option<TcpListener>>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
 
 /// Helper: insert a value into a slab vec, reusing empty slots.
 /// Returns the index (handle).
@@ -60,10 +61,8 @@ pub extern "C" fn sydney_tcp_connect(host: *const c_char, port: i64) -> i64 {
     let addr = format!("{}:{}", host_str, port);
     match TcpStream::connect(&addr) {
         Ok(stream) => {
-            STREAMS.with(|streams| {
-                let mut streams = streams.borrow_mut();
-                slab_insert(&mut streams, stream) as i64
-            })
+            let mut streams = STREAMS.lock().unwrap();
+            slab_insert(&mut streams, stream) as i64
         }
         Err(err) => set_error(format!("tcp_connect: {}", err)),
     }
@@ -91,10 +90,8 @@ pub extern "C" fn sydney_tcp_listen(host: *const c_char, port: i64) -> i64 {
     let addr = format!("{}:{}", host_str, port);
     match TcpListener::bind(&addr) {
         Ok(listener) => {
-            LISTENERS.with(|listeners| {
-                let mut listeners = listeners.borrow_mut();
-                slab_insert(&mut listeners, listener) as i64
-            })
+            let mut listeners = LISTENERS.lock().unwrap();
+            slab_insert(&mut listeners, listener) as i64
         }
         Err(err) => set_error(format!("tcp_listen: {}", err)),
     }
@@ -108,36 +105,36 @@ pub extern "C" fn sydney_tcp_listen(host: *const c_char, port: i64) -> i64 {
 /// listener. The listener stays open and can accept more connections.
 #[no_mangle]
 pub extern "C" fn sydney_tcp_accept(listener_handle: i64) -> i64 {
-    LISTENERS.with(|listeners| {
-        let listeners = listeners.borrow();
+    // Lock listeners to get the listener, then accept.
+    // We need to be careful: accept() blocks, so we clone the listener
+    // to avoid holding the lock during the blocking call.
+    let listener_clone = {
+        let listeners = LISTENERS.lock().unwrap();
         let idx = listener_handle as usize;
 
-        // Check the handle is valid
         if idx >= listeners.len() {
             return set_error("tcp_accept: invalid listener handle".to_string());
         }
 
         match &listeners[idx] {
-            None => set_error("tcp_accept: listener already closed".to_string()),
+            None => return set_error("tcp_accept: listener already closed".to_string()),
             Some(listener) => {
-                // .accept() blocks until a client connects.
-                // Returns (TcpStream, SocketAddr) — we discard the address.
-                match listener.accept() {
-                    Ok((stream, _addr)) => {
-                        // Store the new connection stream and return its handle.
-                        // Need to drop the listeners borrow first since STREAMS
-                        // is a separate thread-local — no conflict.
-                        drop(listeners);
-                        STREAMS.with(|streams| {
-                            let mut streams = streams.borrow_mut();
-                            slab_insert(&mut streams, stream) as i64
-                        })
-                    }
-                    Err(err) => set_error(format!("tcp_accept: {}", err)),
+                // try_clone so we can drop the lock before blocking
+                match listener.try_clone() {
+                    Ok(l) => l,
+                    Err(err) => return set_error(format!("tcp_accept: clone failed: {}", err)),
                 }
             }
         }
-    })
+    };
+    // Lock is dropped here — accept can block without holding it
+    match listener_clone.accept() {
+        Ok((stream, _addr)) => {
+            let mut streams = STREAMS.lock().unwrap();
+            slab_insert(&mut streams, stream) as i64
+        }
+        Err(err) => set_error(format!("tcp_accept: {}", err)),
+    }
 }
 
 /// Read up to max_len bytes from a stream.
@@ -153,49 +150,47 @@ pub extern "C" fn sydney_tcp_accept(listener_handle: i64) -> i64 {
 /// Returns null on error (check LAST_ERROR).
 #[no_mangle]
 pub extern "C" fn sydney_tcp_read(handle: i64, max_len: i64) -> *const c_char {
-    STREAMS.with(|streams| {
-        let mut streams = streams.borrow_mut();
-        let idx = handle as usize;
+    let mut streams = STREAMS.lock().unwrap();
+    let idx = handle as usize;
 
-        if idx >= streams.len() {
-            set_error("tcp_read: invalid handle".to_string());
-            return std::ptr::null();
+    if idx >= streams.len() {
+        set_error("tcp_read: invalid handle".to_string());
+        return std::ptr::null();
+    }
+
+    match &mut streams[idx] {
+        None => {
+            set_error("tcp_read: connection already closed".to_string());
+            std::ptr::null()
         }
-
-        match &mut streams[idx] {
-            None => {
-                set_error("tcp_read: connection already closed".to_string());
-                std::ptr::null()
-            }
-            Some(stream) => {
-                // Allocate a buffer of max_len bytes.
-                // read() fills as many bytes as are immediately available
-                // (up to max_len), then returns. It does NOT wait for
-                // max_len bytes — it returns as soon as there's data.
-                // Returns 0 bytes when the remote end has closed the connection.
-                let mut buf = vec![0u8; max_len as usize];
-                match stream.read(&mut buf) {
-                    Ok(n) => {
-                        buf.truncate(n);
-                        // Convert to a C string. If the data contains null
-                        // bytes, CString::new will error — for HTTP text
-                        // this shouldn't happen, but handle it gracefully.
-                        match CString::new(buf) {
-                            Ok(cs) => cs.into_raw(),
-                            Err(err) => {
-                                set_error(format!("tcp_read: {}", err));
-                                std::ptr::null()
-                            }
+        Some(stream) => {
+            // Allocate a buffer of max_len bytes.
+            // read() fills as many bytes as are immediately available
+            // (up to max_len), then returns. It does NOT wait for
+            // max_len bytes — it returns as soon as there's data.
+            // Returns 0 bytes when the remote end has closed the connection.
+            let mut buf = vec![0u8; max_len as usize];
+            match stream.read(&mut buf) {
+                Ok(n) => {
+                    buf.truncate(n);
+                    // Convert to a C string. If the data contains null
+                    // bytes, CString::new will error — for HTTP text
+                    // this shouldn't happen, but handle it gracefully.
+                    match CString::new(buf) {
+                        Ok(cs) => cs.into_raw(),
+                        Err(err) => {
+                            set_error(format!("tcp_read: {}", err));
+                            std::ptr::null()
                         }
                     }
-                    Err(err) => {
-                        set_error(format!("tcp_read: {}", err));
-                        std::ptr::null()
-                    }
+                }
+                Err(err) => {
+                    set_error(format!("tcp_read: {}", err));
+                    std::ptr::null()
                 }
             }
         }
-    })
+    }
 }
 
 /// Write data to a stream.
@@ -210,31 +205,29 @@ pub extern "C" fn sydney_tcp_write(handle: i64, data: *const c_char, len: i64) -
         return set_error("tcp_write: null data".to_string());
     }
 
-    STREAMS.with(|streams| {
-        let mut streams = streams.borrow_mut();
-        let idx = handle as usize;
+    let mut streams = STREAMS.lock().unwrap();
+    let idx = handle as usize;
 
-        if idx >= streams.len() {
-            return set_error("tcp_write: invalid handle".to_string());
-        }
+    if idx >= streams.len() {
+        return set_error("tcp_write: invalid handle".to_string());
+    }
 
-        match &mut streams[idx] {
-            None => set_error("tcp_write: connection already closed".to_string()),
-            Some(stream) => {
-                // Get the raw bytes from the C string pointer.
-                // We use from_ptr + to_bytes to get the byte slice
-                // without the null terminator.
-                let bytes = unsafe {
-                    std::slice::from_raw_parts(data as *const u8, len as usize)
-                };
+    match &mut streams[idx] {
+        None => set_error("tcp_write: connection already closed".to_string()),
+        Some(stream) => {
+            // Get the raw bytes from the C string pointer.
+            // We use from_ptr + to_bytes to get the byte slice
+            // without the null terminator.
+            let bytes = unsafe {
+                std::slice::from_raw_parts(data as *const u8, len as usize)
+            };
 
-                match stream.write_all(bytes) {
-                    Ok(_) => len,
-                    Err(err) => set_error(format!("tcp_write: {}", err)),
-                }
+            match stream.write_all(bytes) {
+                Ok(_) => len,
+                Err(err) => set_error(format!("tcp_write: {}", err)),
             }
         }
-    })
+    }
 }
 
 /// Close a stream handle.
@@ -244,41 +237,37 @@ pub extern "C" fn sydney_tcp_write(handle: i64, data: *const c_char, len: i64) -
 /// Dropping a TcpStream sends a FIN to the remote end (graceful close).
 #[no_mangle]
 pub extern "C" fn sydney_tcp_close_stream(handle: i64) -> i64 {
-    STREAMS.with(|streams| {
-        let mut streams = streams.borrow_mut();
-        let idx = handle as usize;
+    let mut streams = STREAMS.lock().unwrap();
+    let idx = handle as usize;
 
-        if idx >= streams.len() {
-            return set_error("tcp_close: invalid handle".to_string());
-        }
+    if idx >= streams.len() {
+        return set_error("tcp_close: invalid handle".to_string());
+    }
 
-        if streams[idx].is_none() {
-            return set_error("tcp_close: already closed".to_string());
-        }
+    if streams[idx].is_none() {
+        return set_error("tcp_close: already closed".to_string());
+    }
 
-        // Setting to None drops the TcpStream, which closes the socket.
-        streams[idx] = None;
-        0
-    })
+    // Setting to None drops the TcpStream, which closes the socket.
+    streams[idx] = None;
+    0
 }
 
 /// Close a listener handle.
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn sydney_tcp_close_listener(listener_handle: i64) -> i64 {
-    LISTENERS.with(|listeners| {
-        let mut listeners = listeners.borrow_mut();
-        let idx = listener_handle as usize;
+    let mut listeners = LISTENERS.lock().unwrap();
+    let idx = listener_handle as usize;
 
-        if idx >= listeners.len() {
-            return set_error("tcp_close_listener: invalid handle".to_string());
-        }
+    if idx >= listeners.len() {
+        return set_error("tcp_close_listener: invalid handle".to_string());
+    }
 
-        if listeners[idx].is_none() {
-            return set_error("tcp_close_listener: already closed".to_string());
-        }
+    if listeners[idx].is_none() {
+        return set_error("tcp_close_listener: already closed".to_string());
+    }
 
-        listeners[idx] = None;
-        0
-    })
+    listeners[idx] = None;
+    0
 }

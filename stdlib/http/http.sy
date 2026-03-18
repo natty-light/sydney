@@ -21,3 +21,23 @@ pub func get(string host, string path) -> result<string> {
         },
     }
 }
+
+pub func get_s(string host, string path) -> result<string> {
+ const cr = net:tlsconnect(host, 443);
+    match cr {
+        ok(sock) -> {
+            const req = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
+            const wr = sock.tlswrite(req, len(req));
+            const rr = sock.tlsread(4096);
+            const cl = sock.tlsclose();
+
+            match rr {
+                ok(data) -> { ok(data); },
+                err(msg) -> { err(msg); },
+            }
+        },
+        err(msg) -> {
+            err(msg);
+        },
+    }
+}

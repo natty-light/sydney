@@ -19,6 +19,10 @@ var runtimeBuiltins = map[string]string{
 	"net__tcp_write":          "sydney_tcp_write",
 	"net__tcp_close_stream":   "sydney_tcp_close_stream",
 	"net__tcp_close_listener": "sydney_tcp_close_listener",
+	"net__tls_conn":           "sydney_tls_connect",
+	"net__tls_read":           "sydney_tls_read",
+	"net__tls_write":          "sydney_tls_write",
+	"net__tls_close_stream":   "sydney_tls_close",
 }
 
 const fNaN = "0x7FF8000000000000"
@@ -377,6 +381,46 @@ func (e *Emitter) emitTcpCloseListenerCall(expr *ast.CallExpr) (string, IrType) 
 	handler, _ := e.emitExpr(expr.Arguments[0])
 	result := e.tmp()
 	line := fmt.Sprintf("%s = call i64 @sydney_tcp_close_listener(i64 %s)", result, handler)
+	e.emit(line)
+
+	return e.wrapIntoResult(result, IrInt)
+}
+
+func (e *Emitter) emitTlsConnectCall(expr *ast.CallExpr) (string, IrType) {
+	host, _ := e.emitExpr(expr.Arguments[0])
+	port, _ := e.emitExpr(expr.Arguments[1])
+	handle := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tls_connect(ptr %s, i64 %s)", handle, host, port)
+	e.emit(line)
+
+	return e.wrapIntoResult(handle, IrInt)
+}
+
+func (e *Emitter) emitTlsReadCall(expr *ast.CallExpr) (string, IrType) {
+	handler, _ := e.emitExpr(expr.Arguments[0])
+	maxLen, _ := e.emitExpr(expr.Arguments[1])
+	data := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_tls_read(i64 %s, i64 %s)", data, handler, maxLen)
+	e.emit(line)
+
+	return e.wrapIntoResult(data, IrPtr)
+}
+
+func (e *Emitter) emitTlsWriteCall(expr *ast.CallExpr) (string, IrType) {
+	handler, _ := e.emitExpr(expr.Arguments[0])
+	data, _ := e.emitExpr(expr.Arguments[1])
+	l, _ := e.emitExpr(expr.Arguments[2])
+	lwritten := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tls_write(i64 %s, ptr %s, i64 %s)", lwritten, handler, data, l)
+	e.emit(line)
+
+	return e.wrapIntoResult(lwritten, IrInt)
+}
+
+func (e *Emitter) emitTlsCloseCall(expr *ast.CallExpr) (string, IrType) {
+	stream, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tls_close(i64 %s)", result, stream)
 	e.emit(line)
 
 	return e.wrapIntoResult(result, IrInt)
