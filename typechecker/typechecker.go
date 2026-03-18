@@ -1811,11 +1811,12 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 			return nil
 		}
 
-		expr.ResolvedType = mt.ValueType
+		optType := types.OptionType{T: mt.ValueType}
+		expr.ResolvedType = optType
 		expr.ContainerType = mt
 		expr.Index.SetResolvedType(idxT)
 		e = expr
-		return mt.ValueType
+		return optType
 	}
 	c.appendError(fmt.Sprintf("index operation undefined for type: %s", lt.Signature()), expr)
 

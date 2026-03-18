@@ -211,9 +211,9 @@ func TestIndexExpressions(t *testing.T) {
 		{"[][0]", Null},
 		{"[1, 2, 3][99]", Null},
 		{"[1][-1]", Null},
-		{"{1: 1, 2: 2}[1]", 1},
-		{"{1: 1, 2: 2}[2]", 2},
-		{"{1: 1}[0]", Null},
+		{`const r = {1: 1, 2: 2}[1]; match r { some(v) -> { v; }, none -> { 0; }, };`, 1},
+		{`const r = {1: 1, 2: 2}[2]; match r { some(v) -> { v; }, none -> { 0; }, };`, 2},
+		{`const r = {1: 1}[0]; match r { some(v) -> { v; }, none -> { -1; }, };`, -1},
 	}
 
 	runVmTests(t, tests)
@@ -543,11 +543,11 @@ func TestIndexAssingment(t *testing.T) {
 			expected: 2,
 		},
 		{
-			source:   `const map<int, int> m = { 0: 1 }; m[0] = 2; m[0];`,
+			source:   `const map<int, int> m = { 0: 1 }; m[0] = 2; match m[0] { some(v) -> { v; }, none -> { 0; }, };`,
 			expected: 2,
 		},
 		{
-			source:   `const map<int, int> m = {}; m[0] = 2; m[0];`,
+			source:   `const map<int, int> m = {}; m[0] = 2; match m[0] { some(v) -> { v; }, none -> { 0; }, };`,
 			expected: 2,
 		},
 	}

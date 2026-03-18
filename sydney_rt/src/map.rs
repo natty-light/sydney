@@ -134,3 +134,16 @@ pub extern "C" fn sydney_map_values_str(map: *const HashMap<String, i64>) -> *mu
     header as *mut u8
   }
 }
+
+#[no_mangle]
+pub extern "C" fn sydney_map_contains_int(map: *const HashMap<i64, i64>, key: i64) -> i8 {
+  unsafe { if (*map).contains_key(&key) { 1 } else { 0 } }
+}
+
+#[no_mangle]
+pub extern "C" fn sydney_map_contains_str(map: *const HashMap<String, i64>, key: *const u8) -> i8 {
+  unsafe {
+    let k = CStr::from_ptr(key as *const i8).to_string_lossy();
+    if (*map).contains_key(k.as_ref()) { 1 } else { 0 }
+  }
+}

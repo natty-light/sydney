@@ -1437,10 +1437,11 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	keySym := c.symbolTable.DefineMutable(node.Key.Value)
 	c.emitSet(keySym)
 
-	// v = map[k]
+	// v = map[k] (unwrap option — key is guaranteed to exist)
 	c.emitGet(iterSym)
 	c.emitGet(keySym)
 	c.emit(code.OpIndex)
+	c.emit(code.OpResultValue)
 	valSym := c.symbolTable.DefineMutable(node.Value.Value)
 	c.emitSet(valSym)
 
