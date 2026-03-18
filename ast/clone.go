@@ -206,24 +206,46 @@ func cloneExpr(e Expr) Expr {
 		return &cloned
 	case *MatchExpr:
 		cloned := *expr
-		cok := *expr.OkArm
-		cokp := *cok.Pattern
-		if expr.OkArm.Pattern.Binding != nil {
-			cokp.Binding = cloneIdentifier(expr.OkArm.Pattern.Binding)
+		if expr.OkArm != nil {
+			cok := *expr.OkArm
+			cokp := *cok.Pattern
+			if expr.OkArm.Pattern.Binding != nil {
+				cokp.Binding = cloneIdentifier(expr.OkArm.Pattern.Binding)
+			}
+			cok.Pattern = &cokp
+			cok.Body = cloneBlockStmt(expr.OkArm.Body)
+			cloned.OkArm = &cok
 		}
-		cok.Pattern = &cokp
-		cok.Body = cloneBlockStmt(expr.OkArm.Body)
 
-		eok := *expr.ErrArm
-		eokp := *eok.Pattern
-		if expr.ErrArm.Pattern.Binding != nil {
-			eokp.Binding = cloneIdentifier(expr.ErrArm.Pattern.Binding)
+		if expr.ErrArm != nil {
+			eok := *expr.ErrArm
+			eokp := *eok.Pattern
+			if expr.ErrArm.Pattern.Binding != nil {
+				eokp.Binding = cloneIdentifier(expr.ErrArm.Pattern.Binding)
+			}
+			eok.Pattern = &eokp
+			eok.Body = cloneBlockStmt(expr.ErrArm.Body)
+			cloned.ErrArm = &eok
 		}
-		eok.Pattern = &eokp
-		eok.Body = cloneBlockStmt(expr.ErrArm.Body)
 
-		cloned.OkArm = &cok
-		cloned.ErrArm = &eok
+		if expr.SomeArm != nil {
+			csome := *expr.SomeArm
+			csomep := *csome.Pattern
+			if expr.SomeArm.Pattern.Binding != nil {
+				csomep.Binding = cloneIdentifier(expr.SomeArm.Pattern.Binding)
+			}
+			csome.Pattern = &csomep
+			csome.Body = cloneBlockStmt(expr.SomeArm.Body)
+			cloned.SomeArm = &csome
+		}
+
+		if expr.NoneArm != nil {
+			cnone := *expr.NoneArm
+			cnonep := *cnone.Pattern
+			cnone.Pattern = &cnonep
+			cnone.Body = cloneBlockStmt(expr.NoneArm.Body)
+			cloned.NoneArm = &cnone
+		}
 
 		return &cloned
 	}

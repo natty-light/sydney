@@ -69,6 +69,7 @@ type MatchArm struct {
 
 type MatchPattern struct {
 	IsOk    bool
+	IsSome  bool
 	Binding *Identifier
 }
 
@@ -359,6 +360,8 @@ type (
 		Subject     Expr
 		OkArm       *MatchArm
 		ErrArm      *MatchArm
+		SomeArm     *MatchArm
+		NoneArm     *MatchArm
 		SubjectType types.Type
 		noCast
 		resolvable
@@ -952,20 +955,30 @@ func (m *MatchExpr) String() string {
 	out.WriteString(m.Subject.String())
 	out.WriteString(" {\n")
 	out.WriteString("\t")
-	if m.OkArm.Pattern.IsOk {
+	if m.OkArm != nil {
 		out.WriteString("ok(")
 		out.WriteString(m.OkArm.Pattern.Binding.String())
-		out.WriteString(")")
-		out.WriteString(" -> ")
+		out.WriteString(") -> ")
 		out.WriteString(m.OkArm.Body.String())
 		out.WriteString(",\n")
 	}
-	if m.ErrArm.Pattern.IsOk {
-		out.WriteString("err(")
+	if m.ErrArm != nil {
+		out.WriteString("\terr(")
 		out.WriteString(m.ErrArm.Pattern.Binding.String())
-		out.WriteString(")")
-		out.WriteString(" -> ")
+		out.WriteString(") -> ")
 		out.WriteString(m.ErrArm.Body.String())
+		out.WriteString(",\n")
+	}
+	if m.SomeArm != nil {
+		out.WriteString("\tsome(")
+		out.WriteString(m.SomeArm.Pattern.Binding.String())
+		out.WriteString(") -> ")
+		out.WriteString(m.SomeArm.Body.String())
+		out.WriteString(",\n")
+	}
+	if m.NoneArm != nil {
+		out.WriteString("\tnone -> ")
+		out.WriteString(m.NoneArm.Body.String())
 		out.WriteString(",\n")
 	}
 	out.WriteString("}")
