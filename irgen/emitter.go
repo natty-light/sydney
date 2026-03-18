@@ -393,7 +393,14 @@ declare i64 @sydney_channel_recv(i64)
 declare void @sydney_spawn(ptr, ptr)
 declare void @sydney_join_all()
 declare void @sydney_panic_index_oob(i64, i64)
-declare void @sydney_panic_div_zero()`)
+declare void @sydney_panic_div_zero()
+declare i64 @sydney_tcp_connect(ptr, i64)
+declare i64 @sydney_tcp_listen(ptr, i64)
+declare i64 @sydney_tcp_accept(i64)
+declare ptr @sydney_tcp_read(i64, i64)
+declare i64 @sydney_tcp_write(i64, ptr, i64)
+declare i64 @sydney_tcp_close_stream(i64)
+declare i64 @sydney_tcp_close_listener(i64)`)
 
 	e.emit("")
 
@@ -1082,6 +1089,20 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 				return e.emitFileClose(expr)
 			case "sydney_atof":
 				return e.emitStrToFloatCall(expr)
+			case "sydney_tcp_connect":
+				return e.emitTcpConnectCall(expr)
+			case "sydney_tcp_listen":
+				return e.emitTcpListenCall(expr)
+			case "sydney_tcp_accept":
+				return e.emitTcpAcceptCall(expr)
+			case "sydney_tcp_read":
+				return e.emitTcpReadCall(expr)
+			case "sydney_tcp_write":
+				return e.emitTcpWriteCall(expr)
+			case "sydney_tcp_close_stream":
+				return e.emitTcpCloseStreamCall(expr)
+			case "sydney_tcp_close_listener":
+				return e.emitTcpCloseListenerCall(expr)
 			}
 		}
 
@@ -2847,6 +2868,20 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 		return e.emitFileClose(expr)
 	case "sydney_atof":
 		return e.emitStrToFloatCall(expr)
+	case "sydney_tcp_connect":
+		return e.emitTcpConnectCall(expr)
+	case "sydney_tcp_listen":
+		return e.emitTcpListenCall(expr)
+	case "sydney_tcp_accept":
+		return e.emitTcpAcceptCall(expr)
+	case "sydney_tcp_read":
+		return e.emitTcpReadCall(expr)
+	case "sydney_tcp_write":
+		return e.emitTcpWriteCall(expr)
+	case "sydney_tcp_close_stream":
+		return e.emitTcpCloseStreamCall(expr)
+	case "sydney_tcp_close_listener":
+		return e.emitTcpCloseListenerCall(expr)
 	}
 
 	return "", IrUnit

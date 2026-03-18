@@ -1,0 +1,52 @@
+module "net"
+
+pub extern func tcp_conn(string host, int port) -> result<int>
+pub extern func tcp_listen(string host, int port) -> result<int>
+pub extern func tcp_accept(int handle) -> result<int>
+pub extern func tcp_read(int handle, int length) -> result<string>
+pub extern func tcp_write(int handle, string data, int length) -> result<int>
+pub extern func tcp_close_stream(int handle) -> result<int>
+pub extern func tcp_close_listener(int handle) -> result<int>
+
+pub define struct Socket { handle int }
+pub define struct Listener { handle int }
+
+pub func connect(string host, int port) -> result<Socket> {
+    const result<int> r = tcp_conn(host, port);
+    match r {
+        ok(h) -> { ok(Socket { handle: h }); },
+        err(msg) -> { err(msg); },
+    }
+}
+
+pub func listen(string host, int port) -> result<Listener> {
+    const result<int> r = tcp_listen(host, port);
+    match r {
+        ok(h) -> { ok(Listener { handle: h }); },
+        err(msg) -> { err(msg); },
+    }
+}
+
+pub func accept(Listener l) -> result<Socket> {
+    const result<int> r = tcp_accept(l.handle);
+    match r {
+        ok(h) -> { ok(Socket { handle: h }); },
+        err(msg) -> { err(msg); },
+    }
+}
+
+pub func read(Socket s, int length) -> result<string> {
+    return tcp_read(s.handle, length);
+}
+
+pub func write(Socket s, string data, int length) -> result<int> {
+    return tcp_write(s.handle, data, length);
+}
+
+pub func close(Socket s) -> result<int> {
+    return tcp_close_stream(s.handle);
+}
+
+pub func close_listener(Listener l) -> result<int> {
+   return tcp_close_listener(l.handle);
+}
