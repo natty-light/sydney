@@ -2,6 +2,7 @@ package object
 
 import (
 	"bytes"
+	gotls "crypto/tls"
 	"fmt"
 	"io"
 	gonet "net"
@@ -465,6 +466,94 @@ var Builtins = []struct {
 				err := listener.Close()
 				tcpMu.Lock()
 				tcpListeners[idx] = nil
+				tcpMu.Unlock()
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: 0}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tls_conn",
+		&BuiltIn{
+			AsyncFn: func(args []Object, done func(Object)) {
+				host := args[0].(*String).Value
+				port := args[1].(*Integer).Value
+				addr := fmt.Sprintf("%s:%d", host, port)
+				conn, err := gotls.Dial("tcp", addr, nil)
+				if err != nil {
+					done(&Result{IsOk: false, Error: &String{Value: err.Error()}})
+					return
+				}
+				done(&Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}})
+			},
+			T: types.FunctionType{Params: []types.Type{types.String, types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tls_read",
+		&BuiltIn{
+			AsyncFn: func(args []Object, done func(Object)) {
+				idx := args[0].(*Integer).Value
+				maxLen := args[1].(*Integer).Value
+				tcpMu.Lock()
+				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					tcpMu.Unlock()
+					done(&Result{IsOk: false, Error: &String{Value: "tls_read: invalid stream handle"}})
+					return
+				}
+				buf := make([]byte, maxLen)
+				stream := tcpStreams[idx]
+				tcpMu.Unlock()
+				n, err := stream.Read(buf)
+				if err != nil {
+					done(&Result{IsOk: false, Error: &String{Value: err.Error()}})
+					return
+				}
+				done(&Result{IsOk: true, Value: &String{Value: string(buf[:n])}})
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.Int}, Return: types.ResultType{T: types.String}},
+		},
+	},
+	{
+		"tls_write",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				data := args[1].(*String).Value
+				tcpMu.Lock()
+				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					tcpMu.Unlock()
+					return &Result{IsOk: false, Error: &String{Value: "tls_write: invalid stream handle"}}
+				}
+				stream := tcpStreams[idx]
+				tcpMu.Unlock()
+				n, err := stream.Write([]byte(data))
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: int64(n)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.String, types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tls_close_stream",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				tcpMu.Lock()
+				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					tcpMu.Unlock()
+					return &Result{IsOk: false, Error: &String{Value: "tls_close_stream: invalid handle"}}
+				}
+				stream := tcpStreams[idx]
+				tcpMu.Unlock()
+				err := stream.Close()
+				tcpMu.Lock()
+				tcpStreams[idx] = nil
 				tcpMu.Unlock()
 				if err != nil {
 					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
