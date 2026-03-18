@@ -1456,3 +1456,36 @@ func TestE2ESpawnWithChannel(t *testing.T) {
 	}
 	runE2ETests(t, tests)
 }
+
+func TestE2EOptionMatch(t *testing.T) {
+	tests := []e2eTestCase{
+		{ // some arm
+			source: `const option<int> x = some(42);
+			const y = match x {
+				some(val) -> { val + 1; },
+				none -> { 0; },
+			};
+			print(y);`,
+			expected: "43\n",
+		},
+		{ // none arm
+			source: `const option<int> x = none();
+			const y = match x {
+				some(val) -> { val + 1; },
+				none -> { 0; },
+			};
+			print(y);`,
+			expected: "0\n",
+		},
+		{ // none first ordering
+			source: `const option<int> x = some(10);
+			const y = match x {
+				none -> { 0; },
+				some(val) -> { val * 2; },
+			};
+			print(y);`,
+			expected: "20\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
