@@ -885,10 +885,10 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 func (vm *VM) executeArrayIndex(array, index object.Object) error {
 	arrayObj := array.(*object.Array)
 	idx := index.(*object.Integer).Value
-	max := int64(len(arrayObj.Elements) - 1)
+	mx := int64(len(arrayObj.Elements) - 1)
 
-	if idx < 0 || idx > max {
-		return vm.push(Null)
+	if idx < 0 || idx > mx {
+		return fmt.Errorf("array index out of bounds: index %d but length is %d", idx, len(arrayObj.Elements))
 	}
 
 	return vm.push(arrayObj.Elements[idx])
@@ -998,7 +998,7 @@ func (vm *VM) executeIndexAssignment(collection, index, value object.Object) err
 
 		i := int(idx.Value)
 		if i < 0 || i > len(col.Elements) {
-			return fmt.Errorf("index out of bounds: %d", i)
+			return fmt.Errorf("array index out of bounds: index %d but length is %d", i, len(col.Elements))
 		}
 
 		col.Elements[i] = value

@@ -208,15 +208,53 @@ func TestIndexExpressions(t *testing.T) {
 		{"[[1, 1, 1]][0][0] + 1", 2},
 		{"[1, 2, 3][1 + 1]", 3},
 		{"const i = 0; [1][i]", 1},
-		{"[][0]", Null},
-		{"[1, 2, 3][99]", Null},
-		{"[1][-1]", Null},
 		{`const r = {1: 1, 2: 2}[1]; match r { some(v) -> { v; }, none -> { 0; }, };`, 1},
 		{`const r = {1: 1, 2: 2}[2]; match r { some(v) -> { v; }, none -> { 0; }, };`, 2},
 		{`const r = {1: 1}[0]; match r { some(v) -> { v; }, none -> { -1; }, };`, -1},
 	}
 
 	runVmTests(t, tests)
+}
+
+func TestArrayIndexOutOfBounds(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `[][0]`,
+			expected: "array index out of bounds: index 0 but length is 0",
+		},
+		{
+			source:   `[1, 2, 3][99]`,
+			expected: "array index out of bounds: index 99 but length is 3",
+		},
+		{
+			source:   `[1][-1]`,
+			expected: "array index out of bounds: index -1 but length is 1",
+		},
+	}
+
+	for _, tt := range tests {
+		program := parse(tt.source)
+
+		c := typechecker.New(nil)
+		c.Check(program, nil)
+		ast.FilterGenericTemplates(program)
+
+		comp := compiler.New()
+		err := comp.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error: %s", err)
+		}
+
+		vm := New(comp.Bytecode())
+		err = vm.Run()
+		if err == nil {
+			t.Fatalf("expected vm error, but got nil")
+		}
+
+		if err.Error() != tt.expected {
+			t.Fatalf("wrong error message. want=%q, got=%q", tt.expected, err.Error())
+		}
+	}
 }
 
 func TestCallingFunctionsWithoutArguments(t *testing.T) {

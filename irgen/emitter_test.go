@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sydney/ast"
 	"sydney/lexer"
 	"sydney/parser"
@@ -50,7 +51,8 @@ declare i64 @sydney_channel_create(i64)
 declare void @sydney_channel_send(i64, i64)
 declare i64 @sydney_channel_recv(i64)
 declare void @sydney_spawn(ptr, ptr)
-declare void @sydney_join_all()`
+declare void @sydney_join_all()
+declare void @sydney_panic_index_oob(i64, i64)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -569,43 +571,15 @@ entry:
 }
 
 func TestArrays(t *testing.T) {
-	source := `const array<int> a = [0, 1, 2, 3];
-print(a[1]);`
+	tests := []e2eTestCase{
+		{
+			source: `const array<int> a = [0, 1, 2, 3];
+print(a[1]);`,
+			expected: "1\n",
+		},
+	}
 
-	expected := `@a = global ptr null
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call ptr @sydney_gc_alloc(i64 32)
-  %t1 = getelementptr i64, ptr %t0, i32 0
-  store i64 0, ptr %t1
-  %t2 = getelementptr i64, ptr %t0, i32 1
-  store i64 1, ptr %t2
-  %t3 = getelementptr i64, ptr %t0, i32 2
-  store i64 2, ptr %t3
-  %t4 = getelementptr i64, ptr %t0, i32 3
-  store i64 3, ptr %t4
-  %t5 = call ptr @sydney_gc_alloc(i64 16)
-  %t6 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 0
-  store i64 4, ptr %t6
-  %t7 = getelementptr { i64, ptr }, ptr %t5, i32 0, i32 1
-  store ptr %t0, ptr %t7
-  store ptr %t5, ptr @a
-  call void @sydney_gc_add_global_root(ptr @a)
-  %t8 = load ptr, ptr @a
-  %t9 = getelementptr { i64, ptr }, ptr %t8, i32 0, i32 1
-  %t10 = load ptr, ptr %t9
-  %t11 = getelementptr i64, ptr %t10, i64 1
-  %t12 = load i64, ptr %t11
-  call void @sydney_print_int(i64 %t12)
-  call void @sydney_print_newline()
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, tests)
 }
 
 func TestAnonymousFunction(t *testing.T) {
@@ -1416,4 +1390,62 @@ func TestE2EOptionMatch(t *testing.T) {
 		},
 	}
 	runE2ETests(t, tests)
+}
+
+func TestE2EArrayBoundsCheck(t *testing.T) {
+	projectRoot, err := filepath.Abs(filepath.Join("..", "."))
+	if err != nil {
+		t.Fatalf("cannot find project root: %v", err)
+	}
+	rtLib := filepath.Join(projectRoot, "sydney_rt", "target", "release")
+	if _, err := os.Stat(filepath.Join(rtLib, "libsydney_rt.a")); err != nil {
+		t.Skip("libsydney_rt.a not found, skipping e2e test")
+	}
+
+	source := `const array<int> a = [1, 2, 3]; const x = a[10];`
+	tmpDir := t.TempDir()
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	c := typechecker.New(nil)
+	c.Check(program, nil)
+	if len(c.Errors()) != 0 {
+		t.Fatalf("typechecker errors: %v", c.Errors())
+	}
+	ast.FilterGenericTemplates(program)
+	e := New()
+	if err := e.Emit(program, nil); err != nil {
+		t.Fatalf("emitter error: %v", err)
+	}
+
+	llFile := filepath.Join(tmpDir, "test.ll")
+	objFile := filepath.Join(tmpDir, "test.o")
+	binFile := filepath.Join(tmpDir, "test")
+
+	os.WriteFile(llFile, []byte(e.buf.String()), 0644)
+
+	cmd := exec.Command("llc", "-filetype=obj", llFile, "-o", objFile)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("llc failed: %s\n%s", err, out)
+	}
+
+	cmd = exec.Command("clang", objFile, "-L"+rtLib, "-lsydney_rt", "-o", binFile)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clang failed: %s\n%s", err, out)
+	}
+
+	cmd = exec.Command(binFile)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit from OOB access, but got success")
+	}
+
+	output := string(out)
+	if !strings.Contains(output, "panic: array index out of bounds: index 10 but length is 3") {
+		t.Fatalf("expected OOB panic message in stderr, got: %s", output)
+	}
 }

@@ -391,7 +391,8 @@ declare i64 @sydney_channel_create(i64)
 declare void @sydney_channel_send(i64, i64)
 declare i64 @sydney_channel_recv(i64)
 declare void @sydney_spawn(ptr, ptr)
-declare void @sydney_join_all()`)
+declare void @sydney_join_all()
+declare void @sydney_panic_index_oob(i64, i64)`)
 
 	e.emit("")
 
@@ -2174,8 +2175,10 @@ func (e *Emitter) emitArrayElementPtr(expr *ast.IndexExpr) (string, IrType) {
 	//  3. Load the data pointer
 	//  4. GEP with the index into the data buffer
 	idx, _ := e.emitExpr(expr.Index)
-
 	headPtr, _ := e.emitExpr(expr.Left)
+
+	// Bounds check
+	e.emitArrayBoundsCheck(headPtr, idx)
 
 	dataPtr := e.tmp()
 	line := fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, headPtr)
@@ -2192,6 +2195,39 @@ func (e *Emitter) emitArrayElementPtr(expr *ast.IndexExpr) (string, IrType) {
 	e.emit(line)
 
 	return elemPtr, elemType
+}
+
+func (e *Emitter) emitArrayBoundsCheck(headPtr, idx string) {
+	// Load length from array header field 0
+	lenPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, headPtr))
+	length := e.tmp()
+	e.emit(fmt.Sprintf("%s = load i64, ptr %s", length, lenPtr))
+
+	// Check idx >= 0
+	geZero := e.tmp()
+	e.emit(fmt.Sprintf("%s = icmp sge i64 %s, 0", geZero, idx))
+
+	// Check idx < length
+	ltLen := e.tmp()
+	e.emit(fmt.Sprintf("%s = icmp slt i64 %s, %s", ltLen, idx, length))
+
+	// Combine: inBounds = geZero && ltLen
+	inBounds := e.tmp()
+	e.emit(fmt.Sprintf("%s = and i1 %s, %s", inBounds, geZero, ltLen))
+
+	okLabel := e.label("bounds.ok")
+	failLabel := e.label("bounds.fail")
+
+	e.emit(fmt.Sprintf("br i1 %s, label %%%s, label %%%s", inBounds, okLabel, failLabel))
+
+	// Fail block
+	e.emitLabel(failLabel)
+	e.emit(fmt.Sprintf("call void @sydney_panic_index_oob(i64 %s, i64 %s)", idx, length))
+	e.emit("unreachable")
+
+	// OK block — continue
+	e.emitLabel(okLabel)
 }
 
 func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
