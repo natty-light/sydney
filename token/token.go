@@ -34,6 +34,7 @@ const (
 	Continue       TokenType = "Continue"
 	Break          TokenType = "Break"
 	In             TokenType = "In"
+	Spawn          TokenType = "Spawn"
 
 	// Types
 	IntType    TokenType = "IntegerType"
@@ -46,6 +47,7 @@ const (
 	FunctionType TokenType = "FunctionType"
 	ResultType   TokenType = "ResultType"
 	ByteType     TokenType = "ByteType"
+	ChannelType  TokenType = "ChannelType"
 
 	// Grouping
 	LeftParen          TokenType = "LeftParen"
@@ -78,6 +80,7 @@ const (
 	And                TokenType = "And"
 	Or                 TokenType = "Or"
 	Arrow              TokenType = "Arrow"
+	InvArrow           TokenType = "InvArrow"
 
 	EOF     TokenType = "EOF" // End of File
 	Illegal TokenType = "Illegal"

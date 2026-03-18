@@ -18,13 +18,13 @@ type Precedence int
 
 const (
 	LOWEST Precedence = iota + 1
-	SCOPEACCESS
-	ANDOR // I think this is right
+	ANDOR             // I think this is right
 	EQUALS
 	LESSGREATEREQUAL
 	LESSGREATER
 	SUM
 	PRODUCT
+	SCOPEACCESS
 	PREFIX
 	CALL
 	INDEX
@@ -69,6 +69,8 @@ type Parser struct {
 
 	genericNames   map[string]bool
 	typeParameters map[string]bool
+
+	suppressColon bool
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -98,6 +100,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.Macro, p.parseMacroLiteral)
 	p.registerPrefix(token.Match, p.parseMatchExpr)
 	p.registerPrefix(token.Byte, p.parseByteLiteral)
+	p.registerPrefix(token.InvArrow, p.parseReceiveExpr)
+	p.registerPrefix(token.ChannelType, p.parseChannelConstructor)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.Plus, p.parseInfixExpr)
@@ -190,6 +194,9 @@ func (p *Parser) peekError(t token.TokenType) {
 }
 
 func (p *Parser) peekPrecedence() Precedence {
+	if p.suppressColon && p.peekToken.Type == token.Colon {
+		return LOWEST
+	}
 	if p, ok := precedences[p.peekToken.Type]; ok {
 		return p
 	}
@@ -301,6 +308,15 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return stmt
 	case token.Continue:
 		stmt := &ast.ContinueStmt{Token: p.currToken}
+		if p.peekTokenIs(token.Semicolon) {
+			p.nextToken()
+		}
+		return stmt
+	case token.Spawn:
+		stmt := &ast.SpawnStmt{Token: p.currToken}
+		p.nextToken()
+		expr := p.parseExpression(LOWEST)
+		stmt.CallExpr = expr
 		if p.peekTokenIs(token.Semicolon) {
 			p.nextToken()
 		}
@@ -434,6 +450,10 @@ func (p *Parser) parseExpressionOrAssignmentStmt() ast.Stmt {
 				Value:      value,
 			}
 		}
+	}
+
+	if p.peekTokenIs(token.InvArrow) {
+		return p.parseSendStmt(expr)
 	}
 
 	if p.peekTokenIs(token.Semicolon) {
@@ -901,7 +921,9 @@ func (p *Parser) parseHashLiteral() ast.Expr {
 
 	for !p.peekTokenIs(token.RightCurlyBracket) {
 		p.nextToken()
-		key := p.parseExpression(SCOPEACCESS) // this is required since colon is an infix parse function for scope accesses
+		p.suppressColon = true
+		key := p.parseExpression(LOWEST)
+		p.suppressColon = false
 		if !p.expectPeek(token.Colon) {
 			return nil
 		}
@@ -985,6 +1007,8 @@ func (p *Parser) isPeekTokenType() bool {
 		fallthrough
 	case token.ByteType:
 		fallthrough
+	case token.ChannelType:
+		fallthrough
 	case token.ArrayType:
 		return true
 	}
@@ -1024,6 +1048,8 @@ func (p *Parser) parseType() types.Type {
 		return p.parseFunctionType()
 	case token.ResultType:
 		return p.parseResultType()
+	case token.ChannelType:
+		return p.parseChannelType()
 	case token.Identifier:
 		var t types.Type = nil
 		var ok bool
@@ -1157,6 +1183,22 @@ func (p *Parser) parseResultType() types.Type {
 	}
 
 	return types.ResultType{T: t}
+}
+
+func (p *Parser) parseChannelType() types.Type {
+	if !p.expectPeek(token.LessThan) {
+		p.errors = append(p.errors, getTypeParseError("chan", token.LessThan, p.peekToken.Type))
+		return nil
+	}
+	p.nextToken()
+	t := p.parseType()
+
+	if !p.expectPeek(token.GreaterThan) {
+		p.errors = append(p.errors, getTypeParseError("chan", token.GreaterThan, p.peekToken.Type))
+		return nil
+	}
+
+	return types.ChannelType{ElemType: t}
 }
 
 func (p *Parser) parseArrayType() types.Type {
@@ -1621,7 +1663,9 @@ func (p *Parser) parseSliceExpr(left ast.Expr) ast.Expr {
 	expr := &ast.SliceExpr{Token: p.currToken, Left: left}
 	if !p.peekTokenIs(token.Colon) {
 		p.nextToken()
-		expr.Start = p.parseExpression(SCOPEACCESS)
+		p.suppressColon = true
+		expr.Start = p.parseExpression(LOWEST)
+		p.suppressColon = false
 	}
 	if !p.expectPeek(token.Colon) {
 		return nil
@@ -1714,4 +1758,50 @@ func (p *Parser) parseForInStmt(tok token.Token) ast.Stmt {
 	stmt.Body = p.parseBlockStmt()
 
 	return stmt
+}
+
+func (p *Parser) parseSendStmt(ch ast.Expr) ast.Stmt {
+	stmt := &ast.SendStmt{
+		Chan: ch,
+	}
+	p.nextToken() // advance past ident
+	p.nextToken() // advance past <-
+
+	stmt.Value = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.Semicolon) {
+		return nil
+	}
+	return stmt
+}
+
+func (p *Parser) parseReceiveExpr() ast.Expr {
+	expr := &ast.ReceiveExpr{
+		Token: p.currToken,
+	}
+	p.nextToken()
+	expr.Chan = p.parseExpression(LOWEST)
+	if p.peekTokenIs(token.Semicolon) {
+		p.nextToken()
+	}
+	return expr
+}
+
+func (p *Parser) parseChannelConstructor() ast.Expr {
+	typ := p.parseChannelType()
+
+	if !p.expectPeek(token.LeftParen) {
+		return nil
+	}
+
+	var capacity ast.Expr
+	if !p.peekTokenIs(token.RightParen) {
+		p.nextToken()
+		capacity = p.parseExpression(LOWEST)
+	}
+
+	if !p.expectPeek(token.RightParen) {
+		return nil
+	}
+
+	return &ast.ChannelConstructorExpr{Type: typ, Capacity: capacity}
 }

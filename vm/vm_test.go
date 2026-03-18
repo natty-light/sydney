@@ -859,6 +859,34 @@ func TestGenericStructs(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestBufferedChannel(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			`const ch = chan<int>(1);
+			ch <- 99;
+			<- ch;`,
+			99,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestUnbufferedChannel(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			`const ch = chan<int>();
+			spawn func() {
+				ch <- 42;
+			}();
+			<- ch;`,
+			42,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func runVmTests(t *testing.T, tests []vmTestCase) {
 	t.Helper()
 

@@ -800,6 +800,45 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		c.emit(code.OpSlice)
+	case *ast.SpawnStmt:
+		callExpr := node.CallExpr.(*ast.CallExpr)
+		err := c.Compile(callExpr.Function)
+		if err != nil {
+			return err
+		}
+		for _, arg := range callExpr.Arguments {
+			err = c.Compile(arg)
+			if err != nil {
+				return err
+			}
+		}
+		c.emit(code.OpSpawn, len(callExpr.Arguments))
+	case *ast.ChannelConstructorExpr:
+		if node.Capacity != nil {
+			err := c.Compile(node.Capacity)
+			if err != nil {
+				return err
+			}
+		} else {
+			c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 0}))
+		}
+		c.emit(code.OpMakeChannel)
+	case *ast.SendStmt:
+		err := c.Compile(node.Chan)
+		if err != nil {
+			return err
+		}
+		err = c.Compile(node.Value)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpSend)
+	case *ast.ReceiveExpr:
+		err := c.Compile(node.Chan)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpReceive)
 	}
 
 	if expr, ok := node.(ast.Expr); ok {

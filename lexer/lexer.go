@@ -243,6 +243,11 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar() // advance past first equals
 			literal := string(char) + string(l.char)
 			tok = token.Token{Type: token.LessThanEqualTo, Literal: literal}
+		} else if l.peekChar() == minus {
+			char := l.char
+			l.readChar()
+			literal := string(char) + string(l.char)
+			tok = token.Token{Type: token.InvArrow, Literal: literal}
 		} else {
 			tok = l.makeToken(token.LessThan, l.char)
 		}
@@ -333,6 +338,7 @@ var keywords = map[string]token.TokenType{
 	"break":          token.Break,
 	"continue":       token.Continue,
 	"in":             token.In,
+	"spawn":          token.Spawn,
 }
 
 var types = map[string]token.TokenType{
@@ -345,6 +351,7 @@ var types = map[string]token.TokenType{
 	"fn":     token.FunctionType,
 	"result": token.ResultType,
 	"byte":   token.ByteType,
+	"chan":   token.ChannelType,
 }
 
 func LookupIdent(ident string) token.TokenType {

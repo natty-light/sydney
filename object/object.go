@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strconv"
+	"strings"
 	"sydney/ast"
 	"sydney/code"
 	"sydney/types"
-
-	"strings"
 )
 
 type ObjectType string
@@ -38,6 +37,7 @@ const (
 	ItabObj             ObjectType = "Itab"
 	ResultObj           ObjectType = "Result"
 	ByteObj             ObjectType = "Byte"
+	ChannelObj          ObjectType = "Channel"
 )
 
 type (
@@ -163,6 +163,10 @@ type (
 		Value Object
 		Error *String
 	}
+
+	Channel struct {
+		Id int
+	}
 )
 
 func (i *Integer) Type() ObjectType {
@@ -251,6 +255,10 @@ func (r *Result) Type() ObjectType {
 
 func (b *Byte) Type() ObjectType {
 	return ByteObj
+}
+
+func (c *Channel) Type() ObjectType {
+	return ChannelObj
 }
 
 func (i *Integer) Inspect() string {
@@ -422,6 +430,15 @@ func (r *Result) Inspect() string {
 
 func (b *Byte) Inspect() string {
 	return fmt.Sprintf("%s", string(b.Value))
+}
+
+func (c *Channel) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString("channel ")
+	out.WriteString(strconv.Itoa(c.Id))
+	out.WriteString(" ")
+
+	return out.String()
 }
 
 // HashKey functions
