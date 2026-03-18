@@ -82,17 +82,30 @@ func (vm *VM) Run() error {
 		if err != nil {
 			return err
 		}
+
+		// If the fiber is still Running, it was preempted — re-enqueue it.
+		if fiber.state == Running {
+			vm.scheduler.enqueue(fiber)
+		}
 	}
 
 	return nil
 }
 
+const fiberQuantum = 1024 // max instructions per time slice
+
 func (vm *VM) runFiber() error {
 	var ip int
 	var ins code.Instructions
 	var op code.Opcode
+	budget := fiberQuantum
 
-	for vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
+	for vm.frameIdx() > 0 && vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
+		budget--
+		if budget <= 0 {
+			return nil // preempt — re-enqueue this fiber
+		}
+
 		vm.currentFrame().ip++
 
 		ip = vm.currentFrame().ip
