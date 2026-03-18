@@ -15,6 +15,7 @@ const MaxFrames = 1024
 var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
 var Null = &object.Null{}
+var errFiberBlocked = fmt.Errorf("fiber blocked on async I/O")
 
 type VM struct {
 	constants []object.Object
@@ -57,8 +58,18 @@ func (vm *VM) StackTop() object.Object {
 
 func (vm *VM) Run() error {
 	for {
+		vm.scheduler.drainWakeups()
 		fiber := vm.scheduler.next()
 		if fiber == nil {
+
+			if vm.scheduler.ioBlockedCount > 0 {
+				w := <-vm.scheduler.pendingWakeups
+				pushToFiberStack(w.fiber, w.result)
+				vm.scheduler.ioBlockedCount--
+				vm.scheduler.enqueue(w.fiber)
+				continue
+			}
+
 			if vm.scheduler.hasBlockedFibers() {
 				return fmt.Errorf("deadlock: all fibers blocked")
 			}
@@ -214,6 +225,9 @@ func (vm *VM) runFiber() error {
 			vm.currentFrame().ip += 1
 
 			err := vm.executeCall(int(numArgs))
+			if err == errFiberBlocked {
+				return nil // yield — fiber is blocked on async I/O
+			}
 			if err != nil {
 				return err
 			}
@@ -961,6 +975,22 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 
 func (vm *VM) callBuiltIn(builtin *object.BuiltIn, numArgs int) error {
 	args := vm.stack()[vm.sp()-numArgs : vm.sp()] // pull slice of args off stack
+
+	if builtin.AsyncFn != nil {
+		fiber := vm.scheduler.current
+		argsCopy := make([]object.Object, numArgs)
+		copy(argsCopy, args)
+		vm.setSp(vm.sp() - numArgs - 1)
+		fiber.state = Blocked
+		vm.scheduler.ioBlockedCount++
+
+		done := func(result object.Object) {
+			vm.scheduler.pendingWakeups <- wakeup{fiber: fiber, result: result}
+		}
+
+		go builtin.AsyncFn(argsCopy, done)
+		return errFiberBlocked
+	}
 
 	result := builtin.Fn(args...)
 	vm.setSp(vm.sp() - numArgs - 1) // pop args and function

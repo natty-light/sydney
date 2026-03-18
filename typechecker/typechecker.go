@@ -235,6 +235,11 @@ func (c *Checker) checkForInStmt(node *ast.ForInStmt) types.Type {
 
 func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 	name := node.Name.Value
+	if node.Type != nil {
+		if resolved := c.resolveType(node.Type); resolved != nil {
+			node.Type = resolved
+		}
+	}
 	varType, outer, ok := c.env.Get(name)
 	if !ok && node.Type != nil {
 		varType = node.Type
@@ -255,6 +260,10 @@ func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 	}
 
 	if ok && !outer {
+		if valType == nil || varType == nil {
+			c.appendError(fmt.Sprintf("cannot resolve type for variable %s", name), node)
+			return types.Unit
+		}
 		if !c.typesMatch(valType, varType) {
 			c.appendError(fmt.Sprintf("type mismatch: cannot assign %s to variable %s of type %s", valType.Signature(), node.Name.String(), node.Type.Signature()), node)
 		}
@@ -272,6 +281,9 @@ func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 func (c *Checker) checkVarAssignmentStmt(node *ast.VarAssignmentStmt) types.Type {
 	name := node.Identifier.Value
 	varType, _, ok := c.env.Get(name)
+	if st, isScopeType := varType.(types.ScopeType); isScopeType {
+		varType = c.resolveType(st)
+	}
 	valType := c.typeOf(node.Value, varType)
 	isConst := c.env.IsConst(name)
 	if !ok {
@@ -1470,6 +1482,9 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 
 	for i, arg := range expr.Arguments {
 		aType := c.typeOf(arg, nil)
+		if st, isScopeType := aType.(types.ScopeType); isScopeType {
+			aType = c.resolveType(st)
+		}
 		pType := fnType.Params[i]
 		if !c.typesMatch(aType, pType) {
 			c.appendError(fmt.Sprintf("type mismatch: got %s for arg %d in function %s call, expected %s", aType.Signature(), i+1, expr.Function.String(), fnType.Params[i].Signature()), expr)
@@ -1857,7 +1872,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	expr.SubjectType = result.T
 
 	okEnv := NewTypeEnv(c.env)
-	okEnv.Set(expr.OkArm.Pattern.Binding.Value, result.T)
+	okEnv.Set(expr.OkArm.Pattern.Binding.Value, c.resolveType(result.T))
 	oldEnv := c.env
 	c.env = okEnv
 	okBranch := c.check(expr.OkArm.Body)

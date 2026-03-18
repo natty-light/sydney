@@ -3,22 +3,31 @@ package vm
 import "sydney/object"
 
 type Scheduler struct {
-	fibers     []*Fiber
-	runQueue   []*Fiber
-	current    *Fiber
-	mainFiber  *Fiber
-	channels   map[int]*Channel
-	nextChanId int
+	fibers         []*Fiber
+	runQueue       []*Fiber
+	current        *Fiber
+	mainFiber      *Fiber
+	channels       map[int]*Channel
+	nextChanId     int
+	pendingWakeups chan wakeup
+	ioBlockedCount int
+}
+
+type wakeup struct {
+	fiber  *Fiber
+	result object.Object
 }
 
 func NewScheduler() *Scheduler {
 	main := NewFiber(0)
 	return &Scheduler{
-		fibers:    make([]*Fiber, 0),
-		runQueue:  make([]*Fiber, 0),
-		current:   main,
-		mainFiber: main,
-		channels:  make(map[int]*Channel),
+		fibers:         make([]*Fiber, 0),
+		runQueue:       make([]*Fiber, 0),
+		current:        main,
+		mainFiber:      main,
+		channels:       make(map[int]*Channel),
+		pendingWakeups: make(chan wakeup, 64),
+		ioBlockedCount: 0,
 	}
 }
 
@@ -183,4 +192,17 @@ func (s *Scheduler) hasBlockedFibers() bool {
 		}
 	}
 	return false
+}
+
+func (s *Scheduler) drainWakeups() {
+	for {
+		select {
+		case w := <-s.pendingWakeups:
+			pushToFiberStack(w.fiber, w.result)
+			s.ioBlockedCount--
+			s.enqueue(w.fiber)
+		default:
+			return
+		}
+	}
 }

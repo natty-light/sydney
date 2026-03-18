@@ -14,6 +14,8 @@ import (
 type ObjectType string
 type BuiltInFunction func(args ...Object) Object
 
+type AsyncBuiltInFunction func(args []Object, done func(Object))
+
 const (
 	IntegerObj          ObjectType = "Integer"
 	BooleanObj          ObjectType = "Boolean"
@@ -91,8 +93,9 @@ type (
 	}
 
 	BuiltIn struct {
-		Fn BuiltInFunction
-		T  types.FunctionType
+		Fn      BuiltInFunction
+		AsyncFn AsyncBuiltInFunction
+		T       types.FunctionType
 	}
 
 	Array struct {

@@ -1203,8 +1203,12 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 		isGlobal = false
 	}
 
-	val, valType := e.emitExpr(stmt.Value)
-	if valType == IrUnit {
+	var val string
+	var valType IrType
+	if stmt.Value != nil {
+		val, valType = e.emitExpr(stmt.Value)
+	}
+	if valType == IrUnit || stmt.Value == nil {
 		val, valType = e.getZeroValue(stmt.Type)
 	}
 
@@ -1260,7 +1264,7 @@ func (e *Emitter) getZeroValue(t types.Type) (string, IrType) {
 		return "0", IrBool
 	}
 
-	return "", IrPtr
+	return "null", IrPtr
 }
 
 func (e *Emitter) getZeroValueFromIrType(t IrType) string {

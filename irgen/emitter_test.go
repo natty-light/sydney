@@ -1496,47 +1496,53 @@ func TestE2ESockets(t *testing.T) {
 
 	// Sydney client: connect, write, read, print.
 	source := fmt.Sprintf(`
-          import "net"                                                                                                                                                                                      
-                                                                                                                                                                                                            
-          const result<int> conn = net.tcp_conn("127.0.0.1", %d);                                                                                                                                           
-          match conn {                                                                                                                                                                                      
-              ok(handle) -> {                                                                                                                                                                               
-                  net.tcp_write(handle, "hello", 5);                                                                                                                                                        
-                  const result<string> r = net.tcp_read(handle, 1024);
-                  match r {                                                                                                                                                                                 
-                      ok(data) -> { print(data); },
-                      err(msg) -> { print(msg); },                                                                                                                                                          
-                  }                                                                                                                                                                                         
-                  net.tcp_close_stream(handle);
-              },                                                                                                                                                                                            
-              err(msg) -> { print(msg); },
-          }
-      `, port)
+import "net"
+
+const cr = net:connect("127.0.0.1", %d);
+match cr {
+    ok(sock) -> {
+        const wr = net:write(sock, "hello", 5);
+        const rr = net:read(sock, 1024);
+        match rr {
+            ok(data) -> { print(data); },
+            err(msg) -> { print(msg); },
+        }
+        const cl = net:close(sock);
+    },
+    err(msg) -> { print(msg); },
+}
+`, port)
 
 	// compile → run (same pipeline as other e2e tests)
 	tmpDir := t.TempDir()
 
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) != 0 {
-		t.Fatalf("parser errors: %v", p.Errors())
-	}
 	ld := loader.NewFromImports([]string{"net"})
 	ld.SetPaths(filepath.Join(projectRoot, "stdlib"), "")
-	pkgs, _, _, err := ld.Load(map[string]bool{})
+	pkgs, tt, gns, err := ld.Load(map[string]bool{})
 	if err != nil {
 		t.Fatalf("failed to load net module: %v", err)
 	}
 
-	c := typechecker.New(nil)
+	l := lexer.New(source)
+	p := parser.NewWithGenericNames(l, gns)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+
+	c := typechecker.NewWithModuleTypes(nil, tt)
 	c.Check(program, pkgs)
 	if len(c.Errors()) != 0 {
 		t.Fatalf("typechecker errors: %v", c.Errors())
 	}
 	ast.FilterGenericTemplates(program)
+	for _, pkg := range pkgs {
+		for _, prog := range pkg.Programs {
+			ast.FilterGenericTemplates(prog)
+		}
+	}
 	e := New()
-	if err := e.Emit(program, nil); err != nil {
+	if err := e.Emit(program, pkgs); err != nil {
 		t.Fatalf("emitter error: %v", err)
 	}
 

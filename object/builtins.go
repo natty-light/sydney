@@ -8,14 +8,18 @@ import (
 	"os"
 	"strings"
 	"sydney/types"
+	"sync"
 )
 
 // Slab storage for TCP connections and listeners.
 // Index into slice = handle. nil slot = closed/reusable.
 var tcpStreams []gonet.Conn
 var tcpListeners []gonet.Listener
+var tcpMu sync.Mutex
 
 func slabInsertConn(c gonet.Conn) int64 {
+	tcpMu.Lock()
+	defer tcpMu.Unlock()
 	for i, s := range tcpStreams {
 		if s == nil {
 			tcpStreams[i] = c
@@ -27,6 +31,8 @@ func slabInsertConn(c gonet.Conn) int64 {
 }
 
 func slabInsertListener(l gonet.Listener) int64 {
+	tcpMu.Lock()
+	defer tcpMu.Unlock()
 	for i, s := range tcpListeners {
 		if s == nil {
 			tcpListeners[i] = l
@@ -319,15 +325,16 @@ var Builtins = []struct {
 	{
 		"tcp_conn",
 		&BuiltIn{
-			Fn: func(args ...Object) Object {
+			AsyncFn: func(args []Object, done func(Object)) {
 				host := args[0].(*String).Value
 				port := args[1].(*Integer).Value
 				addr := fmt.Sprintf("%s:%d", host, port)
 				conn, err := gonet.Dial("tcp", addr)
 				if err != nil {
-					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+					done(&Result{IsOk: false, Error: &String{Value: err.Error()}})
+					return
 				}
-				return &Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}}
+				done(&Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}})
 			},
 			T: types.FunctionType{Params: []types.Type{types.String, types.Int}, Return: types.ResultType{T: types.Int}},
 		},
@@ -335,15 +342,16 @@ var Builtins = []struct {
 	{
 		"tcp_listen",
 		&BuiltIn{
-			Fn: func(args ...Object) Object {
+			AsyncFn: func(args []Object, done func(Object)) {
 				host := args[0].(*String).Value
 				port := args[1].(*Integer).Value
 				addr := fmt.Sprintf("%s:%d", host, port)
 				ln, err := gonet.Listen("tcp", addr)
 				if err != nil {
-					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+					done(&Result{IsOk: false, Error: &String{Value: err.Error()}})
+					return
 				}
-				return &Result{IsOk: true, Value: &Integer{Value: slabInsertListener(ln)}}
+				done(&Result{IsOk: true, Value: &Integer{Value: slabInsertListener(ln)}})
 			},
 			T: types.FunctionType{Params: []types.Type{types.String, types.Int}, Return: types.ResultType{T: types.Int}},
 		},
@@ -351,16 +359,22 @@ var Builtins = []struct {
 	{
 		"tcp_accept",
 		&BuiltIn{
-			Fn: func(args ...Object) Object {
+			AsyncFn: func(args []Object, done func(Object)) {
 				idx := args[0].(*Integer).Value
+				tcpMu.Lock()
 				if idx < 0 || int(idx) >= len(tcpListeners) || tcpListeners[idx] == nil {
-					return &Result{IsOk: false, Error: &String{Value: "tcp_accept: invalid listener handle"}}
+					tcpMu.Unlock()
+					done(&Result{IsOk: false, Error: &String{Value: "tcp_accept: invalid listener handle"}})
+					return
 				}
-				conn, err := tcpListeners[idx].Accept()
+				listener := tcpListeners[idx]
+				tcpMu.Unlock()
+				conn, err := listener.Accept()
 				if err != nil {
-					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+					done(&Result{IsOk: false, Error: &String{Value: err.Error()}})
+					return
 				}
-				return &Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}}
+				done(&Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}})
 			},
 			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
 		},
@@ -368,18 +382,24 @@ var Builtins = []struct {
 	{
 		"tcp_read",
 		&BuiltIn{
-			Fn: func(args ...Object) Object {
+			AsyncFn: func(args []Object, done func(Object)) {
 				idx := args[0].(*Integer).Value
 				maxLen := args[1].(*Integer).Value
+				tcpMu.Lock()
 				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
-					return &Result{IsOk: false, Error: &String{Value: "tcp_read: invalid stream handle"}}
+					tcpMu.Unlock()
+					done(&Result{IsOk: false, Error: &String{Value: "tcp_read: invalid stream handle"}})
+					return
 				}
 				buf := make([]byte, maxLen)
-				n, err := tcpStreams[idx].Read(buf)
+				stream := tcpStreams[idx]
+				tcpMu.Unlock()
+				n, err := stream.Read(buf)
 				if err != nil {
-					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+					done(&Result{IsOk: false, Error: &String{Value: err.Error()}})
+					return
 				}
-				return &Result{IsOk: true, Value: &String{Value: string(buf[:n])}}
+				done(&Result{IsOk: true, Value: &String{Value: string(buf[:n])}})
 			},
 			T: types.FunctionType{Params: []types.Type{types.Int, types.Int}, Return: types.ResultType{T: types.String}},
 		},
@@ -390,10 +410,14 @@ var Builtins = []struct {
 			Fn: func(args ...Object) Object {
 				idx := args[0].(*Integer).Value
 				data := args[1].(*String).Value
+				tcpMu.Lock()
 				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					tcpMu.Unlock()
 					return &Result{IsOk: false, Error: &String{Value: "tcp_write: invalid stream handle"}}
 				}
-				n, err := tcpStreams[idx].Write([]byte(data))
+				stream := tcpStreams[idx]
+				tcpMu.Unlock()
+				n, err := stream.Write([]byte(data))
 				if err != nil {
 					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
 				}
@@ -407,11 +431,17 @@ var Builtins = []struct {
 		&BuiltIn{
 			Fn: func(args ...Object) Object {
 				idx := args[0].(*Integer).Value
+				tcpMu.Lock()
 				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					tcpMu.Unlock()
 					return &Result{IsOk: false, Error: &String{Value: "tcp_close_stream: invalid handle"}}
 				}
-				err := tcpStreams[idx].Close()
+				stream := tcpStreams[idx]
+				tcpMu.Unlock()
+				err := stream.Close()
+				tcpMu.Lock()
 				tcpStreams[idx] = nil
+				tcpMu.Unlock()
 				if err != nil {
 					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
 				}
@@ -425,11 +455,17 @@ var Builtins = []struct {
 		&BuiltIn{
 			Fn: func(args ...Object) Object {
 				idx := args[0].(*Integer).Value
+				tcpMu.Lock()
 				if idx < 0 || int(idx) >= len(tcpListeners) || tcpListeners[idx] == nil {
+					tcpMu.Unlock()
 					return &Result{IsOk: false, Error: &String{Value: "tcp_close_listener: invalid handle"}}
 				}
-				err := tcpListeners[idx].Close()
+				listener := tcpListeners[idx]
+				tcpMu.Unlock()
+				err := listener.Close()
+				tcpMu.Lock()
 				tcpListeners[idx] = nil
+				tcpMu.Unlock()
 				if err != nil {
 					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
 				}
