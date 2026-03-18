@@ -694,62 +694,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.loadSymbol(symbol)
 	case *ast.MatchExpr:
-		err := c.Compile(node.Subject)
-		if err != nil {
-			return err
-		}
-		c.emit(code.OpResultTag)
-		notTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
-		// ok arm
-		err = c.Compile(node.Subject)
-		if err != nil {
-			return err
-		}
-		c.emit(code.OpResultValue)
-
-		sym := c.symbolTable.DefineImmutable(node.OkArm.Pattern.Binding.Value)
-		if sym.Scope == GlobalScope {
-			c.emit(code.OpSetImmutableGlobal, sym.Index)
+		if node.SomeArm != nil {
+			err := c.compileOptionMatch(node)
+			if err != nil {
+				return err
+			}
 		} else {
-			c.emit(code.OpSetImmutableLocal, sym.Index)
+			err := c.compileResultMatch(node)
+			if err != nil {
+				return err
+			}
 		}
-
-		err = c.Compile(node.OkArm.Body)
-		if err != nil {
-			return err
-		}
-		// this makes sure the value at the end of the block is what is pushed into the expr result
-		if c.lastInstructionIs(code.OpPop) {
-			c.removeLastPop()
-		}
-
-		jumpPos := c.emit(code.OpJump, 9999)
-		afterOkPos := len(c.currentInstructions())
-		c.changeOperand(notTruthyPos, afterOkPos)
-
-		err = c.Compile(node.Subject)
-		if err != nil {
-			return err
-		}
-		c.emit(code.OpResultValue)
-		sym = c.symbolTable.DefineImmutable(node.ErrArm.Pattern.Binding.Value)
-		if sym.Scope == GlobalScope {
-			c.emit(code.OpSetImmutableGlobal, sym.Index)
-		} else {
-			c.emit(code.OpSetImmutableLocal, sym.Index)
-		}
-
-		err = c.Compile(node.ErrArm.Body)
-		if err != nil {
-			return err
-		}
-		// this makes sure the value at the end of the block is what is pushed into the expr result
-		if c.lastInstructionIs(code.OpPop) {
-			c.removeLastPop()
-		}
-
-		afterErrPos := len(c.currentInstructions())
-		c.changeOperand(jumpPos, afterErrPos)
 	case *ast.BreakStmt:
 		loop := c.getLoop()
 		pos := c.emit(code.OpJump, 9999)
@@ -974,6 +929,128 @@ func (c *Compiler) leaveScope() code.Instructions {
 	c.symbolTable = c.symbolTable.Outer
 
 	return instructions
+}
+
+func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
+	err := c.Compile(node.Subject)
+	if err != nil {
+		return err
+	}
+	c.emit(code.OpResultTag)
+	notTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+	// ok arm
+	c.enterBlockScope()
+	err = c.Compile(node.Subject)
+	if err != nil {
+		return err
+	}
+	c.emit(code.OpResultValue)
+
+	sym := c.symbolTable.DefineImmutable(node.OkArm.Pattern.Binding.Value)
+	if sym.Scope == GlobalScope {
+		c.emit(code.OpSetImmutableGlobal, sym.Index)
+	} else {
+		c.emit(code.OpSetImmutableLocal, sym.Index)
+	}
+
+	err = c.Compile(node.OkArm.Body)
+	if err != nil {
+		return err
+	}
+	if c.lastInstructionIs(code.OpPop) {
+		c.removeLastPop()
+	}
+	c.leaveBlockScope()
+
+	jumpPos := c.emit(code.OpJump, 9999)
+	afterOkPos := len(c.currentInstructions())
+	c.changeOperand(notTruthyPos, afterOkPos)
+
+	// err arm
+	c.enterBlockScope()
+	err = c.Compile(node.Subject)
+	if err != nil {
+		return err
+	}
+	c.emit(code.OpResultValue)
+	sym = c.symbolTable.DefineImmutable(node.ErrArm.Pattern.Binding.Value)
+	if sym.Scope == GlobalScope {
+		c.emit(code.OpSetImmutableGlobal, sym.Index)
+	} else {
+		c.emit(code.OpSetImmutableLocal, sym.Index)
+	}
+
+	err = c.Compile(node.ErrArm.Body)
+	if err != nil {
+		return err
+	}
+	if c.lastInstructionIs(code.OpPop) {
+		c.removeLastPop()
+	}
+	c.leaveBlockScope()
+
+	afterErrPos := len(c.currentInstructions())
+	c.changeOperand(jumpPos, afterErrPos)
+	return nil
+}
+
+func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
+	err := c.Compile(node.Subject)
+	if err != nil {
+		return err
+	}
+	c.emit(code.OpResultTag)
+	notTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+
+	// some arm
+	c.enterBlockScope()
+	err = c.Compile(node.Subject)
+	if err != nil {
+		return err
+	}
+	c.emit(code.OpResultValue)
+
+	sym := c.symbolTable.DefineImmutable(node.SomeArm.Pattern.Binding.Value)
+	if sym.Scope == GlobalScope {
+		c.emit(code.OpSetImmutableGlobal, sym.Index)
+	} else {
+		c.emit(code.OpSetImmutableLocal, sym.Index)
+	}
+
+	err = c.Compile(node.SomeArm.Body)
+	if err != nil {
+		return err
+	}
+	if c.lastInstructionIs(code.OpPop) {
+		c.removeLastPop()
+	}
+	c.leaveBlockScope()
+
+	jumpPos := c.emit(code.OpJump, 9999)
+	afterSomePos := len(c.currentInstructions())
+	c.changeOperand(notTruthyPos, afterSomePos)
+
+	// none arm — no binding
+	err = c.Compile(node.NoneArm.Body)
+	if err != nil {
+		return err
+	}
+	if c.lastInstructionIs(code.OpPop) {
+		c.removeLastPop()
+	}
+
+	afterNonePos := len(c.currentInstructions())
+	c.changeOperand(jumpPos, afterNonePos)
+	return nil
+}
+
+func (c *Compiler) enterBlockScope() {
+	c.symbolTable = NewBlockScopedSymbolTable(c.symbolTable)
+}
+
+func (c *Compiler) leaveBlockScope() {
+	c.symbolTable = c.symbolTable.Outer
 }
 
 func (c *Compiler) enterLoop(conditionPos int, hasPost bool) {
