@@ -915,10 +915,10 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 
 	pair, ok := hashObject.Pairs[key.HashKey()]
 	if !ok {
-		return vm.push(Null)
+		return vm.push(&object.Option{IsSome: false, Value: nil})
 	}
 
-	return vm.push(pair.Value)
+	return vm.push(&object.Option{IsSome: true, Value: pair.Value})
 }
 
 func (vm *VM) executeCall(numArgs int) error {

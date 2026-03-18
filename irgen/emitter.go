@@ -369,8 +369,10 @@ declare ptr @sydney_map_create_int()
 declare ptr @sydney_map_create_string()
 declare void @sydney_map_set_str(ptr, ptr, i64)
 declare i64 @sydney_map_get_str(ptr, ptr)
+declare i8 @sydney_map_contains_str(ptr, ptr)
 declare void @sydney_map_set_int(ptr, i64, i64)
 declare i64 @sydney_map_get_int(ptr, i64)
+declare i8 @sydney_map_contains_int(ptr, i64)
 declare i64 @sydney_file_open(ptr)
 declare ptr @sydney_file_read(i64)
 declare i64 @sydney_file_write(i64, ptr)
@@ -2205,36 +2207,50 @@ func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 
 func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	mapPtr, _ := e.emitExpr(expr.Left)
-
-	var line string
 	key, keyType := e.emitExpr(expr.Index)
-	val := e.tmp()
-	valType := IrInt
+
+	// get the inner type from option<T>
+	optType := expr.GetResolvedType().(types.OptionType)
+	innerIrType := SydneyTypeToIrType(optType.T)
+
+	// call contains
+	found := e.tmp()
 	if expr.Index.GetResolvedType() == types.String {
-		line = fmt.Sprintf("%s = call i64 @sydney_map_get_str(ptr %s, ptr %s)", val, mapPtr, key)
+		e.emit(fmt.Sprintf("%s = call i8 @sydney_map_contains_str(ptr %s, ptr %s)", found, mapPtr, key))
 	} else {
-		line = fmt.Sprintf("%s = call i64 @sydney_map_get_int(ptr %s, %s %s)", val, mapPtr, keyType, key)
+		e.emit(fmt.Sprintf("%s = call i8 @sydney_map_contains_int(ptr %s, %s %s)", found, mapPtr, keyType, key))
 	}
-	e.emit(line)
+	tag := e.tmp()
+	e.emit(fmt.Sprintf("%s = trunc i8 %s to i1", tag, found))
 
-	switch t := expr.GetResolvedType().(type) {
-	case types.BasicType:
-		if t == types.String {
-			val = e.emitIntToPtr(val)
-			valType = IrPtr
-		}
-	case types.MapType:
-		val = e.emitIntToPtr(val)
-		valType = IrPtr
-	case types.ArrayType:
-		val = e.emitIntToPtr(val)
-		valType = IrPtr
-	case types.StructType:
-		val = e.emitIntToPtr(val)
-		valType = IrPtr
+	// call get (value is 0/null if not found, but we'll only use it in the some branch)
+	rawVal := e.tmp()
+	if expr.Index.GetResolvedType() == types.String {
+		e.emit(fmt.Sprintf("%s = call i64 @sydney_map_get_str(ptr %s, ptr %s)", rawVal, mapPtr, key))
+	} else {
+		e.emit(fmt.Sprintf("%s = call i64 @sydney_map_get_int(ptr %s, %s %s)", rawVal, mapPtr, keyType, key))
 	}
 
-	return val, valType
+	// convert raw i64 to the proper inner type
+	innerVal := rawVal
+	if innerIrType == IrPtr {
+		innerVal = e.emitIntToPtr(rawVal)
+	}
+
+	// allocate option tagged union { i1, innerType }
+	ut := GetOptionTaggedUnion(innerIrType)
+	result := e.tmp()
+	e.emit(fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", result))
+
+	tagPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, result))
+	e.emit(fmt.Sprintf("store i1 %s, ptr %s", tag, tagPtr))
+
+	valPtr := e.tmp()
+	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, result))
+	e.emit(fmt.Sprintf("store %s %s, ptr %s", innerIrType, innerVal, valPtr))
+
+	return result, IrPtr
 }
 
 func (e *Emitter) emitStringIndexExpr(expr *ast.IndexExpr) (string, IrType) {

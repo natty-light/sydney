@@ -1523,6 +1523,10 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 		p.nextToken()
 		subject = p.parseCallExpr(subject)
 	}
+	if p.peekTokenIs(token.LeftSquareBracket) {
+		p.nextToken()
+		subject = p.parseIndexExpr(subject)
+	}
 	m.Subject = subject
 	if !p.expectPeek(token.LeftCurlyBracket) {
 		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected {, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
