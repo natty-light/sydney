@@ -681,6 +681,46 @@ func TestMatchExpression(t *testing.T) {
 	runVmTests(t, tests)
 }
 
+func TestOptionMatch(t *testing.T) {
+	tests := []vmTestCase{
+		{ // match some arm
+			source: `const option<int> x = some(42);
+			match x {
+				some(val) -> { val + 1; },
+				none -> { 0; },
+			};`,
+			expected: 43,
+		},
+		{ // match none arm
+			source: `const option<int> x = none();
+			match x {
+				some(val) -> { val + 1; },
+				none -> { 0; },
+			};`,
+			expected: 0,
+		},
+		{ // match as value in variable
+			source: `const option<int> x = some(10);
+			const y = match x {
+				some(val) -> { val * 2; },
+				none -> { 0; },
+			};
+			y;`,
+			expected: 20,
+		},
+		{ // none first
+			source: `const option<int> x = some(5);
+			match x {
+				none -> { 0; },
+				some(val) -> { val + 5; },
+			};`,
+			expected: 10,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
 func TestThreePartForLoops(t *testing.T) {
 	tests := []vmTestCase{
 		{
