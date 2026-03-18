@@ -84,10 +84,18 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrPtr // this is indicative of an issue where type structs are not pointers consistently
 	case types.ChannelType:
 		return IrInt
+	case types.OptionType:
+		return IrPtr
+	case *types.OptionType:
+		return IrPtr
 	}
 	return IrUnit
 }
 
 func GetResultTaggedUnion(t IrType) IrType {
 	return BasicIrType(fmt.Sprintf("{ i1 , %s, ptr }", t))
+}
+
+func GetOptionTaggedUnion(t IrType) IrType {
+	return BasicIrType(fmt.Sprintf("{ i1 , %s }", t))
 }

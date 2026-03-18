@@ -320,8 +320,18 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		}
 	case *ast.MatchExpr:
 		e.collectStrings(node.Subject)
-		e.collectStrings(node.OkArm.Body)
-		e.collectStrings(node.ErrArm.Body)
+		if node.OkArm != nil {
+			e.collectStrings(node.OkArm.Body)
+		}
+		if node.ErrArm != nil {
+			e.collectStrings(node.ErrArm.Body)
+		}
+		if node.SomeArm != nil {
+			e.collectStrings(node.SomeArm.Body)
+		}
+		if node.NoneArm != nil {
+			e.collectStrings(node.NoneArm.Body)
+		}
 	case *ast.SpawnStmt:
 		e.collectStrings(node.CallExpr)
 	case *ast.SendStmt:
@@ -971,6 +981,10 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitResultConstructorCall(true, expr)
 		case "err":
 			return e.emitResultConstructorCall(false, expr)
+		case "some":
+			return e.emitOptionConstructorCall(true, expr)
+		case "none":
+			return e.emitOptionConstructorCall(false, expr)
 		case "int":
 			return e.emitIntConvCall(expr)
 		case "byte":
@@ -2539,7 +2553,53 @@ func (e *Emitter) emitResultConstructorCall(isOk bool, expr *ast.CallExpr) (stri
 	return result, IrPtr
 }
 
+func (e *Emitter) emitOptionConstructorCall(isSome bool, expr *ast.CallExpr) (string, IrType) {
+	var innerType IrType
+	var arg string
+
+	if isSome {
+		arg, innerType = e.emitExpr(expr.Arguments[0])
+	} else {
+		ot := expr.ResolvedType.(*types.OptionType)
+		innerType = SydneyTypeToIrType(ot.T)
+	}
+
+	ut := GetOptionTaggedUnion(innerType)
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", result)
+	e.emit(line)
+
+	tagPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, result)
+	e.emit(line)
+
+	valPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, result)
+	e.emit(line)
+
+	if isSome {
+		line = fmt.Sprintf("store i1 1, ptr %s", tagPtr)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", innerType, arg, valPtr)
+		e.emit(line)
+	} else {
+		line = fmt.Sprintf("store i1 0, ptr %s", tagPtr)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", innerType, e.getZeroValueFromIrType(innerType), valPtr)
+		e.emit(line)
+	}
+
+	return result, IrPtr
+}
+
 func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
+	if expr.SomeArm != nil {
+		return e.emitOptionMatchExpr(expr)
+	}
+	return e.emitResultMatchExpr(expr)
+}
+
+func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	subj, _ := e.emitExpr(expr.Subject)
 	rt := SydneyTypeToIrType(expr.ResolvedType)
 	innerType := SydneyTypeToIrType(expr.SubjectType)
@@ -2553,19 +2613,17 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line = fmt.Sprintf("%s = load i1, ptr %s", tag, tagPtr)
 	e.emit(line)
 
-	// set up label
+	// set up labels
 	okLab := e.label("match.ok")
 	errLab := e.label("match.err")
 	endLab := e.label("match.end")
 
-	// emit result alloca, replace with phi node later
 	result := ""
 	if rt != IrUnit {
 		result = e.tmp()
 		e.emitAlloca(result, rt)
 	}
 
-	// emit branches
 	e.emitBranch(tag, okLab, errLab)
 
 	// ok branch
@@ -2576,14 +2634,12 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	val := e.tmp()
 	line = fmt.Sprintf("%s = load %s, ptr %s", val, innerType, valPtr)
 	e.emit(line)
-	// bind
 	bindAlloca := e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, innerType)
 	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
 	e.emit(line)
 	e.pushScope()
 	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
-	// emit block
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
 	e.popScope()
 	if rt != IrUnit {
@@ -2597,21 +2653,88 @@ func (e *Emitter) emitMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	errPtr := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, ut, subj)
 	e.emit(line)
-	err := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", err, IrPtr, errPtr)
+	errVal := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", errVal, IrPtr, errPtr)
 	e.emit(line)
-	// bind
 	bindAlloca = e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, IrPtr)
-	line = fmt.Sprintf("store ptr %s, ptr %s", err, bindAlloca)
+	line = fmt.Sprintf("store ptr %s, ptr %s", errVal, bindAlloca)
 	e.emit(line)
 	e.pushScope()
 	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
-	// emit block
 	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
 	e.popScope()
 	if rt != IrUnit {
 		line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
+		e.emit(line)
+	}
+	e.emitJmp(endLab)
+
+	e.emitLabel(endLab)
+	finalVal := ""
+	if rt != IrUnit {
+		finalVal = e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
+		e.emit(line)
+	}
+
+	return finalVal, rt
+}
+
+func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
+	subj, _ := e.emitExpr(expr.Subject)
+	rt := SydneyTypeToIrType(expr.ResolvedType)
+	innerType := SydneyTypeToIrType(expr.SubjectType)
+	ut := GetOptionTaggedUnion(innerType)
+
+	// load tag
+	tagPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, subj)
+	e.emit(line)
+	tag := e.tmp()
+	line = fmt.Sprintf("%s = load i1, ptr %s", tag, tagPtr)
+	e.emit(line)
+
+	// set up labels
+	someLab := e.label("match.some")
+	noneLab := e.label("match.none")
+	endLab := e.label("match.end")
+
+	result := ""
+	if rt != IrUnit {
+		result = e.tmp()
+		e.emitAlloca(result, rt)
+	}
+
+	e.emitBranch(tag, someLab, noneLab)
+
+	// some branch
+	e.emitLabel(someLab)
+	valPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, subj)
+	e.emit(line)
+	val := e.tmp()
+	line = fmt.Sprintf("%s = load %s, ptr %s", val, innerType, valPtr)
+	e.emit(line)
+	bindAlloca := e.tmp() + ".addr"
+	e.emitAlloca(bindAlloca, innerType)
+	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
+	e.emit(line)
+	e.pushScope()
+	e.locals[expr.SomeArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
+	someResult, _, _ := e.emitBlock(expr.SomeArm.Body)
+	e.popScope()
+	if rt != IrUnit {
+		line = fmt.Sprintf("store %s %s, ptr %s", rt, someResult, result)
+		e.emit(line)
+	}
+	e.emitJmp(endLab)
+
+	// none branch — no binding
+	e.emitLabel(noneLab)
+	noneResult, _, _ := e.emitBlock(expr.NoneArm.Body)
+	if rt != IrUnit {
+		line = fmt.Sprintf("store %s %s, ptr %s", rt, noneResult, result)
 		e.emit(line)
 	}
 	e.emitJmp(endLab)
