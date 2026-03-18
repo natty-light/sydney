@@ -46,6 +46,7 @@ const (
 	MapType      TokenType = "MapType"
 	FunctionType TokenType = "FunctionType"
 	ResultType   TokenType = "ResultType"
+	OptionType   TokenType = "OptionType"
 	ByteType     TokenType = "ByteType"
 	ChannelType  TokenType = "ChannelType"
 
