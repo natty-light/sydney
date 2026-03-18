@@ -56,6 +56,10 @@ type ResultType struct {
 	T Type
 }
 
+type OptionType struct {
+	T Type
+}
+
 type ScopeType struct {
 	Module string
 	Name   string
@@ -136,6 +140,10 @@ func (r ResultType) Signature() string {
 	return out.String()
 }
 
+func (o OptionType) Signature() string {
+	return "option<" + o.T.Signature() + ">"
+}
+
 func (s ScopeType) Signature() string {
 	return s.Module + ":" + s.Name
 }
@@ -175,6 +183,10 @@ func SubstituteTypeParams(t Type, subs map[string]Type) Type {
 		}
 	case ResultType:
 		return ResultType{
+			T: SubstituteTypeParams(tt.T, subs),
+		}
+	case OptionType:
+		return OptionType{
 			T: SubstituteTypeParams(tt.T, subs),
 		}
 	case FunctionType:
