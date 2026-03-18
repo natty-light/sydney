@@ -409,28 +409,49 @@ func (vm *VM) runFiber() error {
 			}
 		case code.OpResultTag:
 			obj := vm.pop()
-			r := obj.(*object.Result)
-			if r.IsOk {
-				err := vm.push(True)
-				if err != nil {
-					return err
+			switch o := obj.(type) {
+			case *object.Result:
+				if o.IsOk {
+					err := vm.push(True)
+					if err != nil {
+						return err
+					}
+				} else {
+					err := vm.push(False)
+					if err != nil {
+						return err
+					}
 				}
-			} else {
-				err := vm.push(False)
-				if err != nil {
-					return err
+			case *object.Option:
+				if o.IsSome {
+					err := vm.push(True)
+					if err != nil {
+						return err
+					}
+				} else {
+					err := vm.push(False)
+					if err != nil {
+						return err
+					}
 				}
 			}
 		case code.OpResultValue:
 			obj := vm.pop()
-			r := obj.(*object.Result)
-			if r.IsOk {
-				err := vm.push(r.Value)
-				if err != nil {
-					return err
+			switch o := obj.(type) {
+			case *object.Result:
+				if o.IsOk {
+					err := vm.push(o.Value)
+					if err != nil {
+						return err
+					}
+				} else {
+					err := vm.push(o.Error)
+					if err != nil {
+						return err
+					}
 				}
-			} else {
-				err := vm.push(r.Error)
+			case *object.Option:
+				err := vm.push(o.Value)
 				if err != nil {
 					return err
 				}
