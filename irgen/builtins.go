@@ -7,11 +7,18 @@ import (
 )
 
 var runtimeBuiltins = map[string]string{
-	"io__fopen":  "sydney_file_open",
-	"io__fread":  "sydney_file_read",
-	"io__fwrite": "sydney_file_write",
-	"io__fclose": "sydney_file_close",
-	"conv__atof": "sydney_atof",
+	"io__fopen":               "sydney_file_open",
+	"io__fread":               "sydney_file_read",
+	"io__fwrite":              "sydney_file_write",
+	"io__fclose":              "sydney_file_close",
+	"conv__atof":              "sydney_atof",
+	"net__tcp_conn":           "sydney_tcp_connect",
+	"net__tcp_listen":         "sydney_tcp_listen",
+	"net__tcp_accept":         "sydney_tcp_accept",
+	"net__tcp_read":           "sydney_tcp_read",
+	"net__tcp_write":          "sydney_tcp_write",
+	"net__tcp_close_stream":   "sydney_tcp_close_stream",
+	"net__tcp_close_listener": "sydney_tcp_close_listener",
 }
 
 const fNaN = "0x7FF8000000000000"
@@ -304,4 +311,72 @@ func (e *Emitter) emitStrToFloatCall(expr *ast.CallExpr) (string, IrType) {
 	line := fmt.Sprintf("%s = call double @sydney_atof(ptr %s)", result, m)
 	e.emit(line)
 	return e.wrapIntoResult(result, IrFloat)
+}
+
+func (e *Emitter) emitTcpConnectCall(expr *ast.CallExpr) (string, IrType) {
+	host, _ := e.emitExpr(expr.Arguments[0])
+	port, _ := e.emitExpr(expr.Arguments[1])
+	handle := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tcp_connect(ptr %s, i64 %s)", handle, host, port)
+	e.emit(line)
+
+	return e.wrapIntoResult(handle, IrInt)
+}
+
+func (e *Emitter) emitTcpListenCall(expr *ast.CallExpr) (string, IrType) {
+	host, _ := e.emitExpr(expr.Arguments[0])
+	port, _ := e.emitExpr(expr.Arguments[1])
+	handle := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tcp_listen(ptr %s, i64 %s)", handle, host, port)
+	e.emit(line)
+
+	return e.wrapIntoResult(handle, IrInt)
+}
+
+func (e *Emitter) emitTcpAcceptCall(expr *ast.CallExpr) (string, IrType) {
+	handler, _ := e.emitExpr(expr.Arguments[0])
+	handle := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tcp_accept(i64 %s)", handle, handler)
+	e.emit(line)
+
+	return e.wrapIntoResult(handle, IrInt)
+}
+
+func (e *Emitter) emitTcpReadCall(expr *ast.CallExpr) (string, IrType) {
+	handler, _ := e.emitExpr(expr.Arguments[0])
+	maxLen, _ := e.emitExpr(expr.Arguments[1])
+	data := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_tcp_read(i64 %s, i64 %s)", data, handler, maxLen)
+	e.emit(line)
+
+	return e.wrapIntoResult(data, IrPtr)
+}
+
+func (e *Emitter) emitTcpWriteCall(expr *ast.CallExpr) (string, IrType) {
+	handler, _ := e.emitExpr(expr.Arguments[0])
+	data, _ := e.emitExpr(expr.Arguments[1])
+	l, _ := e.emitExpr(expr.Arguments[2])
+	lwritten := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tcp_write(i64 %s, ptr %s, i64 %s)", lwritten, handler, data, l)
+	e.emit(line)
+
+	return e.wrapIntoResult(lwritten, IrInt)
+}
+
+func (e *Emitter) emitTcpCloseStreamCall(expr *ast.CallExpr) (string, IrType) {
+	stream, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tcp_close_stream(i64 %s)", result, stream)
+	e.emit(line)
+
+	return e.wrapIntoResult(result, IrInt)
+}
+
+func (e *Emitter) emitTcpCloseListenerCall(expr *ast.CallExpr) (string, IrType) {
+	handler, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_tcp_close_listener(i64 %s)", result, handler)
+	e.emit(line)
+
+	return e.wrapIntoResult(result, IrInt)
 }

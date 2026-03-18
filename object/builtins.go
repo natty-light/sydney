@@ -4,10 +4,38 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	gonet "net"
 	"os"
 	"strings"
 	"sydney/types"
 )
+
+// Slab storage for TCP connections and listeners.
+// Index into slice = handle. nil slot = closed/reusable.
+var tcpStreams []gonet.Conn
+var tcpListeners []gonet.Listener
+
+func slabInsertConn(c gonet.Conn) int64 {
+	for i, s := range tcpStreams {
+		if s == nil {
+			tcpStreams[i] = c
+			return int64(i)
+		}
+	}
+	tcpStreams = append(tcpStreams, c)
+	return int64(len(tcpStreams) - 1)
+}
+
+func slabInsertListener(l gonet.Listener) int64 {
+	for i, s := range tcpListeners {
+		if s == nil {
+			tcpListeners[i] = l
+			return int64(i)
+		}
+	}
+	tcpListeners = append(tcpListeners, l)
+	return int64(len(tcpListeners) - 1)
+}
 
 var Builtins = []struct {
 	Name    string
@@ -286,6 +314,128 @@ var Builtins = []struct {
 				return &Option{IsSome: false, Value: nil}
 			},
 			T: types.FunctionType{Params: []types.Type{}, Return: types.OptionType{T: types.Infer}},
+		},
+	},
+	{
+		"tcp_conn",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				host := args[0].(*String).Value
+				port := args[1].(*Integer).Value
+				addr := fmt.Sprintf("%s:%d", host, port)
+				conn, err := gonet.Dial("tcp", addr)
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.String, types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tcp_listen",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				host := args[0].(*String).Value
+				port := args[1].(*Integer).Value
+				addr := fmt.Sprintf("%s:%d", host, port)
+				ln, err := gonet.Listen("tcp", addr)
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: slabInsertListener(ln)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.String, types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tcp_accept",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				if idx < 0 || int(idx) >= len(tcpListeners) || tcpListeners[idx] == nil {
+					return &Result{IsOk: false, Error: &String{Value: "tcp_accept: invalid listener handle"}}
+				}
+				conn, err := tcpListeners[idx].Accept()
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: slabInsertConn(conn)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tcp_read",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				maxLen := args[1].(*Integer).Value
+				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					return &Result{IsOk: false, Error: &String{Value: "tcp_read: invalid stream handle"}}
+				}
+				buf := make([]byte, maxLen)
+				n, err := tcpStreams[idx].Read(buf)
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &String{Value: string(buf[:n])}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.Int}, Return: types.ResultType{T: types.String}},
+		},
+	},
+	{
+		"tcp_write",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				data := args[1].(*String).Value
+				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					return &Result{IsOk: false, Error: &String{Value: "tcp_write: invalid stream handle"}}
+				}
+				n, err := tcpStreams[idx].Write([]byte(data))
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: int64(n)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.String, types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tcp_close_stream",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				if idx < 0 || int(idx) >= len(tcpStreams) || tcpStreams[idx] == nil {
+					return &Result{IsOk: false, Error: &String{Value: "tcp_close_stream: invalid handle"}}
+				}
+				err := tcpStreams[idx].Close()
+				tcpStreams[idx] = nil
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: 0}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"tcp_close_listener",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				idx := args[0].(*Integer).Value
+				if idx < 0 || int(idx) >= len(tcpListeners) || tcpListeners[idx] == nil {
+					return &Result{IsOk: false, Error: &String{Value: "tcp_close_listener: invalid handle"}}
+				}
+				err := tcpListeners[idx].Close()
+				tcpListeners[idx] = nil
+				if err != nil {
+					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: 0}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
 		},
 	},
 }

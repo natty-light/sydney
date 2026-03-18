@@ -1,12 +1,15 @@
 package irgen
 
 import (
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sydney/ast"
 	"sydney/lexer"
+	"sydney/loader"
 	"sydney/parser"
 	"sydney/typechecker"
 	"testing"
@@ -53,7 +56,14 @@ declare i64 @sydney_channel_recv(i64)
 declare void @sydney_spawn(ptr, ptr)
 declare void @sydney_join_all()
 declare void @sydney_panic_index_oob(i64, i64)
-declare void @sydney_panic_div_zero()`
+declare void @sydney_panic_div_zero()
+declare i64 @sydney_tcp_connect(ptr, i64)
+declare i64 @sydney_tcp_listen(ptr, i64)
+declare i64 @sydney_tcp_accept(i64)
+declare ptr @sydney_tcp_read(i64, i64)
+declare i64 @sydney_tcp_write(i64, ptr, i64)
+declare i64 @sydney_tcp_close_stream(i64)
+declare i64 @sydney_tcp_close_listener(i64)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -1448,5 +1458,113 @@ func TestE2EArrayBoundsCheck(t *testing.T) {
 	output := string(out)
 	if !strings.Contains(output, "panic: array index out of bounds: index 10 but length is 3") {
 		t.Fatalf("expected OOB panic message in stderr, got: %s", output)
+	}
+}
+
+func TestE2ESockets(t *testing.T) {
+	projectRoot, err := filepath.Abs(filepath.Join("..", "."))
+	if err != nil {
+		t.Fatalf("cannot find project root: %v", err)
+	}
+	rtLib := filepath.Join(projectRoot, "sydney_rt", "target", "release")
+	if _, err := os.Stat(filepath.Join(rtLib, "libsydney_rt.a")); err != nil {
+		t.Skip("libsydney_rt.a not found, skipping e2e test")
+	}
+
+	// Start a Go TCP server on a free port.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("could not start test server: %v", err)
+	}
+	defer ln.Close()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	// Server: accept one connection, read what the client sends, echo it back.
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 1024)
+		n, _ := conn.Read(buf)
+		conn.Write(buf[:n])
+	}()
+
+	// Sydney client: connect, write, read, print.
+	source := fmt.Sprintf(`
+          import "net"                                                                                                                                                                                      
+                                                                                                                                                                                                            
+          const result<int> conn = net.tcp_conn("127.0.0.1", %d);                                                                                                                                           
+          match conn {                                                                                                                                                                                      
+              ok(handle) -> {                                                                                                                                                                               
+                  net.tcp_write(handle, "hello", 5);                                                                                                                                                        
+                  const result<string> r = net.tcp_read(handle, 1024);
+                  match r {                                                                                                                                                                                 
+                      ok(data) -> { print(data); },
+                      err(msg) -> { print(msg); },                                                                                                                                                          
+                  }                                                                                                                                                                                         
+                  net.tcp_close_stream(handle);
+              },                                                                                                                                                                                            
+              err(msg) -> { print(msg); },
+          }
+      `, port)
+
+	// compile → run (same pipeline as other e2e tests)
+	tmpDir := t.TempDir()
+
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	ld := loader.NewFromImports([]string{"net"})
+	ld.SetPaths(filepath.Join(projectRoot, "stdlib"), "")
+	pkgs, _, _, err := ld.Load(map[string]bool{})
+	if err != nil {
+		t.Fatalf("failed to load net module: %v", err)
+	}
+
+	c := typechecker.New(nil)
+	c.Check(program, pkgs)
+	if len(c.Errors()) != 0 {
+		t.Fatalf("typechecker errors: %v", c.Errors())
+	}
+	ast.FilterGenericTemplates(program)
+	e := New()
+	if err := e.Emit(program, nil); err != nil {
+		t.Fatalf("emitter error: %v", err)
+	}
+
+	llFile := filepath.Join(tmpDir, "test.ll")
+	objFile := filepath.Join(tmpDir, "test.o")
+	binFile := filepath.Join(tmpDir, "test")
+
+	os.WriteFile(llFile, []byte(e.buf.String()), 0644)
+
+	cmd := exec.Command("llc", "-filetype=obj", llFile, "-o", objFile)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("llc failed: %s\n%s", err, out)
+	}
+
+	cmd = exec.Command("clang", objFile, "-L"+rtLib, "-lsydney_rt", "-o", binFile)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clang failed: %s\n%s", err, out)
+	}
+
+	cmd = exec.Command(binFile)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("binary failed: %s\n%s", err, out)
+	}
+
+	<-serverDone
+
+	if string(out) != "hello\n" {
+		t.Fatalf("expected hello, got %q", string(out))
 	}
 }
