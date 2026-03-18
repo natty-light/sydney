@@ -76,12 +76,17 @@ store5(); // returns 5;
 
 ### Maps
 Maps are dictionaries with strict typings. The keys of a map must all be of the same type, as with the values.
-Values are accessed with square bracket index notation. Map values can be updated by key.
+Map values can be updated by key with square bracket index notation.
+
+Accessing a map by key returns `option<T>`, since the key may not exist:
 ```
 const map<string, int> m = { "hello": 0, "world": 1 };
-m["hello"]; // 0;
 m["hello"] = 2;
-m["hello"]; // 2;
+
+const val = match m["hello"] {
+    some(v) -> { v; },
+    none -> { 0; },
+};
 ```
 
 ### Arrays
@@ -227,16 +232,17 @@ for (mut i = 0; i < 10; i = i + 1) {
 ```
 
 ### Match expressions
-`match` is used to deconstruct result types. It is exhaustive — both `ok` and `err` arms must be provided:
+`match` is used to deconstruct `result` and `option` types. It is exhaustive — all arms must be provided:
 ```
-func divide(int a, int b) -> result<int> {
-    if (b == 0) { return err("division by zero"); }
-    return ok(a / b);
-}
-
 const answer = match divide(10, 2) {
     ok(val) -> { val; },
     err(msg) -> { 0; },
+};
+
+const m = { "key": 42 };
+const val = match m["key"] {
+    some(v) -> { v; },
+    none -> { 0; },
 };
 ```
 
@@ -246,6 +252,25 @@ The `result<T>` type represents a value that may be an error. Construct with `ok
 func safeParse(string s) -> result<int> {
     return err("not implemented");
 }
+```
+
+### Option type
+The `option<T>` type represents a value that may or may not exist. Construct with `some(val)` or `none`, deconstruct with `match`:
+```
+const opt = some(42);
+const val = match opt {
+    some(v) -> { v; },
+    none -> { 0; },
+};
+```
+
+Map access returns `option<T>`:
+```
+const map<string, int> m = { "a": 1 };
+match m["b"] {
+    some(v) -> { print(v); },
+    none -> { print("not found"); },
+};
 ```
 
 ## Concurrency
