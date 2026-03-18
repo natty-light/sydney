@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"sydney/code"
 	"sydney/compiler"
@@ -638,6 +639,9 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.O
 	case code.OpMul:
 		result = leftVal * rightVal
 	case code.OpDiv:
+		if rightVal == 0 {
+			return errors.New("division by zero")
+		}
 		result = leftVal / rightVal
 	case code.OpModulo:
 		result = leftVal % rightVal

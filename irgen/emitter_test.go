@@ -52,7 +52,8 @@ declare void @sydney_channel_send(i64, i64)
 declare i64 @sydney_channel_recv(i64)
 declare void @sydney_spawn(ptr, ptr)
 declare void @sydney_join_all()
-declare void @sydney_panic_index_oob(i64, i64)`
+declare void @sydney_panic_index_oob(i64, i64)
+declare void @sydney_panic_div_zero()`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"

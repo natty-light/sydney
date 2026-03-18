@@ -392,7 +392,8 @@ declare void @sydney_channel_send(i64, i64)
 declare i64 @sydney_channel_recv(i64)
 declare void @sydney_spawn(ptr, ptr)
 declare void @sydney_join_all()
-declare void @sydney_panic_index_oob(i64, i64)`)
+declare void @sydney_panic_index_oob(i64, i64)
+declare void @sydney_panic_div_zero()`)
 
 	e.emit("")
 
@@ -932,6 +933,9 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 	if cmpType != "" {
 		opStr = e.emitInfixCmpStr(cmpType, op, lType, left, right)
 	} else {
+		if expr.Operator == "/" {
+			e.emitDivByZeroCheck(lType == IrFloat, right)
+		}
 		opStr = e.infixOpStr(op, lType, left, right)
 	}
 
@@ -939,6 +943,33 @@ func (e *Emitter) emitInfixExpr(expr *ast.InfixExpr) (string, IrType) {
 	e.emit(line)
 
 	return result, retType
+}
+
+func (e *Emitter) emitDivByZeroCheck(fl bool, val string) {
+	op := "ne"
+	cmp := "icmp"
+	typ := IrInt
+	if fl {
+		cmp = "fcmp"
+		typ = IrFloat
+		op = "one"
+	}
+
+	eqZero := e.tmp()
+	e.emit(fmt.Sprintf("%s = %s %s %s %s, 0", eqZero, cmp, op, typ, val))
+
+	okLabel := e.label("div.ok")
+	failLabel := e.label("div.fail")
+
+	e.emit(fmt.Sprintf("br i1 %s, label %%%s, label %%%s", eqZero, okLabel, failLabel))
+
+	// Fail block
+	e.emitLabel(failLabel)
+	e.emit(fmt.Sprintf("call void @sydney_panic_div_zero()"))
+	e.emit("unreachable")
+
+	// OK block — continue
+	e.emitLabel(okLabel)
 }
 
 func (e *Emitter) emitPrefixExpr(expr *ast.PrefixExpr) (string, IrType) {
