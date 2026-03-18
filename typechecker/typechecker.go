@@ -113,6 +113,16 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 
 	for _, pkg := range packages {
 		pkgEnv := NewTypeEnv(nil)
+		// Populate env with struct methods from already-checked dependencies
+		// (e.g. "Socket.read") so cross-module method calls work.
+		// Bare names are accessed via scope syntax (e.g. net:read).
+		for _, env := range registry {
+			for name, typ := range env.store {
+				if strings.Contains(name, ".") {
+					pkgEnv.Set(name, typ)
+				}
+			}
+		}
 		pkgChecker := New(pkgEnv)
 		pkgChecker.packages = registry
 		pkgChecker.currentModule = pkg.Name

@@ -143,10 +143,11 @@ func (e *Emitter) wrapIntoResult(val string, typ IrType) (string, IrType) {
 	line = fmt.Sprintf("%s = phi ptr [ %s, %%%s ], [ null, %%%s ]", errPhi, errMsg, errLbl, okLbl)
 	e.emit(line)
 
-	// alloca and store
+	// heap-allocate so the result survives function returns
 	rt := GetResultTaggedUnion(typ)
 	resultAddr := e.tmp()
-	e.emitAlloca(resultAddr, rt)
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 24)", resultAddr)
+	e.emit(line)
 
 	tagGep := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagGep, rt, resultAddr)
