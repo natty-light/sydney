@@ -665,6 +665,9 @@ func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Obj
 	case code.OpMul:
 		result = leftVal * rightVal
 	case code.OpDiv:
+		if rightVal == 0.0 {
+			return errors.New("division by zero")
+		}
 		result = leftVal / rightVal
 	default:
 		return fmt.Errorf("unknown float operator: %d", op)
