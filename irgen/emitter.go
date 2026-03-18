@@ -949,14 +949,16 @@ func (e *Emitter) emitDivByZeroCheck(fl bool, val string) {
 	op := "ne"
 	cmp := "icmp"
 	typ := IrInt
+	zero := "0"
 	if fl {
 		cmp = "fcmp"
 		typ = IrFloat
 		op = "one"
+		zero = "0.0"
 	}
 
 	eqZero := e.tmp()
-	e.emit(fmt.Sprintf("%s = %s %s %s %s, 0", eqZero, cmp, op, typ, val))
+	e.emit(fmt.Sprintf("%s = %s %s %s %s, %s", eqZero, cmp, op, typ, val, zero))
 
 	okLabel := e.label("div.ok")
 	failLabel := e.label("div.fail")
