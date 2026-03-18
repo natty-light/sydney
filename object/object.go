@@ -36,6 +36,7 @@ const (
 	InterfaceObj        ObjectType = "Interface"
 	ItabObj             ObjectType = "Itab"
 	ResultObj           ObjectType = "Result"
+	OptionObj           ObjectType = "Option"
 	ByteObj             ObjectType = "Byte"
 	ChannelObj          ObjectType = "Channel"
 )
@@ -164,6 +165,11 @@ type (
 		Error *String
 	}
 
+	Option struct {
+		IsSome bool
+		Value  Object
+	}
+
 	Channel struct {
 		Id int
 	}
@@ -251,6 +257,10 @@ func (i *Itab) Type() ObjectType {
 
 func (r *Result) Type() ObjectType {
 	return ResultObj
+}
+
+func (o *Option) Type() ObjectType {
+	return OptionObj
 }
 
 func (b *Byte) Type() ObjectType {
@@ -426,6 +436,13 @@ func (r *Result) Inspect() string {
 	}
 	out.WriteString("\n}")
 	return out.String()
+}
+
+func (o *Option) Inspect() string {
+	if o.IsSome {
+		return "some(" + o.Value.Inspect() + ")"
+	}
+	return "none"
 }
 
 func (b *Byte) Inspect() string {

@@ -270,6 +270,24 @@ var Builtins = []struct {
 			T: types.FunctionType{Params: []types.Type{types.String}, Return: types.Unit},
 		},
 	},
+	{
+		"some",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				return &Option{IsSome: true, Value: args[0]}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Infer}, Return: types.OptionType{T: types.Infer}},
+		},
+	},
+	{
+		"none",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				return &Option{IsSome: false, Value: nil}
+			},
+			T: types.FunctionType{Params: []types.Type{}, Return: types.OptionType{T: types.Infer}},
+		},
+	},
 }
 
 func GetBuiltInByName(name string) *BuiltIn {
