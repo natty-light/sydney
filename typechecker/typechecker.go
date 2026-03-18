@@ -1107,10 +1107,13 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 		case "values":
 			return c.checkValuesBuiltIn(expr)
 		case "ok":
-
 			return c.checkOkBuiltIn(expr)
 		case "err":
 			return c.checkErrBuiltIn(expr, expected)
+		case "some":
+			return c.checkSomeBuiltIn(expr)
+		case "none":
+			return c.checkNoneBuiltIn(expr, expected)
 		case "int":
 			return c.checkIntBuiltIn(expr)
 		case "float":
@@ -1292,6 +1295,18 @@ func (c *Checker) checkOkBuiltIn(expr *ast.CallExpr) types.Type {
 	return resolved
 }
 
+func (c *Checker) checkSomeBuiltIn(expr *ast.CallExpr) types.Type {
+	if len(expr.Arguments) != 1 {
+		c.appendError(fmt.Sprintf("some() expects exactly 1 argument"), expr)
+	}
+
+	t := c.typeOf(expr.Arguments[0], nil)
+
+	resolved := types.OptionType{T: t}
+	expr.ResolvedType = &resolved
+	return resolved
+}
+
 func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) types.Type {
 	if len(expr.Arguments) != 1 {
 		c.appendError(fmt.Sprintf("err() expects exactly 1 argument"), expr)
@@ -1313,6 +1328,27 @@ func (c *Checker) checkErrBuiltIn(expr *ast.CallExpr, contextType types.Type) ty
 		resolved = types.ResultType{T: rt.T}
 	} else {
 		resolved = types.ResultType{T: contextType}
+	}
+	expr.ResolvedType = &resolved
+	return resolved
+}
+
+func (c *Checker) checkNoneBuiltIn(expr *ast.CallExpr, contextType types.Type) types.Type {
+	if len(expr.Arguments) != 0 {
+		c.appendError(fmt.Sprintf("none() expects no arguments"), expr)
+	}
+
+	if contextType == nil && c.currentMatchResultType != nil {
+		contextType = c.currentMatchResultType
+	} else if contextType == nil {
+		c.appendError("cannot infer option type for none()", expr)
+		return types.OptionType{T: types.Unit}
+	}
+	var resolved types.OptionType
+	if ot, ok := contextType.(types.OptionType); ok {
+		resolved = types.OptionType{T: ot.T}
+	} else {
+		resolved = types.OptionType{T: contextType}
 	}
 	expr.ResolvedType = &resolved
 	return resolved
@@ -1807,9 +1843,14 @@ func (c *Checker) extractDeclNameAndType(stmt ast.Stmt, pkgName string) (string,
 
 func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	subType := c.typeOf(expr.Subject, nil)
+
+	if option, ok := subType.(types.OptionType); ok {
+		return c.checkOptionMatch(expr, option)
+	}
+
 	result, ok := subType.(types.ResultType)
 	if !ok {
-		c.appendError(fmt.Sprintf("can only match on result type"), expr)
+		c.appendError(fmt.Sprintf("can only match on result or option type"), expr)
 		return nil
 	}
 	expr.SubjectType = result.T
@@ -1847,6 +1888,36 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	c.currentMatchResultType = oldMatchResultType
 
 	return okBranch
+}
+
+func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType) types.Type {
+	expr.SubjectType = option.T
+
+	someEnv := NewTypeEnv(c.env)
+	someEnv.Set(expr.SomeArm.Pattern.Binding.Value, option.T)
+	oldEnv := c.env
+	c.env = someEnv
+	someBranch := c.check(expr.SomeArm.Body)
+	if someBranch == nil {
+		c.appendError("cannot resolve type for some branch", expr)
+		return nil
+	}
+	c.env = oldEnv
+
+	noneEnv := NewTypeEnv(c.env)
+	oldEnv = c.env
+	c.env = noneEnv
+	noneBranch := c.check(expr.NoneArm.Body)
+	if noneBranch == nil {
+		c.appendError("cannot resolve type for none branch", expr)
+		return nil
+	}
+	if !c.typesMatch(noneBranch, someBranch) {
+		c.appendError(fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", someBranch.Signature(), noneBranch.Signature()), expr)
+	}
+	c.env = oldEnv
+
+	return someBranch
 }
 
 func (c *Checker) resolveType(t types.Type) types.Type {

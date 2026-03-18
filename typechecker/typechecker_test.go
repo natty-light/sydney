@@ -550,7 +550,7 @@ func TestMatchExprTypeErrorChecking(t *testing.T) {
 				ok(val) -> { val; },
 				err(msg) -> { 0; },
 			};`,
-			expectedError: "can only match on result type",
+			expectedError: "can only match on result or option type",
 		},
 		{
 			input: `func f() -> result<int> { return ok(5); }
