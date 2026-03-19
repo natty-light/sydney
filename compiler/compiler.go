@@ -106,7 +106,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 				c.setInterface(name, def.Type)
 			}
 
-			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok { // hoist functions for interfaces
+			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok && !fn.IsExtern { // hoist functions for interfaces
 				name := fn.Name.Value
 				if fn.MangledName != "" {
 					name = fn.MangledName
@@ -689,6 +689,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.ScopeAccessExpr:
 		mangled := c.mangleModule(node.Module.Value, node.Member.Value)
 		symbol, _, ok := c.symbolTable.Resolve(mangled)
+		if !ok {
+			// Fall back to bare name for extern builtins
+			symbol, _, ok = c.symbolTable.Resolve(node.Member.Value)
+		}
 		if !ok {
 			return fmt.Errorf("undefined %s", mangled)
 		}
