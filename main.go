@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sydney/ast"
+	"sydney/codegen"
 	"sydney/compiler"
 	"sydney/irgen"
 	"sydney/lexer"
@@ -40,7 +41,6 @@ var commands = map[string]CommandFunc{
 	"test":    Test,
 }
 
-// TODO : unfuck this
 func main() {
 
 	args := os.Args
@@ -90,6 +90,8 @@ func Run(args []string, flags map[Flag]bool) int {
 	src := string(file)
 
 	imports := loader.ScanImports(src)
+	deriveImports := codegen.ScanDeriveImports(src)
+	imports = append(imports, deriveImports...)
 	ld := loader.NewFromImports(imports)
 	sourceDir := filepath.Dir(filename)
 	stdLib := filepath.Join(sourceDir, "stdlib")
@@ -107,6 +109,8 @@ func Run(args []string, flags map[Flag]bool) int {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
 	}
+
+	codegen.ExpandDerives(program)
 
 	if flags[dumpAst] {
 		ast.Dump(program, 0)
@@ -178,6 +182,8 @@ func Compile(args []string, flags map[Flag]bool) int {
 	src := string(file)
 
 	imports := loader.ScanImports(src)
+	deriveImports := codegen.ScanDeriveImports(src)
+	imports = append(imports, deriveImports...)
 	ld := loader.NewFromImports(imports)
 	sourceDir := filepath.Dir(filename)
 	stdLib := filepath.Join(sourceDir, "stdlib")
@@ -200,6 +206,8 @@ func Compile(args []string, flags map[Flag]bool) int {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
 	}
+
+	codegen.ExpandDerives(program)
 
 	c := typechecker.NewWithModuleTypes(nil, tt)
 	defer func() {
@@ -290,6 +298,8 @@ func runTestFile(filename string) (passed, failed int) {
 
 	// Collect imports from the test file and all sibling module files
 	allImports := loader.ScanImports(src)
+	deriveImports := codegen.ScanDeriveImports(src)
+	allImports = append(allImports, deriveImports...)
 	sourceDir := filepath.Dir(filename)
 	siblingStmts, siblingImports := loadSiblingModuleFiles(sourceDir, filepath.Base(filename))
 	for _, imp := range siblingImports {
@@ -313,6 +323,8 @@ func runTestFile(filename string) (passed, failed int) {
 		printParserErrors(os.Stdout, p.Errors())
 		return 0, 1
 	}
+
+	codegen.ExpandDerives(program)
 
 	// Prepend sibling module declarations into the test program
 	program.Stmts = append(siblingStmts, program.Stmts...)
