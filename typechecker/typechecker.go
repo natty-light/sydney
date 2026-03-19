@@ -190,7 +190,7 @@ func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
 	} else {
 		c.boxIfNecessary(node.ReturnValue, valType, c.currentReturnType)
 	}
-	return valType
+	return types.Never
 }
 
 func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
@@ -1549,6 +1549,9 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 	if actual == nil || expected == nil {
 		return actual == expected
 	}
+	if actual == types.Never || expected == types.Never {
+		return true
+	}
 	if isBasicType(actual) && isBasicType(expected) {
 		return actual == expected || actual == types.Any || expected == types.Any
 	}
@@ -1913,6 +1916,10 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	c.env = oldEnv
 	c.currentMatchResultType = oldMatchResultType
 
+	// If one arm is Never (contains a return), use the other arm's type
+	if okBranch == types.Never {
+		return errBranch
+	}
 	return okBranch
 }
 
@@ -1943,6 +1950,9 @@ func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType)
 	}
 	c.env = oldEnv
 
+	if someBranch == types.Never {
+		return noneBranch
+	}
 	return someBranch
 }
 

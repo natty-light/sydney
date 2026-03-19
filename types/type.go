@@ -88,6 +88,7 @@ const (
 	Any    BasicType = "any"
 	Byte   BasicType = "byte"
 	Infer  BasicType = "infer"
+	Never  BasicType = "never"
 )
 
 func (b BasicType) Signature() string {
