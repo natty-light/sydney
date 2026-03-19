@@ -34,6 +34,8 @@ const (
 	bang        = '!'
 	ampersand   = '&'
 	pipe        = '|'
+
+	pound = '#'
 )
 
 type Lexer struct {
@@ -278,6 +280,15 @@ func (l *Lexer) NextToken() token.Token {
 			tok = l.makeTokenStr(token.Or, literal)
 		} else {
 			// Single & is an illegal char
+			tok = l.makeToken(token.Illegal, l.char)
+		}
+	case pound:
+		if l.peekChar() == leftSquareBracket {
+			char := l.char
+			l.readChar()
+			literal := string(char) + string(l.char)
+			tok = l.makeTokenStr(token.AnnotationStart, literal)
+		} else {
 			tok = l.makeToken(token.Illegal, l.char)
 		}
 	case 0:
