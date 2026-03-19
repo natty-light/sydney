@@ -17,8 +17,14 @@ type (
 		Pos() (int, int)
 	}
 
+	Annotatable interface {
+		GetAnnotations() []*Annotation
+		SetAnnotations([]*Annotation)
+	}
+
 	Stmt interface {
 		Node
+		Annotatable
 		statementNode()
 	}
 
@@ -62,6 +68,23 @@ type resolvable struct{ ResolvedType types.Type }
 func (r *resolvable) GetResolvedType() types.Type  { return r.ResolvedType }
 func (r *resolvable) SetResolvedType(t types.Type) { r.ResolvedType = t }
 
+type Annotation struct {
+	Name string
+	Args []string
+}
+
+type annotatable struct {
+	Annotations []*Annotation
+}
+
+func (a *annotatable) GetAnnotations() []*Annotation {
+	return a.Annotations
+}
+
+func (a *annotatable) SetAnnotations(annotations []*Annotation) {
+	a.Annotations = annotations
+}
+
 type MatchArm struct {
 	Pattern *MatchPattern
 	Body    *BlockStmt
@@ -81,27 +104,32 @@ type (
 		Value    Expr
 		Constant bool
 		Type     types.Type
+		annotatable
 	}
 
 	ReturnStmt struct {
 		Token       token.Token
 		ReturnValue Expr
+		annotatable
 	}
 
 	ExpressionStmt struct {
 		Token token.Token
 		Expr  Expr
+		annotatable
 	}
 
 	BlockStmt struct {
 		Token token.Token
 		Stmts []Stmt
+		annotatable
 	}
 
 	VarAssignmentStmt struct {
 		Token      token.Token
 		Identifier *Identifier
 		Value      Expr
+		annotatable
 	}
 
 	ForStmt struct {
@@ -110,12 +138,14 @@ type (
 		Condition Expr
 		Post      Stmt
 		Body      *BlockStmt
+		annotatable
 	}
 
 	IndexAssignmentStmt struct {
 		Token token.Token
 		Left  *IndexExpr
 		Value Expr
+		annotatable
 	}
 
 	FunctionDeclarationStmt struct {
@@ -127,53 +157,63 @@ type (
 		TypeParams  []*types.TypeParam
 		MangledName string
 		IsExtern    bool
+		annotatable
 	}
 
 	StructDefinitionStmt struct {
 		Token token.Token
 		Name  *Identifier
 		Type  types.StructType
+		annotatable
 	}
 
 	SelectorAssignmentStmt struct {
 		Token token.Token
 		Left  *SelectorExpr
 		Value Expr
+		annotatable
 	}
 
 	InterfaceDefinitionStmt struct {
 		Token token.Token
 		Name  *Identifier
 		Type  types.InterfaceType
+		annotatable
 	}
 
 	InterfaceImplementationStmt struct {
 		Token          token.Token
 		StructName     *Identifier
 		InterfaceNames []Expr
+		annotatable
 	}
 
 	ImportStatement struct {
 		Token token.Token
 		Name  *StringLiteral
+		annotatable
 	}
 
 	ModuleDeclarationStmt struct {
 		Token token.Token
 		Name  *StringLiteral
+		annotatable
 	}
 
 	PubStatement struct {
 		Token token.Token
 		Stmt  Stmt
+		annotatable
 	}
 
 	BreakStmt struct {
 		Token token.Token
+		annotatable
 	}
 
 	ContinueStmt struct {
 		Token token.Token
+		annotatable
 	}
 
 	ForInStmt struct {
@@ -182,19 +222,20 @@ type (
 		Value    *Identifier
 		Body     *BlockStmt
 		Iterable Expr
-		noCast
+		annotatable
 	}
 
 	SpawnStmt struct {
 		Token    token.Token
 		CallExpr Expr
+		annotatable
 	}
 
 	SendStmt struct {
 		Token token.Token
 		Chan  Expr
 		Value Expr
-		noCast
+		annotatable
 	}
 )
 

@@ -236,6 +236,17 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 // Statements
 func (p *Parser) parseStatement() ast.Stmt {
+	if p.currTokenIs(token.AnnotationStart) {
+		annotation := p.parseAnnotation()
+		stmt := p.parseStatement()
+		if _, ok := stmt.(*ast.StructDefinitionStmt); !ok {
+			p.errors = append(p.errors, "can only provide annotations for struct definitions")
+			return nil
+		}
+		stmt.SetAnnotations([]*ast.Annotation{annotation})
+		return stmt
+	}
+
 	switch p.currToken.Type {
 	case token.Mut:
 		fallthrough
@@ -1880,4 +1891,33 @@ func (p *Parser) parseChannelConstructor() ast.Expr {
 	}
 
 	return &ast.ChannelConstructorExpr{Type: typ, Capacity: capacity}
+}
+
+func (p *Parser) parseAnnotation() *ast.Annotation {
+	p.nextToken()
+	name := p.parseIdentifier().(*ast.Identifier).Value
+	if !p.expectPeek(token.LeftParen) {
+		return nil
+	}
+	p.nextToken()
+	args := make([]string, 0)
+	arg := p.parseIdentifier().(*ast.Identifier).Value
+	args = append(args, arg)
+	for p.peekTokenIs(token.Comma) {
+		p.nextToken()
+		p.nextToken()
+		arg := p.parseIdentifier().(*ast.Identifier).Value
+		args = append(args, arg)
+	}
+	if !p.expectPeek(token.RightParen) {
+		return nil
+	}
+	if !p.expectPeek(token.RightSquareBracket) {
+		return nil
+	}
+	p.nextToken()
+	return &ast.Annotation{
+		Name: name,
+		Args: args,
+	}
 }

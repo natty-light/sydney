@@ -82,6 +82,7 @@ const (
 	Or                 TokenType = "Or"
 	Arrow              TokenType = "Arrow"
 	InvArrow           TokenType = "InvArrow"
+	AnnotationStart    TokenType = "AnnotationStart"
 
 	EOF     TokenType = "EOF" // End of File
 	Illegal TokenType = "Illegal"
