@@ -91,7 +91,7 @@ pub func contains_substr(string str, string substr) -> bool {
     mut window_end = window_start + substr_len;
 
     for (mut i = 0; i < len(str) - substr_len + 1; i = i + 1) {
-        mut cmp_str = str[i:substr_len];
+        mut cmp_str = str[i:substr_len + i];
 
         if (substr == cmp_str) {
             return true
@@ -99,6 +99,22 @@ pub func contains_substr(string str, string substr) -> bool {
     }
 
     return false;
+}
+
+pub func index_of_substr(string str, string substr) -> int {
+     const substr_len = len(substr);
+        mut window_start = 0;
+        mut window_end = window_start + substr_len;
+
+        for (mut i = 0; i < len(str) - substr_len + 1; i = i + 1) {
+            mut cmp_str = str[i:substr_len + i];
+
+            if (substr == cmp_str) {
+                return i
+            }
+        }
+
+        return -1
 }
 
 pub func substring(string str, int start, int end) -> result<string> {
