@@ -1,0 +1,108 @@
+module "json"
+
+import "strings"
+import "conv"
+
+func strip_key(string raw, string key) -> option<string> {
+    const with_quotes = "\"" + key + "\"";
+    const start_pos = strings:index_of_substr(raw, with_quotes);
+    if (start_pos == -1) {
+        return none();
+    }
+
+    const without_key_opt = strings:substring(raw, len(with_quotes) + start_pos, len(raw));
+    const without_key = match without_key_opt {
+        ok(val) -> { val; },
+        err(msg) -> { return none(); },
+    }
+
+    some(without_key[1:]);
+}
+
+func get_value_end(string str) -> option<int> {
+    mut end_idx = strings:index_of(str, ',');
+    if (end_idx == -1) {
+        end_idx = strings:index_of(str, '}');
+    }
+    if (end_idx == -1) {
+        return none();
+    }
+
+    return some(end_idx);
+}
+
+pub func get_str(string raw, string key) -> option<string> {
+    const without_colon = match strip_key(raw, key) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const end_idx = match get_value_end(without_colon) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    mut idx_of_quote = strings:index_of(without_colon[:end_idx], '"') + 1;
+    const without_quote = without_colon[idx_of_quote:]
+    idx_of_quote = strings:index_of(without_quote, '"');
+    const val = without_quote[:idx_of_quote];
+
+    return some(val);
+}
+
+pub func get_int(string raw, string key) -> option<int> {
+    const without_colon = match strip_key(raw, key) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const end_idx = match get_value_end(without_colon) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const as_str = strings:trim(without_colon[:end_idx]);
+
+    return match conv:atoi(as_str) {
+        ok(num) -> { some(num); },
+        err(msg) -> { none() },
+    }
+}
+
+pub func get_float(string raw, string key) -> option<float> {
+    const without_colon = match strip_key(raw, key) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const end_idx = match get_value_end(without_colon) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const as_str = strings:trim(without_colon[:end_idx]);
+
+    return match conv:atof(as_str) {
+        ok(num) -> { some(num); },
+        err(msg) -> { none() },
+    }
+}
+
+pub func get_bool(string raw, string key) -> option<bool> {
+    const without_colon = match strip_key(raw, key) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const end_idx = match get_value_end(without_colon) {
+        some(val) -> { val; },
+        none -> { return none(); },
+    }
+
+    const as_str = strings:trim(without_colon[:end_idx]);
+
+    return match conv:parse_bool(as_str) {
+        ok(val) -> { some(val) },
+        err(msg) -> { none() },
+    }
+}
