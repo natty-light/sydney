@@ -7,6 +7,7 @@ import (
 	"io"
 	gonet "net"
 	"os"
+	"strconv"
 	"strings"
 	"sydney/types"
 	"sync"
@@ -290,6 +291,20 @@ var Builtins = []struct {
 				return newError("Argument to `float` not supported")
 			},
 			T: types.FunctionType{Params: []types.Type{types.Byte}, Return: types.String},
+		},
+	},
+	{
+		"atof",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				str := args[0].(*String).Value
+				val, err := strconv.ParseFloat(str, 64)
+				if err != nil {
+					return &Result{Value: nil, Error: &String{Value: err.Error()}, IsOk: false}
+				}
+				return &Result{Value: &Float{Value: val}, Error: nil, IsOk: true}
+			},
+			T: types.FunctionType{Params: []types.Type{types.String}, Return: types.ResultType{T: types.Float}},
 		},
 	},
 	{
