@@ -106,3 +106,43 @@ pub func get_bool(string raw, string key) -> option<bool> {
         err(msg) -> { none() },
     }
 }
+
+pub func get_object(string raw, string key) -> option<string> {
+  const without_colon = match strip_key(raw, key) {
+      some(val) -> { val; },
+      none -> { return none(); },
+  }
+ 
+  const start = strings:index_of(without_colon, '{');
+  if (start == -1) {
+      return none();
+  }
+
+  mut depth = 0;
+  mut end_idx = 0;
+  mut found = false;
+  for (mut i = start; i < len(without_colon); i = i + 1) {
+    const ch = without_colon[i];
+    if (ch == '{') {
+      depth = depth + 1;
+    }
+    if (ch == '}') {
+      depth = depth - 1;
+      if (depth == 0) {
+        end_idx = i + 1;
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    return none();
+  }
+
+  const obj_str_res = strings:substring(without_colon, start, end_idx);
+  return match obj_str_res {
+    ok(val) -> { some(val); },
+    err(msg) -> { none(); },
+  }
+}
