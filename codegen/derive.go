@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+
 	"sydney/ast"
 	"sydney/token"
 	"sydney/types"
@@ -92,7 +93,81 @@ func generateJsonUnmarshalField(field string, typ types.Type) []ast.Stmt {
 	case types.Bool:
 		optDecl.Value = generateJsonCall("get_bool", field)
 	default:
-		return nil
+		st, ok := typ.(types.StructType)
+		if !ok {
+			return nil
+		}
+		stmts := make([]ast.Stmt, 2)
+		rawName := field + "_raw"
+		optDecl := &ast.VarDeclarationStmt{Constant: true}
+		optDecl.Name = &ast.Identifier{Value: rawName}
+		optDecl.Value = generateJsonCall("get_object", field)
+		stmts[0] = optDecl
+
+		varDecl := &ast.VarDeclarationStmt{Constant: true}
+		varDecl.Name = &ast.Identifier{Value: field}
+		varDecl.Value = &ast.MatchExpr{
+			Subject: &ast.Identifier{Value: rawName},
+			SomeArm: &ast.MatchArm{
+				Pattern: &ast.MatchPattern{
+					IsSome:  true,
+					Binding: &ast.Identifier{Value: "val"},
+				},
+				Body: &ast.BlockStmt{
+					Stmts: []ast.Stmt{
+						&ast.ExpressionStmt{
+							Expr: &ast.MatchExpr{
+								Subject: &ast.CallExpr{
+									Function:  &ast.Identifier{Value: "unmarshal_json_" + st.Name},
+									Arguments: []ast.Expr{&ast.Identifier{Value: "val"}},
+								},
+								OkArm: &ast.MatchArm{
+									Pattern: &ast.MatchPattern{
+										IsOk:    true,
+										Binding: &ast.Identifier{Value: "v"},
+									},
+									Body: &ast.BlockStmt{
+										Stmts: []ast.Stmt{
+											&ast.ExpressionStmt{Expr: &ast.Identifier{Value: "v"}},
+										},
+									},
+								},
+								ErrArm: &ast.MatchArm{
+									Pattern: &ast.MatchPattern{
+										Binding: &ast.Identifier{Value: "msg"},
+									},
+									Body: &ast.BlockStmt{
+										Stmts: []ast.Stmt{
+											&ast.ReturnStmt{
+												ReturnValue: &ast.CallExpr{
+													Function:  &ast.Identifier{Value: "err"},
+													Arguments: []ast.Expr{&ast.Identifier{Value: "msg"}},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			NoneArm: &ast.MatchArm{
+				Pattern: &ast.MatchPattern{},
+				Body: &ast.BlockStmt{
+					Stmts: []ast.Stmt{
+						&ast.ReturnStmt{
+							ReturnValue: &ast.CallExpr{
+								Function:  &ast.Identifier{Value: "err"},
+								Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("missing field: %s", field)}},
+							},
+						},
+					},
+				},
+			},
+		}
+		stmts[1] = varDecl
+		return stmts
 	}
 	stmts[0] = optDecl
 
