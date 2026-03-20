@@ -93,81 +93,17 @@ func generateJsonUnmarshalField(field string, typ types.Type) []ast.Stmt {
 	case types.Bool:
 		optDecl.Value = generateJsonCall("get_bool", field)
 	default:
-		st, ok := typ.(types.StructType)
-		if !ok {
-			return nil
+		// Struct type
+		if st, ok := typ.(types.StructType); ok {
+			return generateStructFieldUnmarshal(field, st)
 		}
-		stmts := make([]ast.Stmt, 2)
-		rawName := field + "_raw"
-		optDecl := &ast.VarDeclarationStmt{Constant: true}
-		optDecl.Name = &ast.Identifier{Value: rawName}
-		optDecl.Value = generateJsonCall("get_object", field)
-		stmts[0] = optDecl
 
-		varDecl := &ast.VarDeclarationStmt{Constant: true}
-		varDecl.Name = &ast.Identifier{Value: field}
-		varDecl.Value = &ast.MatchExpr{
-			Subject: &ast.Identifier{Value: rawName},
-			SomeArm: &ast.MatchArm{
-				Pattern: &ast.MatchPattern{
-					IsSome:  true,
-					Binding: &ast.Identifier{Value: "val"},
-				},
-				Body: &ast.BlockStmt{
-					Stmts: []ast.Stmt{
-						&ast.ExpressionStmt{
-							Expr: &ast.MatchExpr{
-								Subject: &ast.CallExpr{
-									Function:  &ast.Identifier{Value: "unmarshal_json_" + st.Name},
-									Arguments: []ast.Expr{&ast.Identifier{Value: "val"}},
-								},
-								OkArm: &ast.MatchArm{
-									Pattern: &ast.MatchPattern{
-										IsOk:    true,
-										Binding: &ast.Identifier{Value: "v"},
-									},
-									Body: &ast.BlockStmt{
-										Stmts: []ast.Stmt{
-											&ast.ExpressionStmt{Expr: &ast.Identifier{Value: "v"}},
-										},
-									},
-								},
-								ErrArm: &ast.MatchArm{
-									Pattern: &ast.MatchPattern{
-										Binding: &ast.Identifier{Value: "msg"},
-									},
-									Body: &ast.BlockStmt{
-										Stmts: []ast.Stmt{
-											&ast.ReturnStmt{
-												ReturnValue: &ast.CallExpr{
-													Function:  &ast.Identifier{Value: "err"},
-													Arguments: []ast.Expr{&ast.Identifier{Value: "msg"}},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			NoneArm: &ast.MatchArm{
-				Pattern: &ast.MatchPattern{},
-				Body: &ast.BlockStmt{
-					Stmts: []ast.Stmt{
-						&ast.ReturnStmt{
-							ReturnValue: &ast.CallExpr{
-								Function:  &ast.Identifier{Value: "err"},
-								Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("missing field: %s", field)}},
-							},
-						},
-					},
-				},
-			},
+		// Array type
+		if at, ok := typ.(types.ArrayType); ok {
+			return generateArrayFieldUnmarshal(field, at)
 		}
-		stmts[1] = varDecl
-		return stmts
+
+		return nil
 	}
 	stmts[0] = optDecl
 
@@ -208,6 +144,180 @@ func generateJsonUnmarshalField(field string, typ types.Type) []ast.Stmt {
 									Value: fmt.Sprintf("missing field: %s", field),
 								},
 							},
+						},
+					},
+				},
+			},
+		},
+	}
+	stmts[1] = valDecl
+	return stmts
+}
+
+func generateStructFieldUnmarshal(field string, st types.StructType) []ast.Stmt {
+	stmts := make([]ast.Stmt, 2)
+	rawName := field + "_raw"
+	optDecl := &ast.VarDeclarationStmt{Constant: true}
+	optDecl.Name = &ast.Identifier{Value: rawName}
+	optDecl.Value = generateJsonCall("get_object", field)
+	stmts[0] = optDecl
+
+	varDecl := &ast.VarDeclarationStmt{Constant: true}
+	varDecl.Name = &ast.Identifier{Value: field}
+	varDecl.Value = &ast.MatchExpr{
+		Subject: &ast.Identifier{Value: rawName},
+		SomeArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{
+				IsSome:  true,
+				Binding: &ast.Identifier{Value: "val"},
+			},
+			Body: &ast.BlockStmt{
+				Stmts: []ast.Stmt{
+					&ast.ExpressionStmt{
+						Expr: &ast.MatchExpr{
+							Subject: &ast.CallExpr{
+								Function:  &ast.Identifier{Value: "unmarshal_json_" + st.Name},
+								Arguments: []ast.Expr{&ast.Identifier{Value: "val"}},
+							},
+							OkArm: &ast.MatchArm{
+								Pattern: &ast.MatchPattern{
+									IsOk:    true,
+									Binding: &ast.Identifier{Value: "v"},
+								},
+								Body: &ast.BlockStmt{
+									Stmts: []ast.Stmt{
+										&ast.ExpressionStmt{Expr: &ast.Identifier{Value: "v"}},
+									},
+								},
+							},
+							ErrArm: &ast.MatchArm{
+								Pattern: &ast.MatchPattern{
+									Binding: &ast.Identifier{Value: "msg"},
+								},
+								Body: &ast.BlockStmt{
+									Stmts: []ast.Stmt{
+										&ast.ReturnStmt{
+											ReturnValue: &ast.CallExpr{
+												Function:  &ast.Identifier{Value: "err"},
+												Arguments: []ast.Expr{&ast.Identifier{Value: "msg"}},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		NoneArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{},
+			Body: &ast.BlockStmt{
+				Stmts: []ast.Stmt{
+					&ast.ReturnStmt{
+						ReturnValue: &ast.CallExpr{
+							Function:  &ast.Identifier{Value: "err"},
+							Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("missing field: %s", field)}},
+						},
+					},
+				},
+			},
+		},
+	}
+	stmts[1] = varDecl
+	return stmts
+}
+
+func generateArrayFieldUnmarshal(field string, at types.ArrayType) []ast.Stmt {
+	// Map element type to parse function name
+	var parseFn string
+	switch at.ElemType {
+	case types.Int:
+		parseFn = "parse_int_array"
+	case types.Float:
+		parseFn = "parse_float_array"
+	case types.String:
+		parseFn = "parse_string_array"
+	case types.Bool:
+		parseFn = "parse_bool_array"
+	default:
+		return nil
+	}
+
+	stmts := make([]ast.Stmt, 2)
+
+	// const <field>_raw = json:get_array(raw, "<field>");
+	rawDecl := &ast.VarDeclarationStmt{Constant: true}
+	rawDecl.Name = &ast.Identifier{Value: field + "_raw"}
+	rawDecl.Value = generateJsonCall("get_array", field)
+	stmts[0] = rawDecl
+
+	// const <field> = match <field>_raw {
+	//     some(val) -> {
+	//         match json:parse_T_array(val) {
+	//             some(arr) -> { arr; },
+	//             none -> { return err("failed to parse array field: <field>"); },
+	//         }
+	//     },
+	//     none -> { return err("missing field: <field>"); },
+	// }
+	valDecl := &ast.VarDeclarationStmt{Constant: true}
+	valDecl.Name = &ast.Identifier{Value: field}
+	valDecl.Value = &ast.MatchExpr{
+		Subject: &ast.Identifier{Value: field + "_raw"},
+		SomeArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{
+				IsSome:  true,
+				Binding: &ast.Identifier{Value: "val"},
+			},
+			Body: &ast.BlockStmt{
+				Stmts: []ast.Stmt{
+					&ast.ExpressionStmt{
+						Expr: &ast.MatchExpr{
+							Subject: &ast.CallExpr{
+								Function: &ast.ScopeAccessExpr{
+									Module: &ast.Identifier{Value: "json"},
+									Member: &ast.Identifier{Value: parseFn},
+								},
+								Arguments: []ast.Expr{&ast.Identifier{Value: "val"}},
+							},
+							SomeArm: &ast.MatchArm{
+								Pattern: &ast.MatchPattern{
+									IsSome:  true,
+									Binding: &ast.Identifier{Value: "arr"},
+								},
+								Body: &ast.BlockStmt{
+									Stmts: []ast.Stmt{
+										&ast.ExpressionStmt{Expr: &ast.Identifier{Value: "arr"}},
+									},
+								},
+							},
+							NoneArm: &ast.MatchArm{
+								Pattern: &ast.MatchPattern{},
+								Body: &ast.BlockStmt{
+									Stmts: []ast.Stmt{
+										&ast.ReturnStmt{
+											ReturnValue: &ast.CallExpr{
+												Function:  &ast.Identifier{Value: "err"},
+												Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("failed to parse array field: %s", field)}},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		NoneArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{},
+			Body: &ast.BlockStmt{
+				Stmts: []ast.Stmt{
+					&ast.ReturnStmt{
+						ReturnValue: &ast.CallExpr{
+							Function:  &ast.Identifier{Value: "err"},
+							Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("missing field: %s", field)}},
 						},
 					},
 				},

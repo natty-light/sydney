@@ -146,3 +146,100 @@ pub func get_object(string raw, string key) -> option<string> {
     err(msg) -> { none(); },
   }
 }
+
+pub func get_array(string raw, string key) -> option<string> {
+  const without_colon = match strip_key(raw, key) {
+    some(val) -> { val; },
+    none -> { return none() },
+  }
+
+  const start = strings:index_of(without_colon, '[');
+  if (start == -1) {
+    return none();
+  }
+
+  mut depth = 0;
+  mut end = 0;
+  mut found = false;
+  for (mut i = start; i < len(without_colon); i = i + 1) {
+    const ch = without_colon[i];
+    if (ch == '[') {
+      depth = depth + 1;
+    }
+    if (ch == ']') {
+      depth = depth - 1;
+      if (depth == 0) {
+        end = i + 1;
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    return none();
+  }
+
+  return match strings:substring(without_colon, start + 1, end - 1) {
+    ok(val) -> { some(val); },
+    err(msg) -> { none(); },
+  }
+}
+
+pub func parse_int_array(string raw) -> option<array<int>> {
+  const elems = strings:split(raw, ',');
+  mut array<int> ret = [];
+  for (elem in elems) {
+    const trimmed = strings:trim(elem);
+    const parsed = match conv:atoi(trimmed) {
+      ok(i) -> { i; },
+      err(msg) -> { return none(); },
+    }
+    ret = append(ret, parsed);
+  }
+
+  return some(ret);
+}
+
+pub func parse_float_array(string raw) -> option<array<float>> {
+  const elems = strings:split(raw, ',');
+  mut array<float> ret = [];
+  for (elem in elems) {
+    const trimmed = strings:trim(elem)
+    const parsed = match conv:atof(trimmed) {
+      ok(f) -> { f; },
+      err(msg) -> { return none(); },
+    }
+    ret = append(ret, parsed);
+  }
+
+  return some(ret);
+}
+
+pub func parse_string_array(string raw) -> option<array<string>> {
+  const elems = strings:split(raw, ',');
+  mut array<string> ret = [];
+  for (elem in elems) {
+      const trimmed = strings:trim(elem);
+      const trimmed_len = len(trimmed);
+      const stripped = trimmed[1:trimmed_len - 1]
+      ret = append(ret, stripped);
+  }
+
+  return some(ret)
+}
+
+pub func parse_bool_array(string raw) -> option<array<bool>> {
+  const elems = strings:split(raw, ',');
+  mut array<bool> ret = [];
+  for (elem in elems) {
+    const trimmed = strings:trim(elem)
+    const parsed = match conv:parse_bool(trimmed) {
+      ok(b) -> { b; },
+      err(msg) -> { return none(); },
+    }
+    ret = append(ret, parsed);
+  }
+
+  return some(ret);
+}
