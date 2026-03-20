@@ -243,3 +243,40 @@ pub func parse_bool_array(string raw) -> option<array<bool>> {
 
   return some(ret);
 }
+
+pub func split_elements(string raw) -> array<string> {
+  mut array<string> res = [];
+  mut depth = 0;
+  mut start = 0;
+  for (mut i = 0; i < len(raw); i = i + 1) {
+    const ch = raw[i];
+    if (ch == '{' || ch == '[') {
+        depth = depth + 1;
+    }
+    if (ch == '}' || ch == ']') {
+      depth = depth - 1;
+    }
+    if (ch == ',' && depth == 0) {
+      const elem_res = strings:substring(raw, start, i);
+      const elem = match elem_res {
+        ok(val) -> { val; },
+        err(msg) -> { ""; },
+      }
+      res = append(res, strings:trim(elem));
+      start = i + 1;
+    }
+  }
+
+  const last_res = strings:substring(raw, start, len(raw));
+  const last = match last_res {
+    ok(val) -> { val; },
+    err(msg) -> { "" },
+  }
+  res = append(res, strings:trim(last));
+  return res;
+}
+
+pub func strip_brackets(string raw) -> string {
+  const trimmed = strings:trim(raw);
+  return trimmed[1:len(trimmed) - 1];
+}
