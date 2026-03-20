@@ -9,15 +9,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sydney/types"
 	"sync"
+
+	"sydney/types"
 )
 
 // Slab storage for TCP connections and listeners.
 // Index into slice = handle. nil slot = closed/reusable.
-var tcpStreams []gonet.Conn
-var tcpListeners []gonet.Listener
-var tcpMu sync.Mutex
+var (
+	tcpStreams   []gonet.Conn
+	tcpListeners []gonet.Listener
+	tcpMu        sync.Mutex
+)
 
 func slabInsertConn(c gonet.Conn) int64 {
 	tcpMu.Lock()
@@ -305,6 +308,17 @@ var Builtins = []struct {
 				return &Result{Value: &Float{Value: val}, Error: nil, IsOk: true}
 			},
 			T: types.FunctionType{Params: []types.Type{types.String}, Return: types.ResultType{T: types.Float}},
+		},
+	},
+	{
+		"ftoa",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fl := args[0].(*Float).Value
+				val := fmt.Sprintf("%f", fl)
+				return &String{Value: val}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Float}, Return: types.String},
 		},
 	},
 	{
