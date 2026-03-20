@@ -133,7 +133,7 @@ func (l *Loader) Load(visited map[string]bool) ([]*Package, map[string]map[strin
 	for _, imp := range l.imports {
 		name := imp.Name.Value
 		if visited[name] {
-			return nil, nil, nil, fmt.Errorf("circular import: %s", name)
+			continue
 		}
 		visited[name] = true
 		dir, err := l.resolveDir(name)
