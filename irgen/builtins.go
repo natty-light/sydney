@@ -2,6 +2,7 @@ package irgen
 
 import (
 	"fmt"
+
 	"sydney/ast"
 	"sydney/types"
 )
@@ -12,6 +13,7 @@ var runtimeBuiltins = map[string]string{
 	"io__fwrite":              "sydney_file_write",
 	"io__fclose":              "sydney_file_close",
 	"conv__atof":              "sydney_atof",
+	"conv__ftoa":              "sydney_ftoa",
 	"net__tcp_conn":           "sydney_tcp_connect",
 	"net__tcp_listen":         "sydney_tcp_listen",
 	"net__tcp_accept":         "sydney_tcp_accept",
@@ -24,8 +26,6 @@ var runtimeBuiltins = map[string]string{
 	"net__tls_write":          "sydney_tls_write",
 	"net__tls_close_stream":   "sydney_tls_close",
 }
-
-const fNaN = "0x7FF8000000000000"
 
 func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
 	for _, a := range expr.Arguments {
@@ -316,6 +316,14 @@ func (e *Emitter) emitStrToFloatCall(expr *ast.CallExpr) (string, IrType) {
 	line := fmt.Sprintf("%s = call double @sydney_atof(ptr %s)", result, m)
 	e.emit(line)
 	return e.wrapIntoResult(result, IrFloat)
+}
+
+func (e *Emitter) emitFloatToStrCall(expr *ast.CallExpr) (string, IrType) {
+	m, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_ftoa(double %s)", result, m)
+	e.emit(line)
+	return result, IrPtr
 }
 
 func (e *Emitter) emitTcpConnectCall(expr *ast.CallExpr) (string, IrType) {
