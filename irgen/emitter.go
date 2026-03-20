@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+
 	"sydney/ast"
 	"sydney/loader"
 	"sydney/types"
@@ -298,7 +299,6 @@ func (e *Emitter) collectStrings(n ast.Node) {
 	case *ast.ArrayLiteral:
 		for _, elem := range node.Elements {
 			e.collectStrings(elem)
-
 		}
 	case *ast.HashLiteral:
 		keys := make([]ast.Expr, 0, len(node.Pairs))
@@ -344,11 +344,9 @@ func (e *Emitter) collectStrings(n ast.Node) {
 			e.collectStrings(node.Capacity)
 		}
 	}
-
 }
 
 func (e *Emitter) CollectPackage() {
-
 }
 
 func (e *Emitter) preamble() {
@@ -404,12 +402,13 @@ declare i64 @sydney_tcp_close_listener(i64)
 declare i64 @sydney_tls_connect(ptr, i64)
 declare ptr @sydney_tls_read(i64, i64)
 declare i64 @sydney_tls_write(i64, ptr, i64)
-declare ptr @sydney_tls_close(i64)`)
+declare ptr @sydney_tls_close(i64)
+declare ptr @sydney_ftoa(double)`)
 
 	e.emit("")
 
 	structs := make([]string, 0, len(e.structTypes))
-	for name, _ := range e.structTypes {
+	for name := range e.structTypes {
 		structs = append(structs, name)
 	}
 	slices.Sort(structs)
@@ -427,7 +426,7 @@ declare ptr @sydney_tls_close(i64)`)
 	}
 
 	vtableStructs := make([]string, len(e.interfaceTypes))
-	for sname, _ := range e.vtables {
+	for sname := range e.vtables {
 		vtableStructs = append(vtableStructs, sname)
 	}
 	slices.Sort(vtableStructs)
@@ -1093,6 +1092,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 				return e.emitFileClose(expr)
 			case "sydney_atof":
 				return e.emitStrToFloatCall(expr)
+			case "sydney_ftoa":
+				return e.emitFloatToStrCall(expr)
 			case "sydney_tcp_connect":
 				return e.emitTcpConnectCall(expr)
 			case "sydney_tcp_listen":
@@ -2034,7 +2035,6 @@ func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrT
 	line := fmt.Sprintf("%s = call %s %s(%s)", result, sig.retType, sig.name, argsStr)
 	e.emit(line)
 	return result, sig.retType
-
 }
 
 func (e *Emitter) emitInterfaceMethodCall(expr *ast.CallExpr, sel *ast.SelectorExpr, iface *types.InterfaceType) (string, IrType) {
@@ -2876,6 +2876,8 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 		return e.emitFileClose(expr)
 	case "sydney_atof":
 		return e.emitStrToFloatCall(expr)
+	case "sydney_ftoa":
+		return e.emitFloatToStrCall(expr)
 	case "sydney_tcp_connect":
 		return e.emitTcpConnectCall(expr)
 	case "sydney_tcp_listen":
