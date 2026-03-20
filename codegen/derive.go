@@ -49,9 +49,6 @@ func ExpandDerives(program *ast.Program) {
 }
 
 func generateJsonUnmarshal(name string, st types.StructType) *ast.FunctionDeclarationStmt {
-	fnName := "unmarshal_json_" + name
-	param := &ast.Identifier{Value: "raw"}
-
 	body := &ast.BlockStmt{Stmts: make([]ast.Stmt, 0)}
 	for i, field := range st.Fields {
 		stmts := generateJsonUnmarshalField(field, st.Types[i])
@@ -62,176 +59,147 @@ func generateJsonUnmarshal(name string, st types.StructType) *ast.FunctionDeclar
 
 	body.Stmts = append(body.Stmts, generateStructReturn(name, st.Fields))
 
-	fnType := types.FunctionType{
-		Params: []types.Type{types.String},
-		Return: types.ResultType{T: st},
-	}
-
 	return &ast.FunctionDeclarationStmt{
 		Token:  token.Token{Literal: "func"},
-		Name:   &ast.Identifier{Value: fnName},
-		Params: []*ast.Identifier{param},
+		Name:   ident("unmarshal_json_" + name),
+		Params: []*ast.Identifier{ident("raw")},
 		Body:   body,
-		Type:   fnType,
+		Type: types.FunctionType{
+			Params: []types.Type{types.String},
+			Return: types.ResultType{T: st},
+		},
 	}
 }
 
 func generateJsonUnmarshalField(field string, typ types.Type) []ast.Stmt {
-	stmts := make([]ast.Stmt, 2)
-
-	optDecl := &ast.VarDeclarationStmt{Constant: true}
-	optName := field + "_opt"
-	optDecl.Name = &ast.Identifier{Value: optName}
-
 	switch typ {
 	case types.Int:
-		optDecl.Value = generateJsonCall("get_int", field)
+		return primitiveField(field, "get_int")
 	case types.Float:
-		optDecl.Value = generateJsonCall("get_float", field)
+		return primitiveField(field, "get_float")
 	case types.String:
-		optDecl.Value = generateJsonCall("get_str", field)
+		return primitiveField(field, "get_str")
 	case types.Bool:
-		optDecl.Value = generateJsonCall("get_bool", field)
+		return primitiveField(field, "get_bool")
 	default:
-		// Struct type
 		if st, ok := typ.(types.StructType); ok {
-			return generateStructFieldUnmarshal(field, st)
+			return structField(field, st)
 		}
-
-		// Array type
 		if at, ok := typ.(types.ArrayType); ok {
-			return generateArrayFieldUnmarshal(field, at)
+			return arrayField(field, at)
 		}
-
 		return nil
 	}
-	stmts[0] = optDecl
-
-	valDecl := &ast.VarDeclarationStmt{Constant: true}
-	valDecl.Name = &ast.Identifier{Value: field}
-	valDecl.Value = &ast.MatchExpr{
-		Subject: &ast.Identifier{Value: optName},
-		SomeArm: &ast.MatchArm{
-			Pattern: &ast.MatchPattern{
-				IsSome:  true,
-				IsOk:    false,
-				Binding: &ast.Identifier{Value: "val"},
-			},
-			Body: &ast.BlockStmt{
-				Stmts: []ast.Stmt{
-					&ast.ExpressionStmt{
-						Expr: &ast.Identifier{
-							Value: "val",
-						},
-					},
-				},
-			},
-		},
-		NoneArm: &ast.MatchArm{
-			Pattern: &ast.MatchPattern{
-				IsOk:   false,
-				IsSome: false,
-			},
-			Body: &ast.BlockStmt{
-				Stmts: []ast.Stmt{
-					&ast.ReturnStmt{
-						ReturnValue: &ast.CallExpr{
-							Function: &ast.Identifier{
-								Value: "err",
-							},
-							Arguments: []ast.Expr{
-								&ast.StringLiteral{
-									Value: fmt.Sprintf("missing field: %s", field),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	stmts[1] = valDecl
-	return stmts
 }
 
-func generateStructFieldUnmarshal(field string, st types.StructType) []ast.Stmt {
-	stmts := make([]ast.Stmt, 2)
+func primitiveField(field, getFn string) []ast.Stmt {
+	optName := field + "_opt"
+	return []ast.Stmt{
+		constDecl(optName, generateJsonCall(getFn, field)),
+		constDecl(field, matchOption(
+			ident(optName), "val",
+			block(exprStmt(ident("val"))),
+			fmt.Sprintf("missing field: %s", field),
+		)),
+	}
+}
+
+func structField(field string, st types.StructType) []ast.Stmt {
 	rawName := field + "_raw"
-	optDecl := &ast.VarDeclarationStmt{Constant: true}
-	optDecl.Name = &ast.Identifier{Value: rawName}
-	optDecl.Value = generateJsonCall("get_object", field)
-	stmts[0] = optDecl
-
-	varDecl := &ast.VarDeclarationStmt{Constant: true}
-	varDecl.Name = &ast.Identifier{Value: field}
-	varDecl.Value = &ast.MatchExpr{
-		Subject: &ast.Identifier{Value: rawName},
-		SomeArm: &ast.MatchArm{
-			Pattern: &ast.MatchPattern{
-				IsSome:  true,
-				Binding: &ast.Identifier{Value: "val"},
-			},
-			Body: &ast.BlockStmt{
-				Stmts: []ast.Stmt{
-					&ast.ExpressionStmt{
-						Expr: &ast.MatchExpr{
-							Subject: &ast.CallExpr{
-								Function:  &ast.Identifier{Value: "unmarshal_json_" + st.Name},
-								Arguments: []ast.Expr{&ast.Identifier{Value: "val"}},
-							},
-							OkArm: &ast.MatchArm{
-								Pattern: &ast.MatchPattern{
-									IsOk:    true,
-									Binding: &ast.Identifier{Value: "v"},
-								},
-								Body: &ast.BlockStmt{
-									Stmts: []ast.Stmt{
-										&ast.ExpressionStmt{Expr: &ast.Identifier{Value: "v"}},
-									},
-								},
-							},
-							ErrArm: &ast.MatchArm{
-								Pattern: &ast.MatchPattern{
-									Binding: &ast.Identifier{Value: "msg"},
-								},
-								Body: &ast.BlockStmt{
-									Stmts: []ast.Stmt{
-										&ast.ReturnStmt{
-											ReturnValue: &ast.CallExpr{
-												Function:  &ast.Identifier{Value: "err"},
-												Arguments: []ast.Expr{&ast.Identifier{Value: "msg"}},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
+	return []ast.Stmt{
+		constDecl(rawName, generateJsonCall("get_object", field)),
+		constDecl(field, matchOption(
+			ident(rawName), "val",
+			block(exprStmt(matchResult(
+				&ast.CallExpr{
+					Function:  ident("unmarshal_json_" + st.Name),
+					Arguments: []ast.Expr{ident("val")},
 				},
-			},
-		},
-		NoneArm: &ast.MatchArm{
-			Pattern: &ast.MatchPattern{},
-			Body: &ast.BlockStmt{
-				Stmts: []ast.Stmt{
-					&ast.ReturnStmt{
-						ReturnValue: &ast.CallExpr{
-							Function:  &ast.Identifier{Value: "err"},
-							Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("missing field: %s", field)}},
-						},
-					},
-				},
-			},
-		},
+				"v",
+				block(exprStmt(ident("v"))),
+			))),
+			fmt.Sprintf("missing field: %s", field),
+		)),
 	}
-	stmts[1] = varDecl
-	return stmts
 }
 
-func generateArrayFieldUnmarshal(field string, at types.ArrayType) []ast.Stmt {
-	// Map element type to parse function name
+func arrayField(field string, at types.ArrayType) []ast.Stmt {
+	rawName := field + "_raw"
+
 	var parseFn string
 	switch at.ElemType {
+	case types.Int:
+		parseFn = "parse_int_array"
+	case types.Float:
+		parseFn = "parse_float_array"
+	case types.String:
+		parseFn = "parse_string_array"
+	case types.Bool:
+		parseFn = "parse_bool_array"
+	}
+
+	if parseFn != "" {
+		return []ast.Stmt{
+			constDecl(rawName, generateJsonCall("get_array", field)),
+			constDecl(field, matchOption(
+				ident(rawName), "val",
+				block(exprStmt(matchOption(
+					jsonCall(parseFn, ident("val")),
+					"arr",
+					block(exprStmt(ident("arr"))),
+					fmt.Sprintf("failed to parse array field: %s", field),
+				))),
+				fmt.Sprintf("missing field: %s", field),
+			)),
+		}
+	}
+
+	if st, ok := at.ElemType.(types.StructType); ok {
+		return structArrayField(field, st)
+	}
+
+	if innerAt, ok := at.ElemType.(types.ArrayType); ok {
+		return nestedArrayField(field, innerAt)
+	}
+
+	return nil
+}
+
+func structArrayField(field string, st types.StructType) []ast.Stmt {
+	rawName := field + "_raw"
+	arrType := types.ArrayType{ElemType: st}
+	return []ast.Stmt{
+		constDecl(rawName, generateJsonCall("get_array", field)),
+		constDecl(field, matchOption(
+			ident(rawName), "val",
+			block(
+				constDecl("elems", jsonCall("split_elements", ident("val"))),
+				mutDecl("arr", arrType, &ast.ArrayLiteral{}),
+				&ast.ForInStmt{
+					Value:    ident("elem"),
+					Iterable: ident("elems"),
+					Body: block(
+						constDecl("parsed", matchResult(
+							&ast.CallExpr{
+								Function:  ident("unmarshal_json_" + st.Name),
+								Arguments: []ast.Expr{ident("elem")},
+							},
+							"v",
+							block(exprStmt(ident("v"))),
+						)),
+						appendStmt("arr", ident("parsed")),
+					),
+				},
+				exprStmt(ident("arr")),
+			),
+			fmt.Sprintf("missing field: %s", field),
+		)),
+	}
+}
+
+func nestedArrayField(field string, innerAt types.ArrayType) []ast.Stmt {
+	var parseFn string
+	switch innerAt.ElemType {
 	case types.Int:
 		parseFn = "parse_int_array"
 	case types.Float:
@@ -244,88 +212,34 @@ func generateArrayFieldUnmarshal(field string, at types.ArrayType) []ast.Stmt {
 		return nil
 	}
 
-	stmts := make([]ast.Stmt, 2)
-
-	// const <field>_raw = json:get_array(raw, "<field>");
-	rawDecl := &ast.VarDeclarationStmt{Constant: true}
-	rawDecl.Name = &ast.Identifier{Value: field + "_raw"}
-	rawDecl.Value = generateJsonCall("get_array", field)
-	stmts[0] = rawDecl
-
-	// const <field> = match <field>_raw {
-	//     some(val) -> {
-	//         match json:parse_T_array(val) {
-	//             some(arr) -> { arr; },
-	//             none -> { return err("failed to parse array field: <field>"); },
-	//         }
-	//     },
-	//     none -> { return err("missing field: <field>"); },
-	// }
-	valDecl := &ast.VarDeclarationStmt{Constant: true}
-	valDecl.Name = &ast.Identifier{Value: field}
-	valDecl.Value = &ast.MatchExpr{
-		Subject: &ast.Identifier{Value: field + "_raw"},
-		SomeArm: &ast.MatchArm{
-			Pattern: &ast.MatchPattern{
-				IsSome:  true,
-				Binding: &ast.Identifier{Value: "val"},
-			},
-			Body: &ast.BlockStmt{
-				Stmts: []ast.Stmt{
-					&ast.ExpressionStmt{
-						Expr: &ast.MatchExpr{
-							Subject: &ast.CallExpr{
-								Function: &ast.ScopeAccessExpr{
-									Module: &ast.Identifier{Value: "json"},
-									Member: &ast.Identifier{Value: parseFn},
-								},
-								Arguments: []ast.Expr{&ast.Identifier{Value: "val"}},
-							},
-							SomeArm: &ast.MatchArm{
-								Pattern: &ast.MatchPattern{
-									IsSome:  true,
-									Binding: &ast.Identifier{Value: "arr"},
-								},
-								Body: &ast.BlockStmt{
-									Stmts: []ast.Stmt{
-										&ast.ExpressionStmt{Expr: &ast.Identifier{Value: "arr"}},
-									},
-								},
-							},
-							NoneArm: &ast.MatchArm{
-								Pattern: &ast.MatchPattern{},
-								Body: &ast.BlockStmt{
-									Stmts: []ast.Stmt{
-										&ast.ReturnStmt{
-											ReturnValue: &ast.CallExpr{
-												Function:  &ast.Identifier{Value: "err"},
-												Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("failed to parse array field: %s", field)}},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
+	rawName := field + "_raw"
+	arrType := types.ArrayType{ElemType: innerAt}
+	return []ast.Stmt{
+		constDecl(rawName, generateJsonCall("get_array", field)),
+		constDecl(field, matchOption(
+			ident(rawName), "val",
+			block(
+				constDecl("elems", jsonCall("split_elements", ident("val"))),
+				mutDecl("arr", arrType, &ast.ArrayLiteral{}),
+				&ast.ForInStmt{
+					Value:    ident("elem"),
+					Iterable: ident("elems"),
+					Body: block(
+						constDecl("stripped", jsonCall("strip_brackets", ident("elem"))),
+						constDecl("parsed", matchOption(
+							jsonCall(parseFn, ident("stripped")),
+							"v",
+							block(exprStmt(ident("v"))),
+							fmt.Sprintf("failed to parse array element in: %s", field),
+						)),
+						appendStmt("arr", ident("parsed")),
+					),
 				},
-			},
-		},
-		NoneArm: &ast.MatchArm{
-			Pattern: &ast.MatchPattern{},
-			Body: &ast.BlockStmt{
-				Stmts: []ast.Stmt{
-					&ast.ReturnStmt{
-						ReturnValue: &ast.CallExpr{
-							Function:  &ast.Identifier{Value: "err"},
-							Arguments: []ast.Expr{&ast.StringLiteral{Value: fmt.Sprintf("missing field: %s", field)}},
-						},
-					},
-				},
-			},
-		},
+				exprStmt(ident("arr")),
+			),
+			fmt.Sprintf("missing field: %s", field),
+		)),
 	}
-	stmts[1] = valDecl
-	return stmts
 }
 
 func generateStructReturn(structName string, fields []string) ast.Stmt {
@@ -333,12 +247,12 @@ func generateStructReturn(structName string, fields []string) ast.Stmt {
 	fieldNames := make([]string, len(fields))
 	for i, f := range fields {
 		fieldNames[i] = f
-		values[i] = &ast.Identifier{Value: f}
+		values[i] = ident(f)
 	}
 
 	return &ast.ReturnStmt{
 		ReturnValue: &ast.CallExpr{
-			Function: &ast.Identifier{Value: "ok"},
+			Function: ident("ok"),
 			Arguments: []ast.Expr{
 				&ast.StructLiteral{
 					Name:   structName,
@@ -351,21 +265,106 @@ func generateStructReturn(structName string, fields []string) ast.Stmt {
 }
 
 func generateJsonCall(fnName, field string) *ast.CallExpr {
-	fn := &ast.ScopeAccessExpr{
-		Module: &ast.Identifier{
-			Value: "json",
+	return &ast.CallExpr{
+		Function: &ast.ScopeAccessExpr{
+			Module: ident("json"),
+			Member: ident(fnName),
 		},
-		Member: &ast.Identifier{
-			Value: fnName,
+		Arguments: []ast.Expr{ident("raw"), &ast.StringLiteral{Value: field}},
+	}
+}
+
+func jsonCall(fnName string, args ...ast.Expr) *ast.CallExpr {
+	return &ast.CallExpr{
+		Function: &ast.ScopeAccessExpr{
+			Module: ident("json"),
+			Member: ident(fnName),
+		},
+		Arguments: args,
+	}
+}
+
+func ident(name string) *ast.Identifier {
+	return &ast.Identifier{Value: name}
+}
+
+func constDecl(name string, value ast.Expr) *ast.VarDeclarationStmt {
+	return &ast.VarDeclarationStmt{
+		Constant: true,
+		Name:     ident(name),
+		Value:    value,
+	}
+}
+
+func mutDecl(name string, typ types.Type, value ast.Expr) *ast.VarDeclarationStmt {
+	return &ast.VarDeclarationStmt{
+		Constant: false,
+		Name:     ident(name),
+		Type:     typ,
+		Value:    value,
+	}
+}
+
+func block(stmts ...ast.Stmt) *ast.BlockStmt {
+	return &ast.BlockStmt{Stmts: stmts}
+}
+
+func exprStmt(expr ast.Expr) *ast.ExpressionStmt {
+	return &ast.ExpressionStmt{Expr: expr}
+}
+
+func returnErr(msg string) *ast.ReturnStmt {
+	return &ast.ReturnStmt{
+		ReturnValue: &ast.CallExpr{
+			Function:  ident("err"),
+			Arguments: []ast.Expr{&ast.StringLiteral{Value: msg}},
 		},
 	}
-	args := make([]ast.Expr, 2)
-	args[0] = &ast.Identifier{Value: "raw"}
-	args[1] = &ast.StringLiteral{Value: field}
+}
 
-	call := &ast.CallExpr{}
-	call.Function = fn
-	call.Arguments = args
+func returnErrIdent(name string) *ast.ReturnStmt {
+	return &ast.ReturnStmt{
+		ReturnValue: &ast.CallExpr{
+			Function:  ident("err"),
+			Arguments: []ast.Expr{ident(name)},
+		},
+	}
+}
 
-	return call
+func appendStmt(arrName string, value ast.Expr) *ast.VarAssignmentStmt {
+	return &ast.VarAssignmentStmt{
+		Identifier: ident(arrName),
+		Value: &ast.CallExpr{
+			Function:  ident("append"),
+			Arguments: []ast.Expr{ident(arrName), value},
+		},
+	}
+}
+
+func matchOption(subject ast.Expr, binding string, someBody *ast.BlockStmt, errMsg string) *ast.MatchExpr {
+	return &ast.MatchExpr{
+		Subject: subject,
+		SomeArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{IsSome: true, Binding: ident(binding)},
+			Body:    someBody,
+		},
+		NoneArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{},
+			Body:    block(returnErr(errMsg)),
+		},
+	}
+}
+
+func matchResult(subject ast.Expr, binding string, okBody *ast.BlockStmt) *ast.MatchExpr {
+	return &ast.MatchExpr{
+		Subject: subject,
+		OkArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{IsOk: true, Binding: ident(binding)},
+			Body:    okBody,
+		},
+		ErrArm: &ast.MatchArm{
+			Pattern: &ast.MatchPattern{Binding: ident("msg")},
+			Body:    block(returnErrIdent("msg")),
+		},
+	}
 }

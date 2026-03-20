@@ -52,8 +52,8 @@ func (s *SymbolTable) DefineMutable(name string) Symbol {
 
 	s.store[name] = symbol
 	s.numDefinitions++
-	if s.isBlockScoped {
-		s.Outer.numDefinitions = s.numDefinitions
+	for outer := s; outer.isBlockScoped && outer.Outer != nil; outer = outer.Outer {
+		outer.Outer.numDefinitions = outer.numDefinitions
 	}
 	return symbol
 }
@@ -68,8 +68,8 @@ func (s *SymbolTable) DefineImmutable(name string) Symbol {
 
 	s.store[name] = symbol
 	s.numDefinitions++
-	if s.isBlockScoped {
-		s.Outer.numDefinitions = s.numDefinitions
+	for outer := s; outer.isBlockScoped && outer.Outer != nil; outer = outer.Outer {
+		outer.Outer.numDefinitions = outer.numDefinitions
 	}
 	return symbol
 }
