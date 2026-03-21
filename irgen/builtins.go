@@ -12,6 +12,7 @@ var runtimeBuiltins = map[string]string{
 	"io__fread":               "sydney_file_read",
 	"io__fwrite":              "sydney_file_write",
 	"io__fclose":              "sydney_file_close",
+	"io__fcreate":             "sydney_file_create",
 	"conv__atof":              "sydney_atof",
 	"conv__ftoa":              "sydney_ftoa",
 	"net__tcp_conn":           "sydney_tcp_connect",
@@ -102,6 +103,14 @@ func (e *Emitter) emitFileClose(expr *ast.CallExpr) (string, IrType) {
 	fd, _ := e.emitExpr(expr.Arguments[0])
 	result := e.tmp()
 	line := fmt.Sprintf("%s = call i64 @sydney_file_close(i64 %s)", result, fd)
+	e.emit(line)
+	return e.wrapIntoResult(result, IrInt)
+}
+
+func (e *Emitter) emitFileCreate(expr *ast.CallExpr) (string, IrType) {
+	path, _ := e.emitExpr(expr.Arguments[0])
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call i64 @sydney_file_create(ptr %s)", result, path)
 	e.emit(line)
 	return e.wrapIntoResult(result, IrInt)
 }

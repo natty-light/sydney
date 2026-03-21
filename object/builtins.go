@@ -203,6 +203,23 @@ var Builtins = []struct {
 		},
 	},
 	{
+		"fcreate",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				path := args[0].(*String).Value
+				_, err := os.Stat(path)
+				if os.IsNotExist(err) {
+					f, err := os.Create(path)
+					if err != nil {
+						return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+					}
+					return &Result{IsOk: true, Value: &Integer{Value: int64(f.Fd())}}
+				}
+				return &Result{IsOk: false, Error: &String{Value: err.Error()}}
+			},
+		},
+	},
+	{
 		"fread",
 		&BuiltIn{
 			Fn: func(args ...Object) Object {

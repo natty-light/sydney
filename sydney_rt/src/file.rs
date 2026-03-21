@@ -1,11 +1,39 @@
-use std::fs;
 use std::ffi::{CStr, CString};
+use std::fs;
 use std::fs::File;
 use std::os::raw::c_char;
 
+use crate::error::LAST_ERROR;
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
-use crate::error::LAST_ERROR;
+
+#[no_mangle]
+pub extern "C" fn sydney_file_create(path: *const c_char) -> i64 {
+    if path.is_null() {
+        LAST_ERROR.with(|e| {
+            *e.borrow_mut() = Some(CString::new("could not create file").unwrap());
+        });
+        return -1;
+    }
+
+    let path: &str = unsafe { CStr::from_ptr(path) }.to_str().unwrap_or("");
+    use std::fs::OpenOptions;
+    match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => {
+            use std::os::unix::io::IntoRawFd;
+            file.into_raw_fd() as i64
+        }
+        Err(err) => {
+            LAST_ERROR.with(|e| *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap()));
+            -1
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn sydney_file_open(path: *const c_char) -> i64 {
@@ -18,10 +46,7 @@ pub extern "C" fn sydney_file_open(path: *const c_char) -> i64 {
 
     let path: &str = unsafe { CStr::from_ptr(path) }.to_str().unwrap_or("");
     use std::fs::OpenOptions;
-    match OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path) {
+    match OpenOptions::new().read(true).write(true).open(path) {
         Ok(file) => {
             use std::os::unix::io::IntoRawFd;
             file.into_raw_fd() as i64
@@ -31,7 +56,7 @@ pub extern "C" fn sydney_file_open(path: *const c_char) -> i64 {
                 *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
             });
             -1
-        },
+        }
     }
 }
 
@@ -50,7 +75,7 @@ pub extern "C" fn sydney_file_read(fd: i64) -> *const c_char {
                         *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
                     });
                     std::ptr::null()
-                },
+                }
             }
         }
         Err(err) => {
@@ -59,7 +84,7 @@ pub extern "C" fn sydney_file_read(fd: i64) -> *const c_char {
             });
             std::mem::forget(file);
             std::ptr::null()
-        },
+        }
     }
 }
 
@@ -81,7 +106,7 @@ pub extern "C" fn sydney_file_write(fd: i64, data: *const c_char) -> i64 {
                 *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
             });
             -1
-        },
+        }
     };
     std::mem::forget(file);
     result

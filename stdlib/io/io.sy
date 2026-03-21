@@ -4,9 +4,24 @@ pub extern func fopen(string path) -> result<int>
 pub extern func fread(int fd) -> result<string>
 pub extern func fwrite(int fd, string data) -> result<int>
 pub extern func fclose(int fd) -> result<int>
+pub extern func fcreate(string path) -> result<int>
 
 pub define struct File { fd int }
 
+pub func create_file(string path) -> result<File> {
+  const r = fcreate(path);
+  const rr = match r {
+    ok(fd) -> {
+      const f = File { fd: fd };
+      return ok(f);
+    },
+    err(msg) -> {
+      return err(msg);
+    },
+  }
+
+  return rr;
+}
 
 pub func openFile(string path) -> result<File> {
     const result<int> r = fopen(path);
