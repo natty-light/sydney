@@ -4,7 +4,58 @@ import "net"
 import "conv"
 import "strings"
 
+pub define struct Server { host string, port int }
+
+#[derive(json)]
 pub define struct Request { method string, path string, body string }
+
+pub func new_server(string host, int port) -> Server {
+  Server { host: host, port: port };
+}
+
+pub func serve(Server s, string path, fn<(Request) -> string> handler) -> result<int> {
+  const lr = net:listen(s.host, s.port);
+  match lr {
+    ok(l) -> {
+      for (true) {
+        const ar = l.accept();
+        match ar {
+          ok(conn) -> {
+            spawn handle(conn, handler);
+          },
+          err(msg) -> { print(msg); },
+        }
+      }
+      return ok(0);
+    },
+    err(msg) -> {
+      print(msg);
+      return err(msg);
+    },
+  }
+}
+
+func handle(net:Socket conn, fn<(Request) -> string> handler) {
+  const r = conn.read(4096);
+  match r {
+    ok(raw) -> {
+      const pr = parse_request(raw);
+      match pr {
+        ok(req) -> {
+          const body = handler(req);
+          const resp = format_response(200, body);
+          conn.write(resp, len(resp));
+          return;
+        },
+        err(msg) -> { print(msg); },
+      }
+    },
+    err(msg) -> { print(msg); },
+  }
+
+  conn.close();
+}
+
 
 pub func get(string host, string path) -> result<string> {
     const cr = net:connect(host, 80);
