@@ -124,7 +124,7 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 				}
 			}
 		}
-		pkgChecker := New(pkgEnv)
+		pkgChecker := NewWithModuleTypes(pkgEnv, c.moduleTypes)
 		pkgChecker.packages = registry
 		pkgChecker.currentModule = pkg.Name
 
@@ -567,6 +567,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	case *ast.ByteLiteral:
 		return types.Byte
 	case *ast.FunctionLiteral:
+		expr.Type = c.resolveFunctionType(expr.Type)
 		oldInLoop := c.inLoop
 		c.inLoop = true
 		oldReturnType := c.currentReturnType
@@ -1996,6 +1997,8 @@ func (c *Checker) resolveType(t types.Type) types.Type {
 		rt := c.resolveType(t.T)
 
 		return types.ResultType{T: rt}
+	case types.FunctionType:
+		return c.resolveFunctionType(t)
 	}
 
 	return t
@@ -2113,14 +2116,14 @@ func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
 func (c *Checker) checkPanicCall(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
 		c.appendError("panic() expects exactly 1 argument", expr)
-		return types.Unit
+		return types.Never
 	}
 
 	t := c.typeOf(expr.Arguments[0], types.String)
 	if t != types.String {
 		c.appendError(fmt.Sprintf("invalid argument type %s for panic(), expected string", t.Signature()), expr)
 	}
-	return types.Unit
+	return types.Never
 }
 
 func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) types.Type {

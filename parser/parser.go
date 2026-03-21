@@ -239,11 +239,20 @@ func (p *Parser) parseStatement() ast.Stmt {
 	if p.currTokenIs(token.AnnotationStart) {
 		annotation := p.parseAnnotation()
 		stmt := p.parseStatement()
-		if _, ok := stmt.(*ast.StructDefinitionStmt); !ok {
+		switch s := stmt.(type) {
+		case *ast.StructDefinitionStmt:
+			stmt.SetAnnotations([]*ast.Annotation{annotation})
+		case *ast.PubStatement:
+			if inner, ok := s.Stmt.(*ast.StructDefinitionStmt); ok {
+				inner.SetAnnotations([]*ast.Annotation{annotation})
+			} else {
+				p.errors = append(p.errors, "can only provide annotations for struct definitions")
+				return nil
+			}
+		default:
 			p.errors = append(p.errors, "can only provide annotations for struct definitions")
 			return nil
 		}
-		stmt.SetAnnotations([]*ast.Annotation{annotation})
 		return stmt
 	}
 
