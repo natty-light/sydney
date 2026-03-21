@@ -403,7 +403,8 @@ declare i64 @sydney_tls_connect(ptr, i64)
 declare ptr @sydney_tls_read(i64, i64)
 declare i64 @sydney_tls_write(i64, ptr, i64)
 declare ptr @sydney_tls_close(i64)
-declare ptr @sydney_ftoa(double)`)
+declare ptr @sydney_ftoa(double)
+declare i64 @sydney_file_create(ptr)`)
 
 	e.emit("")
 
@@ -1090,6 +1091,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 				return e.emitFileWrite(expr)
 			case "sydney_file_close":
 				return e.emitFileClose(expr)
+			case "sydney_file_create":
+				return e.emitFileCreate(expr)
 			case "sydney_atof":
 				return e.emitStrToFloatCall(expr)
 			case "sydney_ftoa":
@@ -2870,6 +2873,8 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 		return e.emitFileOpen(expr)
 	case "sydney_file_read":
 		return e.emitFileRead(expr)
+	case "sydney_file_create":
+		return e.emitFileCreate(expr)
 	case "sydney_file_write":
 		return e.emitFileWrite(expr)
 	case "sydney_file_close":
@@ -3103,7 +3108,12 @@ func (e *Emitter) emitReceive(expr *ast.ReceiveExpr) (string, IrType) {
 func (e *Emitter) emitSpawn(stmt *ast.SpawnStmt) {
 	callExpr := stmt.CallExpr.(*ast.CallExpr)
 
-	// emit the closure (this gives us the fat pointer: {fn_ptr, env_ptr})
+	if len(callExpr.Arguments) > 0 {
+		e.emitSpawnWithArgs(callExpr)
+		return
+	}
+
+	// no-arg closure spawn
 	closureReg, _ := e.emitExpr(callExpr.Function)
 
 	// extract fn ptr from slot 0
@@ -3124,6 +3134,86 @@ func (e *Emitter) emitSpawn(stmt *ast.SpawnStmt) {
 
 	line = fmt.Sprintf("call void @sydney_spawn(ptr %s, ptr %s)", fnPtr, envPtr)
 	e.emit(line)
+}
+
+func (e *Emitter) emitSpawnWithArgs(callExpr *ast.CallExpr) {
+	argRegs := make([]string, len(callExpr.Arguments))
+	argTypes := make([]IrType, len(callExpr.Arguments))
+	for i, arg := range callExpr.Arguments {
+		argRegs[i], argTypes[i] = e.emitExpr(arg)
+	}
+
+	fnName, sig := e.resolveSpawnTarget(callExpr)
+
+	envParts := make([]string, len(argTypes))
+	for i, t := range argTypes {
+		envParts[i] = t.String()
+	}
+	envTypeStr := strings.Join(envParts, ", ")
+
+	thunk := e.anon()
+	thunkBuf := &bytes.Buffer{}
+	state := e.beginFunction()
+	line := fmt.Sprintf("define void %s(ptr %%env) {\n", thunk)
+	thunkBuf.WriteString(line)
+
+	callArgs := make([]string, len(argTypes))
+	for i, t := range argTypes {
+		gep := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %%env, i32 0, i32 %d", gep, envTypeStr, i)
+		e.emit(line)
+		loaded := e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, t, gep)
+		e.emit(line)
+		callArgs[i] = fmt.Sprintf("%s %s", t, loaded)
+	}
+	if sig.retType == IrUnit {
+		line = fmt.Sprintf("call void %s(%s)", fnName, strings.Join(callArgs, ", "))
+	} else {
+		line = fmt.Sprintf("call %s %s(%s)", sig.retType, fnName, strings.Join(callArgs, ", "))
+	}
+	e.emit(line)
+	e.emit("ret void")
+
+	e.assembleFunction(thunkBuf)
+	thunkBuf.WriteString("}\n\n")
+	e.endFunction(state)
+	e.funcBuf.Write(thunkBuf.Bytes())
+
+	envPtr := e.tmp()
+	line = fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 %d)", envPtr, len(argTypes)*8)
+	e.emit(line)
+	for i, t := range argTypes {
+		slot := e.tmp()
+		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %s, i32 0, i32 %d", slot, envTypeStr, envPtr, i)
+		e.emit(line)
+		line = fmt.Sprintf("store %s %s, ptr %s", t, argRegs[i], slot)
+		e.emit(line)
+	}
+
+	line = fmt.Sprintf("call void @sydney_spawn(ptr %s, ptr %s)", thunk, envPtr)
+	e.emit(line)
+}
+
+func (e *Emitter) resolveSpawnTarget(callExpr *ast.CallExpr) (string, funcSig) {
+	if ident, ok := callExpr.Function.(*ast.Identifier); ok {
+		if e.currentModule != "" {
+			mangled := e.moduleMangle(e.currentModule, ident.Value)
+			if sig, ok := e.funcSigs[mangled]; ok {
+				return sig.name, sig
+			}
+		}
+		if sig, ok := e.funcSigs[ident.Value]; ok {
+			return sig.name, sig
+		}
+	}
+	if scope, ok := callExpr.Function.(*ast.ScopeAccessExpr); ok {
+		mangled := scope.Module.Value + "__" + scope.Member.Value
+		if sig, ok := e.funcSigs[mangled]; ok {
+			return sig.name, sig
+		}
+	}
+	return "", funcSig{}
 }
 
 func (e *Emitter) toI64(reg string, typ IrType) string {
