@@ -128,14 +128,16 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 		pkgChecker.packages = registry
 		pkgChecker.currentModule = pkg.Name
 
+		merged := &ast.Program{}
 		for _, program := range pkg.Programs {
-			pkgChecker.Check(program, nil)
-			for k, v := range pkgChecker.genericFunctions {
-				c.genericFunctions[k] = v
-			}
-			for k, v := range pkgChecker.genericStructs {
-				c.genericStructs[k] = v
-			}
+			merged.Stmts = append(merged.Stmts, program.Stmts...)
+		}
+		pkgChecker.Check(merged, nil)
+		for k, v := range pkgChecker.genericFunctions {
+			c.genericFunctions[k] = v
+		}
+		for k, v := range pkgChecker.genericStructs {
+			c.genericStructs[k] = v
 		}
 		if len(pkgChecker.errors) != 0 {
 			fmt.Println(pkgChecker.currentModule)
@@ -153,7 +155,7 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
 					exportEnv.Set(name, typ)
 
-					if ft, ok := typ.(types.FunctionType); ok {
+					if ft, ok := typ.(types.FunctionType); ok && len(ft.Params) > 0 {
 						if st, ok := ft.Params[0].(types.StructType); ok {
 							if _, _, exported := exportEnv.Get(st.Name); exported {
 								mn := st.Name + "." + name

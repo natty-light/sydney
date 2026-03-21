@@ -143,6 +143,44 @@ func (p *Parser) Errors() []string {
 	return p.errors
 }
 
+func (p *Parser) ParseDefinitions() {
+	for !p.currTokenIs(token.EOF) {
+		if p.currTokenIs(token.Public) && p.peekTokenIs(token.Define) {
+			p.nextToken()
+		}
+		if p.currTokenIs(token.Define) {
+			if p.peekTokenIs(token.Struct) {
+				p.nextToken()
+				p.parseStructDefinitionStmt()
+				continue
+			}
+			if p.peekTokenIs(token.Interface) {
+				p.nextToken()
+				p.parseInterfaceDefinitionStmt()
+				continue
+			}
+		}
+		p.nextToken()
+	}
+}
+
+func (p *Parser) DefinedStructs() map[string]types.Type {
+	return p.definedStructs
+}
+
+func (p *Parser) DefinedInterfaces() map[string]types.Type {
+	return p.definedInterfaces
+}
+
+func (p *Parser) SetDefinedTypes(structs map[string]types.Type, interfaces map[string]types.Type) {
+	for k, v := range structs {
+		p.definedStructs[k] = v
+	}
+	for k, v := range interfaces {
+		p.definedInterfaces[k] = v
+	}
+}
+
 func (p *Parser) registerPrefix(tokenType token.TokenType, fn prefixParseFn) {
 	p.prefixParseFns[tokenType] = fn
 }

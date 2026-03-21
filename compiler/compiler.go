@@ -116,10 +116,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 				}
 				sym := c.symbolTable.DefineImmutable(name)
 				if fn.MangledName != "" {
-					// register as struct method
 					c.symbolTable.DefineAlias(fn.Name.Value, sym)
+					c.symbolTable.DefineAlias(fn.MangledName, sym)
 					if c.currentModule != "" {
-						// register as exported function as well
 						c.symbolTable.DefineAlias(c.mangleModule(c.currentModule, fn.Name.Value), sym)
 					}
 				}
@@ -825,11 +824,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 func (c *Compiler) CompilePackages(packages []*loader.Package) error {
 	for _, pkg := range packages {
 		c.currentModule = pkg.Name
+		merged := &ast.Program{}
 		for _, program := range pkg.Programs {
-			err := c.Compile(program)
-			if err != nil {
-				return err
-			}
+			merged.Stmts = append(merged.Stmts, program.Stmts...)
+		}
+		err := c.Compile(merged)
+		if err != nil {
+			return err
 		}
 		c.currentModule = ""
 	}

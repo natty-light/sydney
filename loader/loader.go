@@ -83,20 +83,39 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	pkg := &Package{}
+
+	var sources []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sy") || strings.HasSuffix(entry.Name(), "_test.sy") {
 			continue
 		}
-
 		source, err := l.Read(filepath.Join(dir, entry.Name()))
 		if err != nil {
 			return nil, err
 		}
+		sources = append(sources, source)
+	}
 
-		program, errors := l.Parse(source)
-		if len(errors) > 0 {
-			return nil, fmt.Errorf(strings.Join(errors, "\n"))
+	allStructs := map[string]types.Type{}
+	allInterfaces := map[string]types.Type{}
+	for _, source := range sources {
+		scan := parser.New(lexer.New(source))
+		scan.ParseDefinitions()
+		for k, v := range scan.DefinedStructs() {
+			allStructs[k] = v
+		}
+		for k, v := range scan.DefinedInterfaces() {
+			allInterfaces[k] = v
+		}
+	}
+
+	pkg := &Package{}
+	for _, source := range sources {
+		p := parser.New(lexer.New(source))
+		p.SetDefinedTypes(allStructs, allInterfaces)
+		program := p.ParseProgram()
+		if len(p.Errors()) > 0 {
+			return nil, fmt.Errorf(strings.Join(p.Errors(), "\n"))
 		}
 
 		deriveImports := codegen.ScanDeriveImports(source)
