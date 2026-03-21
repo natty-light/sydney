@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"strings"
 
 	"sydney/ast"
 	"sydney/token"
@@ -34,10 +35,13 @@ func ExpandDerives(program *ast.Program) {
 				for _, arg := range ann.Args {
 					if arg == "json" {
 						fn := generateJsonUnmarshal(def.Name.Value, def.Type)
+						marshalFn := generateJsonMarshal(def.Name.Value, def.Type)
 						if isPub {
 							generated = append(generated, &ast.PubStatement{Stmt: fn})
+							generated = append(generated, &ast.PubStatement{Stmt: marshalFn})
 						} else {
 							generated = append(generated, fn)
+							generated = append(generated, marshalFn)
 						}
 					}
 				}
@@ -274,6 +278,16 @@ func generateJsonCall(fnName, field string) *ast.CallExpr {
 	}
 }
 
+func convCall(fnName string, arg ast.Expr) *ast.CallExpr {
+	return &ast.CallExpr{
+		Function: &ast.ScopeAccessExpr{
+			Module: ident("conv"),
+			Member: ident(fnName),
+		},
+		Arguments: []ast.Expr{arg},
+	}
+}
+
 func jsonCall(fnName string, args ...ast.Expr) *ast.CallExpr {
 	return &ast.CallExpr{
 		Function: &ast.ScopeAccessExpr{
@@ -366,5 +380,205 @@ func matchResult(subject ast.Expr, binding string, okBody *ast.BlockStmt) *ast.M
 			Pattern: &ast.MatchPattern{Binding: ident("msg")},
 			Body:    block(returnErrIdent("msg")),
 		},
+	}
+}
+
+func strConcat(parts ...ast.Expr) ast.Expr {
+	result := parts[0]
+	for _, p := range parts[1:] {
+		result = &ast.InfixExpr{
+			Operator: "+",
+			Left:     result,
+			Right:    p,
+		}
+	}
+	return result
+}
+
+func strLit(s string) *ast.StringLiteral {
+	return &ast.StringLiteral{Value: s}
+}
+
+func selector(obj, field string) *ast.SelectorExpr {
+	return &ast.SelectorExpr{
+		Left:  ident(obj),
+		Value: ident(field),
+	}
+}
+
+func generateJsonMarshal(name string, st types.StructType) *ast.FunctionDeclarationStmt {
+	body := &ast.BlockStmt{Stmts: make([]ast.Stmt, 0)}
+	paramName := strings.ToLower(name) + "_struct"
+	for i, field := range st.Fields {
+		stmt := generateJsonMarshalField(paramName, field, st.Types[i])
+		if stmt != nil {
+			body.Stmts = append(body.Stmts, stmt...)
+		}
+	}
+
+	body.Stmts = append(body.Stmts, generateStringReturn(st.Fields))
+
+	return &ast.FunctionDeclarationStmt{
+		Name:   ident("marshal_json_" + name),
+		Type:   types.FunctionType{Params: []types.Type{st}, Return: types.String},
+		Params: []*ast.Identifier{ident(strings.ToLower(name) + "_struct")},
+		Body:   body,
+	}
+}
+
+func generateJsonMarshalField(paramName, field string, typ types.Type) []ast.Stmt {
+	access := selector(paramName, field)
+	strVar := field + "_str"
+	switch typ {
+	case types.Int:
+		return []ast.Stmt{constDecl(strVar, convCall("itoa", access))}
+	case types.Float:
+		return []ast.Stmt{constDecl(strVar, convCall("ftoa", access))}
+	case types.Bool:
+		return []ast.Stmt{constDecl(strVar, convCall("bool_to_str", access))}
+	case types.String:
+		return []ast.Stmt{constDecl(strVar, strConcat(strLit("\""), access, strLit("\"")))}
+	default:
+		if st, ok := typ.(types.StructType); ok {
+			return []ast.Stmt{constDecl(strVar, &ast.CallExpr{
+				Function:  ident("marshal_json_" + st.Name),
+				Arguments: []ast.Expr{access},
+			})}
+		}
+		if at, ok := typ.(types.ArrayType); ok {
+			return marshalArrayField(paramName, field, at)
+		}
+		return nil
+	}
+}
+
+func marshalArrayField(paramName, field string, at types.ArrayType) []ast.Stmt {
+	access := selector(paramName, field)
+	strVar := field + "_str"
+	var marshalFn string
+	switch at.ElemType {
+	case types.Int:
+		marshalFn = "marshal_int_array"
+	case types.Float:
+		marshalFn = "marshal_float_array"
+	case types.String:
+		marshalFn = "marshal_string_array"
+	case types.Bool:
+		marshalFn = "marshal_bool_array"
+	}
+	if marshalFn != "" {
+		return []ast.Stmt{constDecl(strVar, jsonCall(marshalFn, access))}
+	}
+	if st, ok := at.ElemType.(types.StructType); ok {
+		return marshalStructArrayField(paramName, field, st)
+	}
+	if innerAt, ok := at.ElemType.(types.ArrayType); ok {
+		return marshalNestedArrayField(paramName, field, innerAt)
+	}
+	return nil
+}
+
+func marshalStructArrayField(paramName, field string, st types.StructType) []ast.Stmt {
+	access := selector(paramName, field)
+	strVar := field + "_str"
+	return []ast.Stmt{
+		mutDecl(strVar, types.String, strLit("[")),
+		forInWithIndex("idx", "elem", access, block(
+			constDecl("s", &ast.CallExpr{
+				Function:  ident("marshal_json_" + st.Name),
+				Arguments: []ast.Expr{ident("elem")},
+			}),
+			ifLessThan("idx", lenCall(access), block(
+				assignStmt(strVar, strConcat(ident(strVar), ident("s"), strLit(","))),
+			), block(
+				assignStmt(strVar, strConcat(ident(strVar), ident("s"))),
+			)),
+		)),
+		assignStmt(strVar, strConcat(ident(strVar), strLit("]"))),
+	}
+}
+
+func marshalNestedArrayField(paramName, field string, innerAt types.ArrayType) []ast.Stmt {
+	var marshalFn string
+	switch innerAt.ElemType {
+	case types.Int:
+		marshalFn = "marshal_int_array"
+	case types.Float:
+		marshalFn = "marshal_float_array"
+	case types.String:
+		marshalFn = "marshal_string_array"
+	case types.Bool:
+		marshalFn = "marshal_bool_array"
+	default:
+		return nil
+	}
+	access := selector(paramName, field)
+	strVar := field + "_str"
+	return []ast.Stmt{
+		mutDecl(strVar, types.String, strLit("[")),
+		forInWithIndex("idx", "elem", access, block(
+			constDecl("s", jsonCall(marshalFn, ident("elem"))),
+			ifLessThan("idx", lenCall(access), block(
+				assignStmt(strVar, strConcat(ident(strVar), ident("s"), strLit(","))),
+			), block(
+				assignStmt(strVar, strConcat(ident(strVar), ident("s"))),
+			)),
+		)),
+		assignStmt(strVar, strConcat(ident(strVar), strLit("]"))),
+	}
+}
+
+func forInWithIndex(key, value string, iterable ast.Expr, body *ast.BlockStmt) *ast.ForInStmt {
+	return &ast.ForInStmt{
+		Key:      ident(key),
+		Value:    ident(value),
+		Iterable: iterable,
+		Body:     body,
+	}
+}
+
+func lenCall(arg ast.Expr) ast.Expr {
+	return &ast.CallExpr{
+		Function:  ident("len"),
+		Arguments: []ast.Expr{arg},
+	}
+}
+
+func intLit(val int64) *ast.IntegerLiteral {
+	return &ast.IntegerLiteral{Value: val}
+}
+
+func infix(op string, left, right ast.Expr) *ast.InfixExpr {
+	return &ast.InfixExpr{Operator: op, Left: left, Right: right}
+}
+
+func ifLessThan(idxName string, limit ast.Expr, consequence, alternative *ast.BlockStmt) *ast.ExpressionStmt {
+	return exprStmt(&ast.IfExpr{
+		Condition:   infix("<", ident(idxName), infix("-", limit, intLit(1))),
+		Consequence: consequence,
+		Alternative: alternative,
+	})
+}
+
+func assignStmt(name string, value ast.Expr) *ast.VarAssignmentStmt {
+	return &ast.VarAssignmentStmt{
+		Identifier: ident(name),
+		Value:      value,
+	}
+}
+
+func generateStringReturn(fields []string) *ast.ReturnStmt {
+	parts := make([]ast.Expr, 0)
+	parts = append(parts, strLit("{"))
+	for i, field := range fields {
+		parts = append(parts, strLit("\""+field+"\":"))
+		parts = append(parts, ident(field+"_str"))
+		if i < len(fields)-1 {
+			parts = append(parts, strLit(","))
+		}
+	}
+	parts = append(parts, strLit("}"))
+	return &ast.ReturnStmt{
+		ReturnValue: strConcat(parts...),
 	}
 }
