@@ -1,7 +1,7 @@
 module "conv"
 
 pub extern func atof(string str) -> result<float>
-pub extern func ftoa(float f) -> result<string>
+pub extern func ftoa(float f) -> string
 
 pub func atoi(string str) -> result<int> {
     mut r = 0;
