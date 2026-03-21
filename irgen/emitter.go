@@ -2758,12 +2758,16 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.pushScope()
 	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
+	okTerminated := e.blockTerminated
+	e.blockTerminated = false
 	e.popScope()
-	if rt != IrUnit {
-		line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)
-		e.emit(line)
+	if !okTerminated {
+		if rt != IrUnit {
+			line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)
+			e.emit(line)
+		}
+		e.emitJmp(endLab)
 	}
-	e.emitJmp(endLab)
 
 	// err branch
 	e.emitLabel(errLab)
@@ -2780,14 +2784,23 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.pushScope()
 	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
 	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
+	errTerminated := e.blockTerminated
+	e.blockTerminated = false
 	e.popScope()
-	if rt != IrUnit {
-		line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
-		e.emit(line)
+	if !errTerminated {
+		if rt != IrUnit {
+			line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
+			e.emit(line)
+		}
+		e.emitJmp(endLab)
 	}
-	e.emitJmp(endLab)
 
 	e.emitLabel(endLab)
+	if okTerminated && errTerminated {
+		e.emit("unreachable")
+		e.blockTerminated = true
+		return "", rt
+	}
 	finalVal := ""
 	if rt != IrUnit {
 		finalVal = e.tmp()
@@ -3064,6 +3077,7 @@ func (e *Emitter) emitPanicCall(expr *ast.CallExpr) (string, IrType) {
 	line := fmt.Sprintf("call void @sydney_panic(ptr %s)", arg)
 	e.emit(line)
 	e.emit("unreachable")
+	e.blockTerminated = true
 	return "", IrUnit
 }
 

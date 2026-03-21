@@ -110,6 +110,12 @@ func Run(args []string, flags map[Flag]bool) int {
 		return 1
 	}
 
+	for _, pkg := range packages {
+		for _, pr := range pkg.Programs {
+			codegen.ExpandDerives(pr)
+		}
+	}
+
 	codegen.ExpandDerives(program)
 
 	if flags[dumpAst] {
@@ -205,6 +211,12 @@ func Compile(args []string, flags map[Flag]bool) int {
 	if len(p.Errors()) != 0 {
 		printParserErrors(os.Stdout, p.Errors())
 		return 1
+	}
+
+	for _, pkg := range packages {
+		for _, pr := range pkg.Programs {
+			codegen.ExpandDerives(pr)
+		}
 	}
 
 	codegen.ExpandDerives(program)
