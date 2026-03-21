@@ -30,9 +30,15 @@ func ScanDeriveImports(source string) []string {
 						if tok.Type == token.RightParen || tok.Type == token.EOF {
 							break
 						}
-						if tok.Literal == "json" && !existingImports[tok.Literal] {
-							imports = append(imports, "json")
-							existingImports["json"] = true
+						if tok.Literal == "json" {
+							if !existingImports["json"] {
+								imports = append(imports, "json")
+								existingImports["json"] = true
+							}
+							if !existingImports["conv"] {
+								imports = append(imports, "conv")
+								existingImports["conv"] = true
+							}
 						}
 					}
 				}

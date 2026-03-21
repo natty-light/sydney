@@ -280,3 +280,56 @@ pub func strip_brackets(string raw) -> string {
   const trimmed = strings:trim(raw);
   return trimmed[1:len(trimmed) - 1];
 }
+
+pub func marshal_int_array(array<int> arr) -> string {
+  mut res = "[";
+  for (idx, elem in arr) {
+    mut str = conv:itoa(elem);
+    if (idx < len(arr) - 1) {
+      str = str + ",";
+    }
+
+    res = res + str;
+  }
+  
+  return res + "]"
+}
+
+pub func marshal_float_array(array<float> arr) -> string {
+  mut res = "[";
+  for (idx, elem in arr) {
+    mut str = conv:ftoa(elem);
+    if (idx < len(arr) - 1) {
+      str = str + ",";
+    }
+    res = res + str;
+  }
+  return res + "]"; 
+}
+
+pub func marshal_bool_array(array<bool> arr) -> string {
+  mut res = "[";
+  for (idx, elem in arr) {
+    mut str = conv:bool_to_str(elem);
+    if (idx < len(arr) - 1) {
+      str = str + ",";
+    }
+
+    res = res + str;
+  }
+  return res + "]";
+}
+
+pub func marshal_string_array(array<string> arr) -> string {
+  mut res = "[";
+  for (idx, elem in arr) {
+    mut str = "\"" + elem + "\"";
+    if (idx < len(arr) - 1) {
+      str = str + ",";
+    }
+
+    res = res + str;
+  }
+
+  return res + "]";
+}
