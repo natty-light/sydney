@@ -409,6 +409,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if c.lastInstructionIs(code.OpPop) {
 			c.removeLastPop()
 		}
+		if node.GetResolvedType() == types.Unit {
+			c.emit(code.OpNull)
+		}
 
 		//emit an OpJump with operand to be replaced later
 		jumpPos := c.emit(code.OpJump, 9999)
@@ -429,12 +432,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 			if c.lastInstructionIs(code.OpPop) {
 				c.removeLastPop()
 			}
+			if node.GetResolvedType() == types.Unit {
+				c.emit(code.OpNull)
+			}
 		}
 
 		afterAlternativePos := len(c.currentInstructions())
-		if node.GetResolvedType() == types.Unit {
-			c.emit(code.OpNull)
-		}
 		c.changeOperand(jumpPos, afterAlternativePos)
 	case *ast.IndexExpr:
 		err := c.Compile(node.Left)
@@ -965,6 +968,9 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	if c.lastInstructionIs(code.OpPop) {
 		c.removeLastPop()
 	}
+	if node.GetResolvedType() == types.Unit {
+		c.emit(code.OpNull)
+	}
 	c.leaveBlockScope()
 
 	jumpPos := c.emit(code.OpJump, 9999)
@@ -991,6 +997,9 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	}
 	if c.lastInstructionIs(code.OpPop) {
 		c.removeLastPop()
+	}
+	if node.GetResolvedType() == types.Unit {
+		c.emit(code.OpNull)
 	}
 	c.leaveBlockScope()
 
@@ -1029,6 +1038,9 @@ func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
 	if c.lastInstructionIs(code.OpPop) {
 		c.removeLastPop()
 	}
+	if node.GetResolvedType() == types.Unit {
+		c.emit(code.OpNull)
+	}
 	c.leaveBlockScope()
 
 	jumpPos := c.emit(code.OpJump, 9999)
@@ -1042,6 +1054,9 @@ func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
 	}
 	if c.lastInstructionIs(code.OpPop) {
 		c.removeLastPop()
+	}
+	if node.GetResolvedType() == types.Unit {
+		c.emit(code.OpNull)
 	}
 
 	afterNonePos := len(c.currentInstructions())

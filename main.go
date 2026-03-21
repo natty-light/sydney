@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 	"sydney/ast"
 	"sydney/codegen"
 	"sydney/compiler"
@@ -42,7 +43,6 @@ var commands = map[string]CommandFunc{
 }
 
 func main() {
-
 	args := os.Args
 	status := 0
 	flags := parseFlags(args)
@@ -238,7 +238,6 @@ func Compile(args []string, flags map[Flag]bool) int {
 
 	i := irgen.New()
 	err = i.Emit(program, packages)
-
 	if err != nil {
 		fmt.Printf("Compiler error: %s\n", err)
 		return 1

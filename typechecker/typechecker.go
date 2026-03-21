@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
 	"sydney/ast"
 	"sydney/loader"
 	"sydney/object"
@@ -258,6 +259,11 @@ func (c *Checker) checkVarDeclStmt(node *ast.VarDeclarationStmt) types.Type {
 	valType := c.typeOf(node.Value, varType)
 	if node.Type == nil {
 		node.Type = valType
+	}
+
+	if valType == types.Unit {
+		c.appendError(fmt.Sprintf("cannot assign unit to variable %s", name), node)
+		return types.Unit
 	}
 
 	if node.Value == nil && !node.Constant {
@@ -1447,7 +1453,6 @@ func (c *Checker) validateImplementation(node *ast.InterfaceImplementationStmt) 
 			continue
 		}
 	}
-
 }
 
 func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
@@ -2179,7 +2184,6 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		concreteType = ft
 	}
 	return c.validateFunctionCall(expr, concreteType)
-
 }
 
 func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template types.StructType) (types.StructType, bool) {
