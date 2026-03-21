@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sydney/ast"
+	"sydney/codegen"
 	"sydney/lexer"
 	"sydney/parser"
 	"sydney/token"
@@ -96,6 +97,13 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 		program, errors := l.Parse(source)
 		if len(errors) > 0 {
 			return nil, fmt.Errorf(strings.Join(errors, "\n"))
+		}
+
+		deriveImports := codegen.ScanDeriveImports(source)
+		for _, di := range deriveImports {
+			program.Stmts = append([]ast.Stmt{&ast.ImportStatement{
+				Name: &ast.StringLiteral{Value: di},
+			}}, program.Stmts...)
 		}
 
 		pkg.Programs = append(pkg.Programs, program)
