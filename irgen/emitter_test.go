@@ -7,12 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
+
 	"sydney/ast"
 	"sydney/lexer"
 	"sydney/loader"
 	"sydney/parser"
 	"sydney/typechecker"
-	"testing"
 )
 
 var declarations = `declare void @sydney_print_int(i64)
@@ -67,7 +68,8 @@ declare i64 @sydney_tcp_close_listener(i64)
 declare i64 @sydney_tls_connect(ptr, i64)
 declare ptr @sydney_tls_read(i64, i64)
 declare i64 @sydney_tls_write(i64, ptr, i64)
-declare ptr @sydney_tls_close(i64)`
+declare ptr @sydney_tls_close(i64)
+declare ptr @sydney_ftoa(double)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
@@ -1093,7 +1095,7 @@ func runE2ETests(t *testing.T, tests []e2eTestCase) {
 			objFile := filepath.Join(tmpDir, "test.o")
 			binFile := filepath.Join(tmpDir, "test")
 
-			os.WriteFile(llFile, []byte(e.buf.String()), 0644)
+			os.WriteFile(llFile, []byte(e.buf.String()), 0o644)
 
 			// llc
 			cmd := exec.Command("llc", "-filetype=obj", llFile, "-o", objFile)
@@ -1441,7 +1443,7 @@ func TestE2EArrayBoundsCheck(t *testing.T) {
 	objFile := filepath.Join(tmpDir, "test.o")
 	binFile := filepath.Join(tmpDir, "test")
 
-	os.WriteFile(llFile, []byte(e.buf.String()), 0644)
+	os.WriteFile(llFile, []byte(e.buf.String()), 0o644)
 
 	cmd := exec.Command("llc", "-filetype=obj", llFile, "-o", objFile)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -1554,7 +1556,7 @@ match cr {
 	objFile := filepath.Join(tmpDir, "test.o")
 	binFile := filepath.Join(tmpDir, "test")
 
-	os.WriteFile(llFile, []byte(e.buf.String()), 0644)
+	os.WriteFile(llFile, []byte(e.buf.String()), 0o644)
 
 	cmd := exec.Command("llc", "-filetype=obj", llFile, "-o", objFile)
 	if out, err := cmd.CombinedOutput(); err != nil {
