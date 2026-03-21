@@ -1,6 +1,10 @@
 module "http"
 
 import "net"
+import "conv"
+import "strings"
+
+pub define struct Request { method string, path string, body string }
 
 pub func get(string host, string path) -> result<string> {
     const cr = net:connect(host, 80);
@@ -40,4 +44,31 @@ pub func get_s(string host, string path) -> result<string> {
             err(msg);
         },
     }
+}
+
+pub func parse_request(string raw) -> result<Request> {
+  const first_line_end = strings:index_of(raw, '\n');
+  if (first_line_end == -1) {
+    return err("invalid request");
+  }
+
+  const first_line = raw[:first_line_end];
+  const parts = strings:split(first_line, ' ');
+  const method = parts[0];
+  const path = parts[1];
+
+  const body_sep = strings:index_of_substr(raw, "\r\n\r\n");
+  mut body = "";
+  if (body_sep != -1) {
+    const idx = body_sep + 4;
+    body = raw[idx:];
+  }
+
+  ok(Request { method: method, path: path, body: body });
+}
+
+pub func format_response(int status, string body) -> string {
+  const status_str = conv:itoa(status);
+  const len_str = conv:itoa(len(body));
+  return "HTTP/1.1 " + status_str + " OK\r\nContent-Type: application/json\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body;
 }
