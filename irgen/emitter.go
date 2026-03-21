@@ -106,9 +106,11 @@ func New() *Emitter {
 func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
 	for _, pkg := range packages {
 		e.currentModule = pkg.Name
-		for _, program := range pkg.Programs {
-			e.collect(program)
+		merged := &ast.Program{}
+		for _, p := range pkg.Programs {
+			merged.Stmts = append(merged.Stmts, p.Stmts...)
 		}
+		e.collect(merged)
 		e.currentModule = ""
 	}
 	program := e.collect(n)
@@ -116,9 +118,11 @@ func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
 
 	for _, pkg := range packages {
 		e.currentModule = pkg.Name
-		for _, program := range pkg.Programs {
-			e.functions(program)
+		merged := &ast.Program{}
+		for _, p := range pkg.Programs {
+			merged.Stmts = append(merged.Stmts, p.Stmts...)
 		}
+		e.functions(merged)
 		e.emitPackageInit(pkg)
 		e.currentModule = ""
 	}
@@ -218,6 +222,7 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 		ret := SydneyTypeToIrType(fType.Return)
 		e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
 		if node.MangledName != "" {
+			e.funcSigs[node.MangledName] = e.funcSigs[name]
 			e.funcSigs[node.Name.Value] = e.funcSigs[name]
 			if e.currentModule != "" {
 				e.funcSigs[e.moduleMangle(e.currentModule, node.Name.Value)] = e.funcSigs[name]
@@ -1679,11 +1684,11 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 
 	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
 	if decl.MangledName != "" {
-		e.funcSigs[decl.Name.Value] = e.funcSigs[name] // declare mangled
+		e.funcSigs[decl.Name.Value] = e.funcSigs[name]
+		e.funcSigs[decl.MangledName] = e.funcSigs[name]
 		if e.currentModule != "" {
-			e.funcSigs[e.moduleMangle(e.currentModule, decl.Name.Value)] = e.funcSigs[name] // declare non mangled module export
+			e.funcSigs[e.moduleMangle(e.currentModule, decl.Name.Value)] = e.funcSigs[name]
 		}
-
 	}
 
 	if decl.IsExtern {
@@ -2579,9 +2584,11 @@ func (e *Emitter) emitPackageInit(pkg *loader.Package) {
 	line := fmt.Sprintf("define void @%s__init() {", e.currentModule)
 	e.emit(line)
 	e.depth = 1
-	for _, program := range pkg.Programs {
-		e.emitPackageInitInner(program)
+	merged := &ast.Program{}
+	for _, p := range pkg.Programs {
+		merged.Stmts = append(merged.Stmts, p.Stmts...)
 	}
+	e.emitPackageInitInner(merged)
 	line = fmt.Sprintf("ret void")
 	e.emit(line)
 	e.depth = 0
