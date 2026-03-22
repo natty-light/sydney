@@ -15,3 +15,72 @@ pub func min<T>(T a, T b) -> T {
 pub func max<T>(T a, T b) -> T {
     if (a > b) { a; } else { b; }
 }
+
+pub func sqrt(float x) -> float {
+  if (x == 0.0) {
+      return x;
+  }
+  mut guess = x / 2.0;
+  for (mut i = 0; i < 10; i = i + 1) {
+    guess = (guess + x / guess) / 2.0;
+  }
+
+  return guess;
+}
+
+pub func pow_int(float x, int exponent) -> float {
+  mut res = 1.0;
+  for (exponent > 0) {
+    if (exponent % 2 == 1) {
+      res = res * x;
+    }
+    x = x * x;
+    exponent = exponent / 2;
+  }
+
+  return res;
+}
+
+pub func exp(float x) -> float {
+  mut res = 1.0;
+  for (mut i = 0; i < 25; i = i + 1) {
+    res = res + res * x / float(i);
+  }
+
+  return res;
+}
+
+pub func factorial(float x) -> float {
+  if (x == 0.0) {
+    return x;
+  }
+
+  return x * factorial(x - 1.0);
+}
+
+pub func ln(float x) -> float {
+  const ln2 = 0.693147180559945;
+  mut count = 0.0;
+  for (x >= 2.0) {
+    x = x / 2.0;
+    count = count + 1.0;
+  }
+  for (x < 1.0) {
+    x = x * 2.0;
+    count = count - 1.0;
+  }
+
+  mut t = x - 1.0;
+  mut res = 0.0;
+  mut term = t;
+  for (mut i = 1; i <= 25; i = i + 1) {
+    if (i % 2 == 1) {
+      res = res + term / float(i);
+    } else {
+      res = res - term / float(i);    
+    }
+    term = term * t;
+  }
+  
+  return res + count * ln2;
+}
