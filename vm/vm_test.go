@@ -1191,3 +1191,147 @@ func TestForInMap(t *testing.T) {
 	}
 	runVmTests(t, tests)
 }
+
+func TestStructMethods(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `define struct Point { x int, y int }
+			func getX(Point p) -> int { return p.x; }
+			const Point p = Point { x: 42, y: 0 };
+			p.getX();`,
+			expected: 42,
+		},
+		{
+			source: `define struct Counter { val int }
+			func add(Counter c, int n) -> int { return c.val + n; }
+			const Counter c = Counter { val: 10 };
+			c.add(5);`,
+			expected: 15,
+		},
+		{
+			source: `define struct Greeter { name string }
+			func greet(Greeter g, string prefix) -> string { return prefix + " " + g.name; }
+			const Greeter g = Greeter { name: "world" };
+			g.greet("hello");`,
+			expected: "hello world",
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestMutableStructFields(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `define struct Point { x int, y int }
+			mut Point p = Point { x: 1, y: 2 };
+			p.x = 10;
+			p.x;`,
+			expected: 10,
+		},
+		{
+			source: `define struct Config { name string }
+			mut Config c = Config { name: "old" };
+			c.name = "new";
+			c.name;`,
+			expected: "new",
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestStringConcatenation(t *testing.T) {
+	tests := []vmTestCase{
+		{`"hello" + " " + "world";`, "hello world"},
+		{`const a = "foo"; const b = "bar"; a + b;`, "foobar"},
+		{`const s = "abc"; s + s + s;`, "abcabcabc"},
+	}
+	runVmTests(t, tests)
+}
+
+func TestFunctionLiteralAsValue(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `const f = func(int x) -> int { x * 2; }; f(5);`,
+			expected: 10,
+		},
+		{
+			source:   `const f = func(int a, int b) -> int { a + b; }; f(3, 7);`,
+			expected: 10,
+		},
+		{
+			source: `func apply(fn<(int) -> int> f, int x) -> int { return f(x); }
+			apply(func(int x) -> int { x + 1; }, 41);`,
+			expected: 42,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestByteOperations(t *testing.T) {
+	tests := []vmTestCase{
+		{`mut byte b = 'a'; int(b);`, 97},
+		{`const byte b = byte(65); char(b);`, "A"},
+		{`mut byte b = 'z'; b == 'z';`, true},
+		{`mut byte b = 'a'; b == 'b';`, false},
+	}
+	runVmTests(t, tests)
+}
+
+func TestForInWithBreak(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `mut s = 0; const a = [1, 2, 3, 4, 5]; for (v in a) { if (v == 4) { break; } s = s + v; } s;`,
+			expected: 6, // 1+2+3
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestForInWithContinue(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source:   `mut s = 0; const a = [1, 2, 3, 4, 5]; for (v in a) { if (v == 3) { continue; } s = s + v; } s;`,
+			expected: 12, // 1+2+4+5
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestPanicInMatchArm(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `func safe() -> result<int> { ok(42); }
+			const r = safe();
+			const val = match r {
+				ok(v) -> { v; },
+				err(msg) -> { panic(msg); },
+			};
+			val;`,
+			expected: 42,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestNestedMatchExpressions(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			source: `func outer() -> result<int> { ok(10); }
+			func inner(int x) -> option<int> { some(x * 2); }
+			const r = outer();
+			const val = match r {
+				ok(v) -> {
+					const o = inner(v);
+					match o {
+						some(x) -> { x; },
+						none -> { 0; },
+					};
+				},
+				err(msg) -> { 0; },
+			};
+			val;`,
+			expected: 20,
+		},
+	}
+	runVmTests(t, tests)
+}

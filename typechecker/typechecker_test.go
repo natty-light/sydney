@@ -1405,3 +1405,266 @@ func TestStringConcatenationTypeError(t *testing.T) {
 	testTypeErrors(t, tests)
 }
 
+func TestBuiltinFirst(t *testing.T) {
+	sources := []string{
+		`const a = [1, 2, 3]; const int x = first(a);`,
+		`const a = ["a", "b"]; const string s = first(a);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestBuiltinFirstErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `first(5);`,
+			expectedError: "invalid argument type int for first()",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestBuiltinLast(t *testing.T) {
+	sources := []string{
+		`const a = [1, 2, 3]; const int x = last(a);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestBuiltinLastErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `last("hello");`,
+			expectedError: "invalid argument type string for last()",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestBuiltinRest(t *testing.T) {
+	sources := []string{
+		`const a = [1, 2, 3]; const array<int> r = rest(a);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestBuiltinRestErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `rest(5);`,
+			expectedError: "invalid argument type int for rest()",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestBuiltinKeysValues(t *testing.T) {
+	sources := []string{
+		`const m = {"a": 1, "b": 2}; const array<string> k = keys(m);`,
+		`const m = {"a": 1, "b": 2}; const array<int> v = values(m);`,
+		`const m = {1: "x", 2: "y"}; const array<int> k = keys(m);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestBuiltinKeysValuesErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `keys([1, 2, 3]);`,
+			expectedError: "invalid argument type",
+		},
+		{
+			input:         `values("hello");`,
+			expectedError: "invalid argument type",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestBuiltinAppend(t *testing.T) {
+	sources := []string{
+		`const a = [1, 2]; const array<int> b = append(a, 3);`,
+		`const a = ["x"]; const array<string> b = append(a, "y");`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestBuiltinAppendErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `const a = [1, 2]; append(a, "hello");`,
+			expectedError: "type mismatch",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestScopeTypeInParams(t *testing.T) {
+	sources := []string{
+		`define struct Foo { x int }
+		func bar(Foo f) -> int { return f.x; }
+		const Foo f = Foo { x: 5 };
+		const int r = bar(f);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestMatchExprAsValue(t *testing.T) {
+	sources := []string{
+		`func f() -> result<int> { ok(5); }
+		const r = f();
+		const x = match r { ok(v) -> { v * 2; }, err(msg) -> { 0; }, };
+		const int y = x + 1;`,
+
+		`func g() -> option<string> { some("hi"); }
+		const o = g();
+		const s = match o { some(v) -> { v; }, none -> { "default"; }, };`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestIndexAssignmentTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `mut a = [1, 2, 3]; a[0] = "hello";`,
+			expectedError: "type mismatch",
+		},
+		{
+			input:         `mut m = {"a": 1}; m["a"] = "hello";`,
+			expectedError: "type mismatch",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestNestedClosureCapture(t *testing.T) {
+	sources := []string{
+		`const int x = 1;
+		const f = func() -> int {
+			const g = func() -> int { x + 1; };
+			g();
+		};
+		const int r = f();`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestVariableShadowing(t *testing.T) {
+	sources := []string{
+		`const int x = 5;
+		func f() -> int {
+			const int x = 10;
+			return x;
+		}
+		f();`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+

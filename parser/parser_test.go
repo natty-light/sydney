@@ -1769,7 +1769,7 @@ func TestImportStatement(t *testing.T) {
 
 	stmt, ok := program.Stmts[0].(*ast.ImportStatement)
 	if !ok {
-		t.Fatalf("program.Stmts[0] is not *ast.ImportStmt. got=%T", stmt)
+		t.Fatalf("program.Stmts[0] is not *ast.ImportStatement. got=%T", stmt)
 	}
 
 	if stmt.Name.Value != "math" {
@@ -3283,6 +3283,203 @@ func TestByteEscapeSequences(t *testing.T) {
 
 		if bl.Value != tt.expected {
 			t.Errorf("byte value wrong for %q, want %d, got %d", tt.source, tt.expected, bl.Value)
+		}
+	}
+}
+
+func TestScopeAccessInCallArgs(t *testing.T) {
+	source := `io:openFile("test.txt");`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+
+	call, ok := stmt.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("not *ast.CallExpr. got=%T", stmt.Expr)
+	}
+
+	scope, ok := call.Function.(*ast.ScopeAccessExpr)
+	if !ok {
+		t.Fatalf("call.Function not *ast.ScopeAccessExpr. got=%T", call.Function)
+	}
+
+	if scope.Module.Value != "io" {
+		t.Errorf("module wrong, want io, got %s", scope.Module.Value)
+	}
+
+	if scope.Member.Value != "openFile" {
+		t.Errorf("member wrong, want openFile, got %s", scope.Member.Value)
+	}
+}
+
+func TestScopeTypeInFunctionParams(t *testing.T) {
+	source := `
+	define struct Foo { x int }
+	func bar(Foo f) -> int { f.x; }
+	`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 2 {
+		t.Fatalf("expected 2 statements, got %d", len(program.Stmts))
+	}
+
+	fn, ok := program.Stmts[1].(*ast.FunctionDeclarationStmt)
+	if !ok {
+		t.Fatalf("not *ast.FunctionDeclarationStmt. got=%T", program.Stmts[1])
+	}
+
+	fType, ok := fn.Type.(types.FunctionType)
+	if !ok {
+		t.Fatalf("not FunctionType. got=%T", fn.Type)
+	}
+
+	st, ok := fType.Params[0].(types.StructType)
+	if !ok {
+		t.Fatalf("param 0 not StructType. got=%T", fType.Params[0])
+	}
+
+	if st.Name != "Foo" {
+		t.Errorf("param struct name wrong, want Foo, got %s", st.Name)
+	}
+}
+
+func TestMatchExprInVarDecl(t *testing.T) {
+	source := `const x = match r {
+		ok(val) -> { val + 1; },
+		err(msg) -> { 0; },
+	};`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	decl, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("not *ast.VarDeclarationStmt. got=%T", program.Stmts[0])
+	}
+
+	_, ok = decl.Value.(*ast.MatchExpr)
+	if !ok {
+		t.Fatalf("value not *ast.MatchExpr. got=%T", decl.Value)
+	}
+}
+
+func TestNestedStructLiteral(t *testing.T) {
+	source := `
+	define struct Inner { x int }
+	define struct Outer { i Inner, y int }
+	const o = Outer { i: Inner { x: 5 }, y: 10 };
+	`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(program.Stmts))
+	}
+
+	decl, ok := program.Stmts[2].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("not *ast.VarDeclarationStmt. got=%T", program.Stmts[2])
+	}
+
+	lit, ok := decl.Value.(*ast.StructLiteral)
+	if !ok {
+		t.Fatalf("not *ast.StructLiteral. got=%T", decl.Value)
+	}
+
+	if lit.Name != "Outer" {
+		t.Errorf("struct name wrong, want Outer, got %s", lit.Name)
+	}
+
+	if len(lit.Fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(lit.Fields))
+	}
+}
+
+func TestConditionOnlyForLoop(t *testing.T) {
+	source := `for (x < 10) { print(x); }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	_, ok := program.Stmts[0].(*ast.ForStmt)
+	if !ok {
+		t.Fatalf("not *ast.ForStmt. got=%T", program.Stmts[0])
+	}
+}
+
+func TestIfElseAsExpression(t *testing.T) {
+	source := `const x = if (true) { 1; } else { 2; };`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	decl, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("not *ast.VarDeclarationStmt. got=%T", program.Stmts[0])
+	}
+
+	_, ok = decl.Value.(*ast.IfExpr)
+	if !ok {
+		t.Fatalf("value not *ast.IfExpr. got=%T", decl.Value)
+	}
+}
+
+func TestMultipleImports(t *testing.T) {
+	source := `
+	import "io"
+	import "net"
+	import "http"
+	`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(program.Stmts))
+	}
+
+	for _, stmt := range program.Stmts {
+		_, ok := stmt.(*ast.ImportStatement)
+		if !ok {
+			t.Fatalf("not *ast.ImportStatement. got=%T", stmt)
 		}
 	}
 }
