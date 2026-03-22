@@ -1,5 +1,7 @@
 module "stats"
 
+// Trying not to break sydney
+
 pub func mean<T>(array<T> vals) -> float {
     mut T x = 0;
     for (mut i = 0; i < len(vals); i = i + 1) {
