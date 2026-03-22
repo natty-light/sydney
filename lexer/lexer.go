@@ -75,7 +75,7 @@ func (l *Lexer) readChar() {
 func (l *Lexer) readIdentifer() string {
 	position := l.position
 
-	for utils.IsAlpha(string(l.char)) {
+	for utils.IsAlpha(string(l.char)) || utils.IsNumeric(string(l.char)) {
 		l.readChar() // Advances the position pointer
 	}
 	return l.source[position:l.position]
