@@ -1035,3 +1035,373 @@ const int x = <- ch;`
 		t.Fatalf("input %q expected no errors, got %v", source, c.Errors())
 	}
 }
+
+func TestStructMethodCall(t *testing.T) {
+	sources := []string{
+		`define struct Point { x int, y int }
+		func getX(Point p) -> int { return p.x; }
+		const Point p = Point { x: 1, y: 2 };
+		const int x = p.getX();`,
+
+		`define struct Counter { val int }
+		func increment(Counter c, int n) -> int { return c.val + n; }
+		const Counter c = Counter { val: 10 };
+		const int r = c.increment(5);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestPanicAsNeverInMatch(t *testing.T) {
+	sources := []string{
+		`func open() -> result<int> { ok(42); }
+		const r = open();
+		const val = match r {
+			ok(v) -> { v; },
+			err(msg) -> { panic(msg); },
+		};`,
+
+		`func find() -> option<int> { some(1); }
+		const o = find();
+		const val = match o {
+			some(v) -> { v; },
+			none -> { panic("not found"); },
+		};`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestForInTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `for (x in 5) { print(x); }`,
+			expectedError: "cannot iterate over value of type int",
+		},
+		{
+			input:         `for (x in "hello") { print(x); }`,
+			expectedError: "cannot iterate over value of type string",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestChannelSendTypeError(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `const chan<int> ch = chan<int>(); ch <- "hello";`,
+			expectedError: "type mismatch",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestResultTypeReturn(t *testing.T) {
+	sources := []string{
+		`func foo() -> result<int> { ok(42); }
+		const r = foo();
+		const val = match r {
+			ok(v) -> { v; },
+			err(msg) -> { 0; },
+		};`,
+
+		`func bar() -> result<string> { return err("oops"); }
+		const r = bar();`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestStructMethodCallTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define struct Point { x int, y int }
+			func getX(Point p) -> int { return p.x; }
+			const Point p = Point { x: 1, y: 2 };
+			const string s = p.getX();`,
+			expectedError: "type mismatch",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestOptionTypeReturn(t *testing.T) {
+	sources := []string{
+		`func find(int x) -> option<int> {
+			if (x > 0) { return some(x); }
+			return none();
+		}
+		const r = find(5);`,
+
+		`func lookup(string key) -> option<string> {
+			return some("found");
+		}
+		const option<string> r = lookup("a");`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestOptionAsParameter(t *testing.T) {
+	sources := []string{
+		`func unwrap(option<int> o) -> int {
+			const val = match o {
+				some(v) -> { v; },
+				none -> { 0; },
+			};
+			return val;
+		}
+		unwrap(some(42));`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestOptionTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `const option<int> x = some("hello");`,
+			expectedError: "type mismatch",
+		},
+		{
+			input: `func find() -> option<int> { return some(5); }
+			const r = find();
+			const val = match r {
+				some(v) -> { v + 1; },
+				none -> { "nope"; },
+			};`,
+			expectedError: "type mismatch: match arms must result in same type",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
+func TestInterfaceMethodDispatch(t *testing.T) {
+	sources := []string{
+		`define struct Circle { r float }
+		define interface Shape { area() -> float }
+		define implementation Circle -> Shape
+		func area(Circle c) -> float { return c.r * c.r * 3.14; }
+		func getArea(Shape s) -> float { return s.area(); }
+		const Circle c = Circle { r: 5.0 };
+		const float a = getArea(c);`,
+
+		`define struct Dog { name string }
+		define struct Cat { name string }
+		define interface Pet { speak() -> string }
+		define implementation Dog -> Pet
+		define implementation Cat -> Pet
+		func speak(Dog d) -> string { return d.name; }
+		func speak(Cat c) -> string { return c.name; }
+		func greet(Pet p) -> string { return p.speak(); }
+		greet(Dog { name: "Rex" });
+		greet(Cat { name: "Whiskers" });`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestClosureCapture(t *testing.T) {
+	sources := []string{
+		`const int x = 10;
+		const f = func() -> int { x; };
+		const int r = f();`,
+
+		`const int n = 5;
+		const adder = func(int x) -> int { x + n; };
+		const int r = adder(3);`,
+
+		`const string greeting = "hello";
+		const f = func(string name) -> string { greeting + " " + name; };
+		const string r = f("world");`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestMutableStructFieldAssignment(t *testing.T) {
+	sources := []string{
+		`define struct Point { x int, y int }
+		mut Point p = Point { x: 1, y: 2 };
+		p.x = 10;`,
+
+		`define struct Config { name string, val int }
+		mut Config c = Config { name: "a", val: 0 };
+		c.name = "b";
+		c.val = 42;`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestFunctionLiteralAsArgument(t *testing.T) {
+	sources := []string{
+		`func apply(fn<(int) -> int> f, int x) -> int { return f(x); }
+		const int r = apply(func(int x) -> int { x * 2; }, 5);`,
+
+		`func filter(array<int> a, fn<(int) -> bool> pred) -> int { return a[0]; }
+		filter([1, 2, 3], func(int x) -> bool { x > 1; });`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestRecursiveFunction(t *testing.T) {
+	sources := []string{
+		`func fact(int n) -> int {
+			if (n <= 1) { return 1; }
+			return n * fact(n - 1);
+		}
+		const int r = fact(5);`,
+
+		`func fib(int n) -> int {
+			if (n <= 1) { return n; }
+			return fib(n - 1) + fib(n - 2);
+		}
+		fib(10);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestStringConcatenation(t *testing.T) {
+	sources := []string{
+		`const string s = "hello" + " " + "world";`,
+		`const string a = "foo";
+		const string b = a + "bar";`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestStringConcatenationTypeError(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input:         `const x = "hello" + 5;`,
+			expectedError: "type mismatch",
+		},
+	}
+	testTypeErrors(t, tests)
+}
+
