@@ -1,0 +1,22 @@
+module "http"
+
+pub define struct Route { path string, handler fn<(Request) -> string> }
+pub define struct Router { routes array<Route> }
+
+pub func new_router() -> Router {
+  Router { routes: [] };
+}
+
+pub func add_route(Router r, string path, fn<(Request) -> string> handler) {
+  r.routes = append(r.routes, Route { path: path, handler: handler });
+}
+
+func find_route(Router r, string path) -> option<fn<(Request) -> string>> {
+  for (route in r.routes) {
+    if (route.path == path) {
+      return some(route.handler);
+    }
+  }
+
+  return none();
+}

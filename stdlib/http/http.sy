@@ -13,7 +13,7 @@ pub func new_server(string host, int port) -> Server {
   Server { host: host, port: port };
 }
 
-pub func serve(Server s, string path, fn<(Request) -> string> handler) -> result<int> {
+pub func listen(Server s, Router r) {
   const lr = net:listen(s.host, s.port);
   match lr {
     ok(l) -> {
@@ -21,29 +21,35 @@ pub func serve(Server s, string path, fn<(Request) -> string> handler) -> result
         const ar = l.accept();
         match ar {
           ok(conn) -> {
-            spawn handle(conn, handler);
+            spawn handle(conn, r);
           },
           err(msg) -> { print(msg); },
         }
       }
-      return ok(0);
     },
     err(msg) -> {
       print(msg);
-      return err(msg);
     },
   }
 }
 
-func handle(net:Socket conn, fn<(Request) -> string> handler) {
+func handle(net:Socket conn, Router router) {
   const r = conn.read(4096);
   match r {
     ok(raw) -> {
       const pr = parse_request(raw);
       match pr {
         ok(req) -> {
-          const body = handler(req);
-          const resp = format_response(200, body);
+          const handler_opt = router.find_route(req.path);
+          const resp = match handler_opt {
+            some(h) -> { 
+              const body = h(req);
+              format_response(200, body);
+            },
+            none -> { 
+              format_response(404, "not found");
+            },
+          }
           conn.write(resp, len(resp));
           return;
         },
@@ -121,5 +127,5 @@ pub func parse_request(string raw) -> result<Request> {
 pub func format_response(int status, string body) -> string {
   const status_str = conv:itoa(status);
   const len_str = conv:itoa(len(body));
-  return "HTTP/1.1 " + status_str + " OK\r\nContent-Type: application/json\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body;
+  return "HTTP/1.1 " + status_str + " OK\r\nContent-Type: text/html\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body;
 }
