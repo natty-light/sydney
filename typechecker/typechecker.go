@@ -148,7 +148,22 @@ func (c *Checker) checkPackages(packages []*loader.Package) []string {
 		for _, program := range pkg.Programs {
 			for _, stmt := range program.Stmts {
 				if pub, ok := stmt.(*ast.PubStatement); ok {
-					if fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn && len(fn.TypeParams) > 0 {
+					if _, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn {
+						continue
+					}
+					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
+					exportEnv.Set(name, typ)
+				}
+			}
+		}
+		for _, program := range pkg.Programs {
+			for _, stmt := range program.Stmts {
+				if pub, ok := stmt.(*ast.PubStatement); ok {
+					fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt)
+					if !isFn {
+						continue
+					}
+					if len(fn.TypeParams) > 0 {
 						continue
 					}
 

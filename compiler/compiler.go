@@ -1156,6 +1156,9 @@ func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementat
 	for _, ident := range impl.InterfaceNames {
 		in := interfaceNameFromExpr(ident)
 		it, ok := c.fetchInterfaceType(in)
+		if !ok && c.currentModule != "" {
+			it, ok = c.fetchInterfaceType(c.mangleModule(c.currentModule, in))
+		}
 		if !ok {
 			panic(fmt.Errorf("interface type %s not found", in))
 		}
@@ -1169,6 +1172,9 @@ func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementat
 		for mn, idx := range it.MethodIndices {
 			mangled := mangle(sn, mn)
 			sym, _, ok := c.symbolTable.Resolve(mangled)
+			if !ok && c.currentModule != "" {
+				sym, _, ok = c.symbolTable.Resolve(c.mangleModule(c.currentModule, mangled))
+			}
 			if !ok {
 				panic(fmt.Errorf("symbol %s not found", mangled))
 			}
@@ -1177,6 +1183,10 @@ func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementat
 		itabIdx := c.addConstant(itab)
 		itabKey := getItabKey(sn, in)
 		c.itabMapping[itabKey] = itabIdx
+		if c.currentModule != "" {
+			mangledKey := getItabKey(sn, c.mangleModule(c.currentModule, in))
+			c.itabMapping[mangledKey] = itabIdx
+		}
 	}
 }
 
