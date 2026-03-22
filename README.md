@@ -221,6 +221,14 @@ for (k, v in m) {
 }
 ```
 
+An optional index variable can be added when iterating arrays:
+```
+const nums = [10, 20, 30];
+for (i, n in nums) {
+    print(i, n); // 0 10, 1 20, 2 30
+}
+```
+
 ### Break and continue
 `break` exits a loop early. `continue` skips to the next iteration:
 ```
@@ -383,14 +391,17 @@ Module functions are accessed with the `:` scope operator.
 
 ### Standard library
 Sydney ships with standard library modules in `stdlib/`:
-- `strings` — string manipulation (repeat, contains, split, join, etc.)
-- `conv` — type conversions (itoa, atof)
+- `strings` — string manipulation (repeat, contains, split, join, index_of, trim, etc.)
+- `conv` — type conversions (itoa, atoi, atof, ftoa, bool_to_str, parse_bool)
 - `math` — mathematical functions
 - `stats` — statistical functions
 - `sort` — sorting algorithms (heapsort)
 - `io` — file I/O wrappers with result types
 - `heap` — min-heap data structure
 - `testing` — test assertion utilities
+- `net` — TCP networking (connect, listen, accept, read, write, TLS support)
+- `http` — HTTP client and server with a simple router
+- `json` — JSON parsing and marshaling utilities
 
 ## Interfaces and Implementations
 Sydney supports interfaces, which allow for polymorphism and dynamic dispatch. An interface defines a set of method signatures that a struct can implement.
@@ -466,6 +477,31 @@ ifelse(10 > 5, print("true"), print("false"));
 
 The `quote` and `unquote` functions are used within macros to manipulate AST nodes. `quote` returns the AST of its argument, and `unquote` evaluates an expression and inserts the resulting AST into a quoted block.
 
+## Annotations
+
+### `#[derive(json)]`
+
+Annotating a struct with `#[derive(json)]` automatically generates two functions for that struct:
+- `unmarshal_json_<Name>(string) -> result<Name>` — parses JSON into the struct
+- `marshal_json_<Name>(Name) -> string` — serializes the struct to JSON
+
+```
+#[derive(json)]
+define struct Point {
+    x int,
+    y int
+}
+
+const p = match unmarshal_json_Point("{\"x\":1,\"y\":2}") {
+    ok(v) -> { v; },
+    err(msg) -> { Point { x: 0, y: 0 }; },
+};
+
+print(marshal_json_Point(p)); // {"x":1,"y":2}
+```
+
+Supported field types: `int`, `float`, `string`, `bool`, arrays of primitives, arrays of structs, nested structs. The `json` and `conv` stdlib modules are automatically imported when `#[derive(json)]` is used.
+
 ## Compilation
 
 Sydney has two compilation targets:
@@ -485,11 +521,27 @@ clang file.o -Lsydney_rt/target/release -lsydney_rt -o file
 ```
 Compiles to LLVM IR, then assembles and links against a Rust runtime library that provides garbage collection, string operations, print functions, and thread-based concurrency.
 
+### REPL
+```
+./sydney
+```
+Running without arguments starts an interactive REPL backed by the VM.
+
+### Version
+```
+./sydney version
+```
+
 ### Testing Sydney programs
 ```
 ./sydney test [directory]
 ```
-Runs all `*_test.sy` files in the given directory (or current directory). Test files use the `testing` stdlib module for assertions.
+Runs all `*_test.sy` files in the given directory (or current directory). Test files define functions prefixed with `test_`; the runner compiles and executes each one independently, reporting `PASS`/`FAIL` with a summary. Test files use the `testing` stdlib module for assertions.
+
+### Debug flags
+The following flags work with `run` and `compile`:
+- `--dump-ast` — print the AST after parsing
+- `--dump-types` — print the AST after type checking
 
 ### Building
 ```bash
