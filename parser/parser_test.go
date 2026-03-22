@@ -2932,3 +2932,357 @@ func TestOptionMatchExprNoneFirst(t *testing.T) {
 		t.Errorf("SomeArm binding wrong, want val, got %s", expr.SomeArm.Pattern.Binding.Value)
 	}
 }
+
+func TestPubFunctionDeclaration(t *testing.T) {
+	source := `pub func add(int a, int b) -> int { a + b; }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	pub, ok := program.Stmts[0].(*ast.PubStatement)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.PubStatement. got=%T", program.Stmts[0])
+	}
+
+	fn, ok := pub.Stmt.(*ast.FunctionDeclarationStmt)
+	if !ok {
+		t.Fatalf("pub.Stmt is not *ast.FunctionDeclarationStmt. got=%T", pub.Stmt)
+	}
+
+	if fn.Name.Value != "add" {
+		t.Errorf("function name wrong, want add, got %s", fn.Name.Value)
+	}
+
+	if len(fn.Params) != 2 {
+		t.Fatalf("expected 2 params, got %d", len(fn.Params))
+	}
+}
+
+func TestDeriveAnnotation(t *testing.T) {
+	source := `#[derive(json)]
+define struct Foo { x int, y string }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	def, ok := program.Stmts[0].(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.StructDefinitionStmt. got=%T", program.Stmts[0])
+	}
+
+	annotations := def.GetAnnotations()
+	if len(annotations) != 1 {
+		t.Fatalf("expected 1 annotation, got %d", len(annotations))
+	}
+
+	if annotations[0].Name != "derive" {
+		t.Errorf("annotation name wrong, want derive, got %s", annotations[0].Name)
+	}
+
+	if len(annotations[0].Args) != 1 || annotations[0].Args[0] != "json" {
+		t.Errorf("annotation args wrong, want [json], got %v", annotations[0].Args)
+	}
+}
+
+func TestDeriveAnnotationOnPubStruct(t *testing.T) {
+	source := `#[derive(json)]
+pub define struct Foo { x int, y string }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	pub, ok := program.Stmts[0].(*ast.PubStatement)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.PubStatement. got=%T", program.Stmts[0])
+	}
+
+	def, ok := pub.Stmt.(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("pub.Stmt is not *ast.StructDefinitionStmt. got=%T", pub.Stmt)
+	}
+
+	annotations := def.GetAnnotations()
+	if len(annotations) != 1 {
+		t.Fatalf("expected 1 annotation on inner struct, got %d", len(annotations))
+	}
+
+	if annotations[0].Name != "derive" {
+		t.Errorf("annotation name wrong, want derive, got %s", annotations[0].Name)
+	}
+}
+
+func TestOptionTypeDeclaration(t *testing.T) {
+	tests := []struct {
+		source       string
+		expectedType types.Type
+	}{
+		{"const option<int> x = some(5);", types.OptionType{T: types.Int}},
+		{"const option<string> x = some(\"hi\");", types.OptionType{T: types.String}},
+		{"mut option<float> x;", types.OptionType{T: types.Float}},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.source)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if len(program.Stmts) != 1 {
+			t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+		}
+
+		decl, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+		if !ok {
+			t.Fatalf("not *ast.VarDeclarationStmt. got=%T", program.Stmts[0])
+		}
+
+		if decl.Type != tt.expectedType {
+			t.Errorf("type wrong for %q, want %v, got %v", tt.source, tt.expectedType, decl.Type)
+		}
+	}
+}
+
+func TestResultTypeReturn(t *testing.T) {
+	source := `func foo() -> result<int> { ok(5); }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	fn, ok := program.Stmts[0].(*ast.FunctionDeclarationStmt)
+	if !ok {
+		t.Fatalf("not *ast.FunctionDeclarationStmt. got=%T", program.Stmts[0])
+	}
+
+	fType, ok := fn.Type.(types.FunctionType)
+	if !ok {
+		t.Fatalf("fn.Type is not FunctionType. got=%T", fn.Type)
+	}
+
+	rt, ok := fType.Return.(types.ResultType)
+	if !ok {
+		t.Fatalf("return type is not ResultType. got=%T", fType.Return)
+	}
+
+	if rt.T != types.Int {
+		t.Errorf("result inner type wrong, want int, got %v", rt.T)
+	}
+}
+
+func TestFunctionLiteralTypedParams(t *testing.T) {
+	source := "func(string name, int age) -> string { name; }"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+
+	fn, ok := stmt.Expr.(*ast.FunctionLiteral)
+	if !ok {
+		t.Fatalf("not *ast.FunctionLiteral. got=%T", stmt.Expr)
+	}
+
+	fType := fn.Type
+	if len(fType.Params) != 2 {
+		t.Fatalf("expected 2 param types, got %d", len(fType.Params))
+	}
+	if fType.Params[0] != types.String {
+		t.Errorf("param 0 type wrong, want string, got %v", fType.Params[0])
+	}
+	if fType.Params[1] != types.Int {
+		t.Errorf("param 1 type wrong, want int, got %v", fType.Params[1])
+	}
+	if fType.Return != types.String {
+		t.Errorf("return type wrong, want string, got %v", fType.Return)
+	}
+}
+
+func TestPubDefineStruct(t *testing.T) {
+	source := `pub define struct Point { x int, y int }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	pub, ok := program.Stmts[0].(*ast.PubStatement)
+	if !ok {
+		t.Fatalf("not *ast.PubStatement. got=%T", program.Stmts[0])
+	}
+
+	def, ok := pub.Stmt.(*ast.StructDefinitionStmt)
+	if !ok {
+		t.Fatalf("pub.Stmt not *ast.StructDefinitionStmt. got=%T", pub.Stmt)
+	}
+
+	if def.Name.Value != "Point" {
+		t.Errorf("struct name wrong, want Point, got %s", def.Name.Value)
+	}
+
+	if len(def.Type.Fields) != 2 {
+		t.Fatalf("expected 2 fields, got %d", len(def.Type.Fields))
+	}
+}
+
+func TestPubDefineInterface(t *testing.T) {
+	source := `pub define interface Shape { area() -> float }`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	pub, ok := program.Stmts[0].(*ast.PubStatement)
+	if !ok {
+		t.Fatalf("not *ast.PubStatement. got=%T", program.Stmts[0])
+	}
+
+	def, ok := pub.Stmt.(*ast.InterfaceDefinitionStmt)
+	if !ok {
+		t.Fatalf("pub.Stmt not *ast.InterfaceDefinitionStmt. got=%T", pub.Stmt)
+	}
+
+	if def.Name.Value != "Shape" {
+		t.Errorf("interface name wrong, want Shape, got %s", def.Name.Value)
+	}
+}
+
+func TestChannelTypeInDeclaration(t *testing.T) {
+	source := `const chan<int> ch = chan<int>();`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	decl, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+	if !ok {
+		t.Fatalf("not *ast.VarDeclarationStmt. got=%T", program.Stmts[0])
+	}
+
+	chType, ok := decl.Type.(types.ChannelType)
+	if !ok {
+		t.Fatalf("type not ChannelType. got=%T", decl.Type)
+	}
+
+	if chType.ElemType != types.Int {
+		t.Errorf("channel elem type wrong, want int, got %v", chType.ElemType)
+	}
+}
+
+func TestUnbufferedChannelConstructor(t *testing.T) {
+	source := "chan<string>()"
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Stmts))
+	}
+
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+
+	expr, ok := stmt.Expr.(*ast.ChannelConstructorExpr)
+	if !ok {
+		t.Fatalf("not *ast.ChannelConstructorExpr. got=%T", stmt.Expr)
+	}
+
+	chType, ok := expr.Type.(types.ChannelType)
+	if !ok {
+		t.Fatalf("type not ChannelType. got=%T", expr.Type)
+	}
+
+	if chType.ElemType != types.String {
+		t.Errorf("channel elem type wrong, want string, got %v", chType.ElemType)
+	}
+
+	if expr.Capacity != nil {
+		t.Errorf("unbuffered channel should have nil capacity, got %v", expr.Capacity)
+	}
+}
+
+func TestByteEscapeSequences(t *testing.T) {
+	tests := []struct {
+		source   string
+		expected byte
+	}{
+		{`mut byte b = '\n';`, '\n'},
+		{`mut byte b = '\t';`, '\t'},
+		{`mut byte b = '\\';`, '\\'},
+		{`mut byte b = '\'';`, '\''},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.source)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if len(program.Stmts) != 1 {
+			t.Fatalf("expected 1 statement for %q, got %d", tt.source, len(program.Stmts))
+		}
+
+		decl, ok := program.Stmts[0].(*ast.VarDeclarationStmt)
+		if !ok {
+			t.Fatalf("not *ast.VarDeclarationStmt. got=%T", program.Stmts[0])
+		}
+
+		bl, ok := decl.Value.(*ast.ByteLiteral)
+		if !ok {
+			t.Fatalf("not *ast.ByteLiteral. got=%T", decl.Value)
+		}
+
+		if bl.Value != tt.expected {
+			t.Errorf("byte value wrong for %q, want %d, got %d", tt.source, tt.expected, bl.Value)
+		}
+	}
+}
