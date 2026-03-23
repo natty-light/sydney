@@ -2,6 +2,63 @@
 
 Sydney is a compiled, statically-typed programming language. It compiles to bytecode and runs on a custom VM, or compiles to native binaries via LLVM IR.
 
+## Installation
+
+### Prerequisites
+
+- **Go** (1.21+) — builds the Sydney compiler
+- **Rust/Cargo** — builds the runtime library (required for native compilation)
+- **LLVM toolchain** (`llc`, `clang`) — assembles and links native binaries
+- **OpenSSL** (`libssl`, `libcrypto`) — required for TLS support in native binaries
+- **just** (optional) — command runner for convenience recipes
+
+```bash
+brew install go rust llvm openssl just
+```
+
+### Building from source
+
+```bash
+# Clone the repository
+git clone https://github.com/natty-light/sydney.git
+cd sydney
+
+# Build the compiler (Go)
+go build -o sydney
+
+# Build the runtime library (Rust, needed for native compilation)
+cd sydney_rt && cargo build --release && cd ..
+
+# Or build both at once with just:
+just build
+```
+
+### Verify the installation
+
+```bash
+# Run a program on the VM
+./sydney run examples/hello.sy
+
+# Start the REPL
+./sydney
+
+# Compile to a native binary
+./sydney compile examples/hello.sy
+llc -filetype=obj hello.ll -o hello.o
+clang hello.o -Lsydney_rt/target/release -lsydney_rt -lssl -lcrypto -o hello
+./hello
+```
+
+### Running tests
+
+```bash
+# Test the compiler (Go tests)
+go test ./...
+
+# Test Sydney programs
+./sydney test stdlib/    # run stdlib test suites
+```
+
 ## Values, literals, and types
 
 ### Primitive types
