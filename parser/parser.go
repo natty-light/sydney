@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"strconv"
+
 	"sydney/ast"
 	"sydney/lexer"
 	"sydney/token"
@@ -403,7 +404,6 @@ func (p *Parser) parseModuleStatement() *ast.ModuleDeclarationStmt {
 }
 
 func (p *Parser) parseVarDeclarationStmt() *ast.VarDeclarationStmt {
-
 	// To be here, currToken is either Mut or Const
 	isConst := p.currToken.Type == token.Const
 
@@ -606,7 +606,6 @@ func (p *Parser) parseIntegerLiteral() ast.Expr {
 	literal := &ast.IntegerLiteral{Token: p.currToken}
 
 	value, err := strconv.ParseInt(p.currToken.Literal, 0, 64)
-
 	if err != nil {
 		msg := fmt.Sprintf("%d:%d could not parse %q as integer", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
 		p.errors = append(p.errors, msg)
@@ -1006,7 +1005,6 @@ func (p *Parser) parseFloatLiteral() ast.Expr {
 	literal := &ast.FloatLiteral{Token: p.currToken}
 
 	value, err := strconv.ParseFloat(p.currToken.Literal, 64)
-
 	if err != nil {
 		msg := fmt.Sprintf("%d:%d could not parse %q as float", p.currToken.Line, p.currToken.Column, p.currToken.Literal)
 		p.errors = append(p.errors, msg)
@@ -1566,24 +1564,38 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 }
 
 func (p *Parser) parseMatchExpr() ast.Expr {
+	if p.peekTokenIs(token.TypeOf) {
+		return p.parseTypeMatchExpr()
+	}
 	m := &ast.MatchExpr{Token: p.currToken}
+
 	if !p.expectPeek(token.Identifier) {
 		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
 		return nil
 	}
-
 	subject := p.parseIdentifier()
+
 	if p.peekTokenIs(token.Colon) {
 		p.nextToken()
-		subject = p.parseScopeAccessExpr(subject)
-	}
-	if p.peekTokenIs(token.LeftParen) {
+		ident := subject.(*ast.Identifier)
 		p.nextToken()
-		subject = p.parseCallExpr(subject)
+		member := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+		subject = &ast.ScopeAccessExpr{Member: member, Module: ident}
 	}
-	if p.peekTokenIs(token.LeftSquareBracket) {
-		p.nextToken()
-		subject = p.parseIndexExpr(subject)
+
+	for {
+		if p.peekTokenIs(token.LeftParen) {
+			p.nextToken()
+			subject = p.parseCallExpr(subject)
+		} else if p.peekTokenIs(token.LeftSquareBracket) {
+			p.nextToken()
+			subject = p.parseIndexExpr(subject)
+		} else if p.peekTokenIs(token.Dot) {
+			p.nextToken()
+			subject = p.parseSelectorExpr(subject)
+		} else {
+			break
+		}
 	}
 	m.Subject = subject
 	if !p.expectPeek(token.LeftCurlyBracket) {
@@ -1616,6 +1628,88 @@ func (p *Parser) parseMatchExpr() ast.Expr {
 		return nil
 	}
 
+	return m
+}
+
+func (p *Parser) parseTypeMatchExpr() ast.Expr {
+	m := &ast.MatchTypeExpr{Token: p.currToken}
+	p.nextToken() // past match
+	if !p.expectPeek(token.Identifier) {
+		return nil
+	}
+	subject := p.parseIdentifier()
+
+	if p.peekTokenIs(token.Colon) {
+		p.nextToken()
+		ident := subject.(*ast.Identifier)
+		p.nextToken()
+		member := &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
+		subject = &ast.ScopeAccessExpr{Member: member, Module: ident}
+	}
+
+	for {
+		if p.peekTokenIs(token.LeftParen) {
+			p.nextToken()
+			subject = p.parseCallExpr(subject)
+		} else if p.peekTokenIs(token.LeftSquareBracket) {
+			p.nextToken()
+			subject = p.parseIndexExpr(subject)
+		} else if p.peekTokenIs(token.Dot) {
+			p.nextToken()
+			subject = p.parseSelectorExpr(subject)
+		} else {
+			break
+		}
+	}
+	m.Subject = subject
+
+	if !p.expectPeek(token.LeftCurlyBracket) {
+		return nil
+	}
+	arms := make([]*ast.TypeMatchArm, 0)
+	p.nextToken()
+	for !p.currTokenIs(token.RightCurlyBracket) {
+		if p.currToken.Literal == "_" {
+			if !p.expectPeek(token.Arrow) {
+				return nil
+			}
+			p.nextToken()
+			m.Default = p.parseBlockStmt()
+			if !p.expectPeek(token.Comma) {
+				return nil
+			}
+			p.nextToken()
+			continue
+		}
+		arm := &ast.TypeMatchArm{}
+		arm.Type = p.parseType()
+		if !p.expectPeek(token.LeftParen) {
+			return nil
+		}
+		p.nextToken()
+		arm.Binding = p.parseIdentifier().(*ast.Identifier)
+		if !p.expectPeek(token.RightParen) {
+			return nil
+		}
+		if !p.expectPeek(token.Arrow) {
+			return nil
+		}
+		if !p.expectPeek(token.LeftCurlyBracket) {
+			return nil
+		}
+		arm.Body = p.parseBlockStmt()
+
+		if !p.expectPeek(token.Comma) {
+			return nil
+		}
+		p.nextToken()
+		arms = append(arms, arm)
+	}
+	m.Arms = arms
+	if !p.currTokenIs(token.RightCurlyBracket) {
+		return nil
+	}
+	p.nextToken()
 	return m
 }
 
@@ -1761,7 +1855,6 @@ func (p *Parser) parseTypeParamList() []*types.TypeParam {
 		tp := p.parseGenericType()
 		if tp != nil {
 			tpa = append(tpa, tp)
-
 		}
 	}
 

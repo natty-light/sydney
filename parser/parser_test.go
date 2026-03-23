@@ -3483,3 +3483,81 @@ func TestMultipleImports(t *testing.T) {
 		}
 	}
 }
+
+func TestTypeMatchExpr(t *testing.T) {
+	source := `match typeof x {
+		int(v) -> { v + 1; },
+		string(s) -> { s; },
+		_ -> { 0; },
+	}`
+
+	l := lexer.New(source)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Stmts) != 1 {
+		t.Fatalf("len(program.Stmts) wrong, wanted 1, got %d", len(program.Stmts))
+	}
+	stmt, ok := program.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("program.Stmts[0] is not *ast.ExpressionStmt. got=%T", program.Stmts[0])
+	}
+	expr, ok := stmt.Expr.(*ast.MatchTypeExpr)
+	if !ok {
+		t.Fatalf("stmt.Expr is not *ast.MatchTypeExpr. got=%T", stmt.Expr)
+	}
+
+	testIdentifier(t, expr.Subject, "x")
+
+	if len(expr.Arms) != 2 {
+		t.Fatalf("expected 2 arms, got %d", len(expr.Arms))
+	}
+
+	// first arm: int(v) -> { v + 1; }
+	arm0 := expr.Arms[0]
+	if arm0.Type != types.Int {
+		t.Fatalf("arm[0].Type expected Int, got %s", arm0.Type)
+	}
+	if arm0.Binding.Value != "v" {
+		t.Fatalf("arm[0].Binding expected 'v', got %s", arm0.Binding.Value)
+	}
+	if len(arm0.Body.Stmts) != 1 {
+		t.Fatalf("arm[0].Body should have 1 statement, got %d", len(arm0.Body.Stmts))
+	}
+	arm0Body, ok := arm0.Body.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("arm[0] body stmt is not *ast.ExpressionStmt. got=%T", arm0.Body.Stmts[0])
+	}
+	testInfixExpr(t, arm0Body.Expr, "v", "+", 1)
+
+	// second arm: string(s) -> { s; }
+	arm1 := expr.Arms[1]
+	if arm1.Type != types.String {
+		t.Fatalf("arm[1].Type expected String, got %s", arm1.Type)
+	}
+	if arm1.Binding.Value != "s" {
+		t.Fatalf("arm[1].Binding expected 's', got %s", arm1.Binding.Value)
+	}
+	if len(arm1.Body.Stmts) != 1 {
+		t.Fatalf("arm[1].Body should have 1 statement, got %d", len(arm1.Body.Stmts))
+	}
+	arm1Body, ok := arm1.Body.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("arm[1] body stmt is not *ast.ExpressionStmt. got=%T", arm1.Body.Stmts[0])
+	}
+	testIdentifier(t, arm1Body.Expr, "s")
+
+	// default arm: _ -> { 0; }
+	if expr.Default == nil {
+		t.Fatal("expected default arm, got nil")
+	}
+	if len(expr.Default.Stmts) != 1 {
+		t.Fatalf("default arm body should have 1 statement, got %d", len(expr.Default.Stmts))
+	}
+	defaultBody, ok := expr.Default.Stmts[0].(*ast.ExpressionStmt)
+	if !ok {
+		t.Fatalf("default arm body stmt is not *ast.ExpressionStmt. got=%T", expr.Default.Stmts[0])
+	}
+	testIntegerLiteral(t, defaultBody.Expr, 0)
+}
