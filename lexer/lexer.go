@@ -350,6 +350,7 @@ var keywords = map[string]token.TokenType{
 	"continue":       token.Continue,
 	"in":             token.In,
 	"spawn":          token.Spawn,
+	"typeof":         token.TypeOf,
 }
 
 var types = map[string]token.TokenType{
