@@ -43,7 +43,7 @@ pub func pow_int(float x, int exponent) -> float {
 
 pub func exp(float x) -> float {
   mut res = 1.0;
-  for (mut i = 0; i < 25; i = i + 1) {
+  for (mut i = 1; i < 25; i = i + 1) {
     res = res + res * x / float(i);
   }
 
@@ -52,7 +52,7 @@ pub func exp(float x) -> float {
 
 pub func factorial(float x) -> float {
   if (x == 0.0) {
-    return x;
+    return 1.0;
   }
 
   return x * factorial(x - 1.0);
