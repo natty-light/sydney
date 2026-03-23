@@ -1041,20 +1041,14 @@ var typeMap = map[token.TokenType]types.Type{
 	token.Null:       types.Null,
 	token.BoolType:   types.Bool,
 	token.ByteType:   types.Byte,
+	token.AnyType:    types.Any,
 }
 
 func (p *Parser) isPeekTokenType() bool {
+	if _, ok := typeMap[p.peekToken.Type]; ok {
+		return ok
+	}
 	switch p.peekToken.Type {
-	case token.IntType:
-		fallthrough
-	case token.FloatType:
-		fallthrough
-	case token.StringType:
-		fallthrough
-	case token.BoolType:
-		fallthrough
-	case token.Null:
-		fallthrough
 	case token.FunctionType:
 		fallthrough
 	case token.MapType:
@@ -1062,8 +1056,6 @@ func (p *Parser) isPeekTokenType() bool {
 	case token.ResultType:
 		fallthrough
 	case token.OptionType:
-		fallthrough
-	case token.ByteType:
 		fallthrough
 	case token.ChannelType:
 		fallthrough
@@ -1085,19 +1077,10 @@ func (p *Parser) isPeekTokenType() bool {
 }
 
 func (p *Parser) parseType() types.Type {
+	if t, ok := typeMap[p.currToken.Type]; ok {
+		return t
+	}
 	switch p.currToken.Type {
-	case token.IntType:
-		return typeMap[p.currToken.Type]
-	case token.FloatType:
-		return typeMap[p.currToken.Type]
-	case token.StringType:
-		return typeMap[p.currToken.Type]
-	case token.BoolType:
-		return typeMap[p.currToken.Type]
-	case token.Null:
-		return typeMap[p.currToken.Type]
-	case token.ByteType:
-		return typeMap[p.currToken.Type]
 	case token.MapType:
 		return p.parseMapType()
 	case token.ArrayType:

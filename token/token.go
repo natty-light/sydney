@@ -50,6 +50,7 @@ const (
 	OptionType   TokenType = "OptionType"
 	ByteType     TokenType = "ByteType"
 	ChannelType  TokenType = "ChannelType"
+	AnyType      TokenType = "AnyType"
 
 	// Grouping
 	LeftParen          TokenType = "LeftParen"

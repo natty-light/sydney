@@ -641,6 +641,9 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			} else {
 				resolved = types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 			}
+		} else if targetedElemType != nil {
+			// Prefer the targeted element type (e.g., any) over inferred element type
+			resolved = types.ArrayType{ElemType: targetedElemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 		} else {
 			resolved = types.ArrayType{ElemType: elemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 		}
@@ -1528,7 +1531,7 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 	}
 
 	for i, arg := range expr.Arguments {
-		aType := c.typeOf(arg, nil)
+		aType := c.typeOf(arg, fnType.Params[i])
 		if st, isScopeType := aType.(types.ScopeType); isScopeType {
 			aType = c.resolveType(st)
 		}

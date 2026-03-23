@@ -365,6 +365,7 @@ var types = map[string]token.TokenType{
 	"option": token.OptionType,
 	"byte":   token.ByteType,
 	"chan":   token.ChannelType,
+	"any":    token.AnyType,
 }
 
 func LookupIdent(ident string) token.TokenType {
