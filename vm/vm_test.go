@@ -1335,3 +1335,114 @@ func TestNestedMatchExpressions(t *testing.T) {
 	}
 	runVmTests(t, tests)
 }
+
+func TestTypeMatch(t *testing.T) {
+	tests := []vmTestCase{
+		{ // match first arm
+			source: `
+		define struct Circle { r int }
+		define struct Rect { w int, h int }
+
+		define interface Shape { area() -> int }
+		define implementation Circle -> Shape
+		define implementation Rect -> Shape
+
+		func area(Circle c) -> int { c.r * c.r * 3; }
+		func area(Rect r) -> int { r.w * r.h; }
+
+		func describe(Shape s) -> int {
+			match typeof s {
+				Circle(c) -> { c.r; },
+				Rect(r) -> { r.w + r.h; },
+				_ -> { 0; },
+			};
+		}
+
+		const Circle c = Circle { r: 5 };
+		describe(c);
+		`,
+			expected: 5,
+		},
+		{ // match second arm
+			source: `
+		define struct Circle { r int }
+		define struct Rect { w int, h int }
+
+		define interface Shape { area() -> int }
+		define implementation Circle -> Shape
+		define implementation Rect -> Shape
+
+		func area(Circle c) -> int { c.r * c.r * 3; }
+		func area(Rect r) -> int { r.w * r.h; }
+
+		func describe(Shape s) -> int {
+			match typeof s {
+				Circle(c) -> { c.r; },
+				Rect(r) -> { r.w + r.h; },
+				_ -> { 0; },
+			};
+		}
+
+		const Rect r = Rect { w: 3, h: 4 };
+		describe(r);
+		`,
+			expected: 7,
+		},
+		{ // match default arm
+			source: `
+		define struct Circle { r int }
+		define struct Rect { w int, h int }
+		define struct Tri { b int }
+
+		define interface Shape { area() -> int }
+		define implementation Circle -> Shape
+		define implementation Rect -> Shape
+		define implementation Tri -> Shape
+
+		func area(Circle c) -> int { c.r * c.r * 3; }
+		func area(Rect r) -> int { r.w * r.h; }
+		func area(Tri t) -> int { t.b; }
+
+		func describe(Shape s) -> int {
+			match typeof s {
+				Circle(c) -> { c.r; },
+				Rect(r) -> { r.w + r.h; },
+				_ -> { 99; },
+			};
+		}
+
+		const Tri t = Tri { b: 10 };
+		describe(t);
+		`,
+			expected: 99,
+		},
+		{ // type match as value in variable
+			source: `
+		define struct Circle { r int }
+		define struct Rect { w int, h int }
+
+		define interface Shape { area() -> int }
+		define implementation Circle -> Shape
+		define implementation Rect -> Shape
+
+		func area(Circle c) -> int { c.r * c.r * 3; }
+		func area(Rect r) -> int { r.w * r.h; }
+
+		func describe(Shape s) -> int {
+			const x = match typeof s {
+				Circle(c) -> { c.r * 10; },
+				Rect(r) -> { r.w * 10; },
+				_ -> { 0; },
+			};
+			x;
+		}
+
+		const Circle c = Circle { r: 7 };
+		describe(c);
+		`,
+			expected: 70,
+		},
+	}
+
+	runVmTests(t, tests)
+}
