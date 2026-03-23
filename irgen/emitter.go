@@ -337,6 +337,14 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		if node.NoneArm != nil {
 			e.collectStrings(node.NoneArm.Body)
 		}
+	case *ast.MatchTypeExpr:
+		e.collectStrings(node.Subject)
+		for _, arm := range node.Arms {
+			e.collectStrings(arm.Body)
+		}
+		if node.Default != nil {
+			e.collectStrings(node.Default)
+		}
 	case *ast.SpawnStmt:
 		e.collectStrings(node.CallExpr)
 	case *ast.SendStmt:
@@ -811,6 +819,8 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitScopeAccessExpr(expr)
 	case *ast.MatchExpr:
 		return e.emitMatchExpr(expr)
+	case *ast.MatchTypeExpr:
+		return e.emitTypeMatchExpr(expr)
 	case *ast.SliceExpr:
 		return e.emitSliceExpr(expr)
 	case *ast.ReceiveExpr:
@@ -2875,6 +2885,107 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 		e.emit(line)
 	}
 	e.emitJmp(endLab)
+
+	e.emitLabel(endLab)
+	finalVal := ""
+	if rt != IrUnit {
+		finalVal = e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
+		e.emit(line)
+	}
+
+	return finalVal, rt
+}
+
+func (e *Emitter) emitTypeMatchExpr(expr *ast.MatchTypeExpr) (string, IrType) {
+	// Emit subject — this is an interface fat pointer { ptr, ptr }
+	subjPtr, _ := e.emitExpr(expr.Subject)
+	rt := SydneyTypeToIrType(expr.ResolvedType)
+
+	// Get the interface name from the subject's resolved type
+	ifaceType := expr.Subject.GetResolvedType().(types.InterfaceType)
+	ifaceName := ifaceType.Name
+
+	// Load the fat pointer
+	ifaceVal := e.tmp()
+	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, subjPtr)
+	e.emit(line)
+
+	// Extract vtable pointer (index 1)
+	vtablePtr := e.tmp()
+	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
+	e.emit(line)
+
+	// Allocate result if needed
+	result := ""
+	if rt != IrUnit {
+		result = e.tmp()
+		e.emitAlloca(result, rt)
+	}
+
+	endLab := e.label("typematch.end")
+
+	// Emit each arm: compare vtable pointer against known vtable global
+	for i, arm := range expr.Arms {
+		structName := arm.Type.(types.StructType).Name
+		matchLab := e.label(fmt.Sprintf("typematch.%s", structName))
+		nextLab := e.label(fmt.Sprintf("typematch.next.%d", i))
+
+		// Compare vtable pointer against @vtable.StructName.InterfaceName
+		cmp := e.tmp()
+		line = fmt.Sprintf("%s = icmp eq ptr %s, @vtable.%s.%s", cmp, vtablePtr, structName, ifaceName)
+		e.emit(line)
+		e.emitBranch(cmp, matchLab, nextLab)
+
+		// Matched arm
+		e.emitLabel(matchLab)
+
+		// Extract value pointer (index 0) — this is the concrete struct
+		valPtr := e.tmp()
+		line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
+		e.emit(line)
+
+		// Store value pointer into an alloca so the binding works like a normal local
+		bindAlloca := e.tmp() + ".addr"
+		e.emitAlloca(bindAlloca, IrPtr)
+		line = fmt.Sprintf("store ptr %s, ptr %s", valPtr, bindAlloca)
+		e.emit(line)
+
+		// Bind the value in a new scope
+		e.pushScope()
+		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
+		armResult, _, _ := e.emitBlock(arm.Body)
+		armTerminated := e.blockTerminated
+		e.blockTerminated = false
+		e.popScope()
+
+		if !armTerminated {
+			if rt != IrUnit {
+				line = fmt.Sprintf("store %s %s, ptr %s", rt, armResult, result)
+				e.emit(line)
+			}
+			e.emitJmp(endLab)
+		}
+
+		// Next arm starts here
+		e.emitLabel(nextLab)
+	}
+
+	// Default arm
+	if expr.Default != nil {
+		defaultResult, _, _ := e.emitBlock(expr.Default)
+		defaultTerminated := e.blockTerminated
+		e.blockTerminated = false
+		if !defaultTerminated {
+			if rt != IrUnit {
+				line = fmt.Sprintf("store %s %s, ptr %s", rt, defaultResult, result)
+				e.emit(line)
+			}
+			e.emitJmp(endLab)
+		}
+	} else {
+		e.emitJmp(endLab)
+	}
 
 	e.emitLabel(endLab)
 	finalVal := ""
