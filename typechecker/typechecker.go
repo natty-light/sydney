@@ -1106,7 +1106,9 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 		methodName := selector.Value.(*ast.Identifier).Value
 		mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), methodName)
 		if t, _, ok := c.env.Get(mangled); ok {
-			expr.Arguments = append([]ast.Expr{selector.Left}, expr.Arguments...)
+			if len(expr.Arguments) == 0 || expr.Arguments[0] != selector.Left {
+				expr.Arguments = append([]ast.Expr{selector.Left}, expr.Arguments...)
+			}
 			if st, ok := receiverType.(types.StructType); ok {
 				if st.Module != "" {
 					mangled = st.Module + "__" + mangled
