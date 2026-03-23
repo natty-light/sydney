@@ -1204,7 +1204,10 @@ func (c *Checker) checkLenBuiltIn(expr *ast.CallExpr) types.Type {
 	return types.Int
 }
 
-func (c *Checker) checkPrintBuiltIn(_ *ast.CallExpr) types.Type {
+func (c *Checker) checkPrintBuiltIn(expr *ast.CallExpr) types.Type {
+	for _, arg := range expr.Arguments {
+		c.typeOf(arg, nil)
+	}
 	return types.Unit
 }
 

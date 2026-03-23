@@ -404,12 +404,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		// remove last pop after compiling consequence so we don't inadvertently pop too many times
-		if c.lastInstructionIs(code.OpPop) {
-			c.removeLastPop()
-		}
 		if node.GetResolvedType() == types.Unit {
 			c.emit(code.OpNull)
+		} else if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
 		}
 
 		//emit an OpJump with operand to be replaced later
@@ -428,11 +426,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 				return err
 			}
 
-			if c.lastInstructionIs(code.OpPop) {
-				c.removeLastPop()
-			}
 			if node.GetResolvedType() == types.Unit {
 				c.emit(code.OpNull)
+			} else if c.lastInstructionIs(code.OpPop) {
+				c.removeLastPop()
 			}
 		}
 
