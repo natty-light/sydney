@@ -1410,6 +1410,72 @@ func TestE2EOptionMatch(t *testing.T) {
 	runE2ETests(t, tests)
 }
 
+func TestE2ETypeMatch(t *testing.T) {
+	tests := []e2eTestCase{
+		{ // match first arm
+			source: `define struct Circle { radius int }
+			define struct Rect { w int, h int }
+			define interface Shape { area() -> int }
+			define implementation Circle -> Shape
+			define implementation Rect -> Shape
+			func area(Circle c) -> int { 3 * c.radius * c.radius; }
+			func area(Rect r) -> int { r.w * r.h; }
+			func describe(Shape s) -> int {
+				match typeof s {
+					Circle(c) -> { c.radius; },
+					Rect(r) -> { r.w + r.h; },
+					_ -> { 0; },
+				};
+			}
+			const c = Circle { radius: 5 };
+			print(describe(c));`,
+			expected: "5\n",
+		},
+		{ // match second arm
+			source: `define struct Circle { radius int }
+			define struct Rect { w int, h int }
+			define interface Shape { area() -> int }
+			define implementation Circle -> Shape
+			define implementation Rect -> Shape
+			func area(Circle c) -> int { 3 * c.radius * c.radius; }
+			func area(Rect r) -> int { r.w * r.h; }
+			func describe(Shape s) -> int {
+				match typeof s {
+					Circle(c) -> { c.radius; },
+					Rect(r) -> { r.w + r.h; },
+					_ -> { 0; },
+				};
+			}
+			const r = Rect { w: 3, h: 4 };
+			print(describe(r));`,
+			expected: "7\n",
+		},
+		{ // match default arm
+			source: `define struct Circle { radius int }
+			define struct Rect { w int, h int }
+			define struct Tri { b int }
+			define interface Shape { area() -> int }
+			define implementation Circle -> Shape
+			define implementation Rect -> Shape
+			define implementation Tri -> Shape
+			func area(Circle c) -> int { 3 * c.radius * c.radius; }
+			func area(Rect r) -> int { r.w * r.h; }
+			func area(Tri t) -> int { t.b; }
+			func describe(Shape s) -> int {
+				match typeof s {
+					Circle(c) -> { c.radius; },
+					Rect(r) -> { r.w + r.h; },
+					_ -> { 99; },
+				};
+			}
+			const t = Tri { b: 10 };
+			print(describe(t));`,
+			expected: "99\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
 func TestE2EArrayBoundsCheck(t *testing.T) {
 	projectRoot, err := filepath.Abs(filepath.Join("..", "."))
 	if err != nil {
