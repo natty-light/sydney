@@ -12,7 +12,7 @@ build-smoke:
 
 build-smoke-opt:
     ./sydney compile smoke.sy
-    opt -O2 -S smoke.ll -o smoke_opt.ll
+    opt -O1 -S smoke.ll -o smoke_opt.ll
     llc -filetype=obj smoke_opt.ll -o smoke.o
     clang smoke.o -Lsydney_rt/target/release -L/opt/homebrew/opt/openssl/lib -lsydney_rt -lssl -lcrypto  -o smoke
 
