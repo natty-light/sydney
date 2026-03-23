@@ -565,6 +565,19 @@ func (vm *VM) runFiber() error {
 			matched := false
 			if iface, ok := obj.(*object.Interface); ok {
 				matched = iface.Itab.ConcreteName == typeName
+			} else {
+				switch typeName {
+				case "int":
+					_, matched = obj.(*object.Integer)
+				case "float":
+					_, matched = obj.(*object.Float)
+				case "string":
+					_, matched = obj.(*object.String)
+				case "bool":
+					_, matched = obj.(*object.Boolean)
+				case "byte":
+					_, matched = obj.(*object.Byte)
+				}
 			}
 			if matched {
 				err := vm.push(True)

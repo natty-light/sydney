@@ -1075,7 +1075,13 @@ func (c *Compiler) compileTypeMatch(expr *ast.MatchTypeExpr) error {
 		if err != nil {
 			return err
 		}
-		nameIdx := c.addConstant(&object.String{Value: arm.Type.(types.StructType).Name})
+		var typeName string
+		if st, ok := arm.Type.(types.StructType); ok {
+			typeName = st.Name
+		} else {
+			typeName = arm.Type.Signature()
+		}
+		nameIdx := c.addConstant(&object.String{Value: typeName})
 		c.emit(code.OpMatchType, nameIdx)
 		insPtr := c.emit(code.OpJumpNotTruthy, 9999)
 		if prevJmp != -1 {
