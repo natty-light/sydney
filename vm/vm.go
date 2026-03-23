@@ -3,19 +3,24 @@ package vm
 import (
 	"errors"
 	"fmt"
+
 	"sydney/code"
 	"sydney/compiler"
 	"sydney/object"
 )
 
-const StackSize = 2048
-const GlobalsSize = 65536
-const MaxFrames = 1024
+const (
+	StackSize   = 2048
+	GlobalsSize = 65536
+	MaxFrames   = 1024
+)
 
-var True = &object.Boolean{Value: true}
-var False = &object.Boolean{Value: false}
-var Null = &object.Null{}
-var errFiberBlocked = fmt.Errorf("fiber blocked on async I/O")
+var (
+	True            = &object.Boolean{Value: true}
+	False           = &object.Boolean{Value: false}
+	Null            = &object.Null{}
+	errFiberBlocked = fmt.Errorf("fiber blocked on async I/O")
+)
 
 type VM struct {
 	constants []object.Object
@@ -24,7 +29,6 @@ type VM struct {
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
-
 	mainFn := &object.CompiledFunction{Instructions: bytecode.Instructions}
 	mainClosure := &object.Closure{Fn: mainFn}
 	mainFrame := NewFrame(mainClosure, 0)
@@ -553,6 +557,39 @@ func (vm *VM) runFiber() error {
 			ch := vm.pop().(*object.Channel)
 			vm.scheduler.receive(ch.Id)
 			return nil
+		case code.OpMatchType:
+			nameIdx := code.ReadUint16(ins[ip+1:])
+			vm.currentFrame().ip += 2
+			typeName := vm.constants[nameIdx].(*object.String).Value
+			obj := vm.pop()
+			matched := false
+			if iface, ok := obj.(*object.Interface); ok {
+				matched = iface.Itab.ConcreteName == typeName
+			}
+			if matched {
+				err := vm.push(True)
+				if err != nil {
+					return err
+				}
+			} else {
+				err := vm.push(False)
+				if err != nil {
+					return err
+				}
+			}
+		case code.OpUnboxInterface:
+			obj := vm.pop()
+			if iface, ok := obj.(*object.Interface); ok {
+				err := vm.push(iface.Value)
+				if err != nil {
+					return err
+				}
+			} else {
+				err := vm.push(obj)
+				if err != nil {
+					return err
+				}
+			}
 		}
 	}
 	vm.scheduler.current.state = Done
@@ -716,7 +753,6 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 
 	if leftType == object.FloatObj && rightType == object.FloatObj {
 		return vm.executeFloatComparison(op, left, right)
-
 	}
 
 	if leftType == object.StringObj && rightType == object.StringObj {

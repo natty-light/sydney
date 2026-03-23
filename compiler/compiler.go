@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+
 	"sydney/ast"
 	"sydney/code"
 	"sydney/loader"
@@ -410,7 +411,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.removeLastPop()
 		}
 
-		//emit an OpJump with operand to be replaced later
+		// emit an OpJump with operand to be replaced later
 		jumpPos := c.emit(code.OpJump, 9999)
 
 		afterConsequencePos := len(c.currentInstructions())
@@ -797,6 +798,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		c.emit(code.OpReceive)
+	case *ast.MatchTypeExpr:
+		err := c.compileTypeMatch(node)
+		if err != nil {
+			return err
+		}
 	}
 
 	if expr, ok := node.(ast.Expr); ok {
@@ -874,7 +880,6 @@ func (c *Compiler) setLastInstruction(op code.Opcode, pos int) {
 }
 
 func (c *Compiler) lastInstructionIs(op code.Opcode) bool {
-
 	if len(c.currentInstructions()) == 0 {
 		return false
 	}
@@ -894,7 +899,6 @@ func (c *Compiler) removeLastPop() {
 }
 
 func (c *Compiler) replaceInstruction(pos int, newInstruction []byte) {
-
 	ins := c.currentInstructions()
 
 	for i := 0; i < len(newInstruction); i++ {
@@ -1059,6 +1063,75 @@ func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
 
 	afterNonePos := len(c.currentInstructions())
 	c.changeOperand(jumpPos, afterNonePos)
+	return nil
+}
+
+func (c *Compiler) compileTypeMatch(expr *ast.MatchTypeExpr) error {
+	prevJmp := -1
+	jmpEndPos := make([]int, 0)
+	for _, arm := range expr.Arms {
+		armStart := len(c.currentInstructions())
+		err := c.Compile(expr.Subject)
+		if err != nil {
+			return err
+		}
+		nameIdx := c.addConstant(&object.String{Value: arm.Type.(types.StructType).Name})
+		c.emit(code.OpMatchType, nameIdx)
+		insPtr := c.emit(code.OpJumpNotTruthy, 9999)
+		if prevJmp != -1 {
+			c.changeOperand(prevJmp, armStart)
+		}
+		prevJmp = insPtr
+
+		err = c.Compile(expr.Subject)
+		if err != nil {
+			return err
+		}
+		c.emit(code.OpUnboxInterface)
+		c.enterBlockScope()
+		sym := c.symbolTable.DefineImmutable(arm.Binding.Value)
+		if sym.Scope == GlobalScope {
+			c.emit(code.OpSetImmutableGlobal, sym.Index)
+		} else {
+			c.emit(code.OpSetImmutableLocal, sym.Index)
+		}
+		err = c.Compile(arm.Body)
+		if err != nil {
+			return err
+		}
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+		if expr.GetResolvedType() == types.Unit {
+			c.emit(code.OpNull)
+		}
+		jmpPos := c.emit(code.OpJump, 9999)
+		jmpEndPos = append(jmpEndPos, jmpPos)
+		c.leaveBlockScope()
+	}
+
+	if prevJmp != -1 {
+		c.changeOperand(prevJmp, len(c.currentInstructions()))
+	}
+
+	if expr.Default != nil {
+		err := c.Compile(expr.Default)
+		if err != nil {
+			return err
+		}
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+		if expr.GetResolvedType() == types.Unit {
+			c.emit(code.OpNull)
+		}
+	}
+
+	jmpPos := len(c.currentInstructions())
+	for _, jmp := range jmpEndPos {
+		c.changeOperand(jmp, jmpPos)
+	}
+
 	return nil
 }
 

@@ -60,6 +60,8 @@ const (
 	OpMakeChannel
 	OpSend
 	OpReceive
+	OpMatchType
+	OpUnboxInterface
 )
 
 type (
@@ -119,6 +121,8 @@ var definitions = map[Opcode]*Definition{
 	OpMakeChannel:        {"OpMakeChannel", []int{}},
 	OpSend:               {"OpSend", []int{}},
 	OpReceive:            {"OpReceive", []int{}},
+	OpMatchType:          {"OpMatchType", []int{2}},
+	OpUnboxInterface:     {"OpUnboxInterface", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {
