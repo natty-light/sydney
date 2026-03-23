@@ -1668,3 +1668,91 @@ func TestVariableShadowing(t *testing.T) {
 	}
 }
 
+func TestTypeMatchExpr(t *testing.T) {
+	sources := []string{
+		`define struct Circle { radius float }
+		define struct Rect { w float, h float }
+
+		define interface Shape { area() -> float }
+		define implementation Circle -> Shape
+		define implementation Rect -> Shape
+
+		func area(Circle c) -> float { c.radius * c.radius * 3.14; }
+		func area(Rect r) -> float { r.w * r.h; }
+
+		func describe(Shape s) -> float {
+			match typeof s {
+				Circle(c) -> { c.radius; },
+				Rect(r) -> { r.w; },
+				_ -> { 0.0; },
+			};
+		}`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestTypeMatchExprErrors(t *testing.T) {
+	tt := []TypeErrorTest{
+		{
+			input: `const x = 5;
+			match typeof x {
+				int(v) -> { v; },
+				_ -> { 0; },
+			};`,
+			expectedError: "match typeof requires any or interface type",
+		},
+		{
+			input: `define struct Circle { radius float }
+			define struct Rect { w float, h float }
+
+			define interface Shape { area() -> float }
+			define implementation Circle -> Shape
+
+			func area(Circle c) -> float { c.radius * c.radius * 3.14; }
+
+			func describe(Shape s) -> float {
+				match typeof s {
+					Circle(c) -> { c.radius; },
+					Rect(r) -> { r.w; },
+					_ -> { 0.0; },
+				};
+			}`,
+			expectedError: "does not satisfy interface",
+		},
+		{
+			input: `define struct Circle { radius float }
+			define struct Rect { w float, h float }
+
+			define interface Shape { area() -> float }
+			define implementation Circle -> Shape
+			define implementation Rect -> Shape
+
+			func area(Circle c) -> float { c.radius * c.radius * 3.14; }
+			func area(Rect r) -> float { r.w * r.h; }
+
+			func describe(Shape s) -> string {
+				match typeof s {
+					Circle(c) -> { c.radius; },
+					Rect(r) -> { "rect"; },
+					_ -> { 0.0; },
+				};
+			}`,
+			expectedError: "all arms of type match must result in same type",
+		},
+	}
+
+	testTypeErrors(t, tt)
+}
+
