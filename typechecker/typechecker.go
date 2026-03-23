@@ -93,6 +93,11 @@ func (c *Checker) pushScope() *TypeEnv {
 	return env
 }
 
+func (c *Checker) popScope() {
+	env := c.env.outer
+	c.env = env
+}
+
 func (c *Checker) Errors() []string {
 	return c.errors
 }
@@ -853,6 +858,10 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		resolved := c.checkMatchExpr(expr)
 		expr.ResolvedType = resolved
 		e = expr
+		return resolved
+	case *ast.MatchTypeExpr:
+		resolved := c.checkTypeMatchExpr(expr)
+		e.SetResolvedType(resolved)
 		return resolved
 	case *ast.SliceExpr:
 		leftType := c.typeOf(expr.Left, nil)
@@ -1949,6 +1958,57 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 		return errBranch
 	}
 	return okBranch
+}
+
+func (c *Checker) checkTypeMatchExpr(expr *ast.MatchTypeExpr) types.Type {
+	subjType := c.typeOf(expr.Subject, nil)
+
+	returnedTypes := make([]types.Type, len(expr.Arms))
+
+	isAny := subjType == types.Any
+	if !isAny {
+		if _, ok := subjType.(types.InterfaceType); !ok {
+			c.appendError("match typeof requires any or interface type", expr)
+			return types.Unit
+		}
+	}
+
+	for i, arm := range expr.Arms {
+		resolved := c.resolveType(arm.Type)
+		if it, ok := subjType.(types.InterfaceType); ok {
+			if st, ok := resolved.(types.StructType); ok {
+				if !c.structSatisfiesInterface(st, it, expr) {
+					c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s", st.Name, it.Name), expr)
+					return types.Unit
+				}
+			}
+		}
+		c.pushScope()
+		c.env.Set(arm.Binding.Value, resolved)
+		retType := c.check(arm.Body)
+		c.popScope()
+		returnedTypes[i] = retType
+	}
+
+	var resultType types.Type
+	if expr.Default != nil {
+		c.pushScope()
+		resultType = c.check(expr.Default)
+		c.popScope()
+	}
+
+	for _, t := range returnedTypes {
+		if resultType == nil {
+			resultType = t
+		}
+
+		if resultType != t {
+			c.appendError("all arms of type match must result in same type", expr)
+			return types.Unit
+		}
+	}
+
+	return resultType
 }
 
 func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType) types.Type {
