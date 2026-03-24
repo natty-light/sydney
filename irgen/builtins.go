@@ -47,7 +47,6 @@ func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
 			e.emit(fmt.Sprintf("call void @sydney_print_bool(i8 %s)", zextd))
 		}
 	}
-	e.emit("call void @sydney_print_newline()")
 	return "", IrUnit
 }
 

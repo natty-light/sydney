@@ -1,0 +1,68 @@
+module "fmt"
+
+import "conv"
+
+pub func sprintf(string fmt, array<any> args) -> string {
+  mut res = "";
+  mut arg_idx = 0;
+  mut i = 0;
+
+  const n = len(fmt);
+
+  for (i < n) {
+    const ch = fmt[i];
+    if (ch == '%' && i + 1 < n) {
+      const spec = fmt[i+1];
+      if (spec == '%') {
+        res = res + "%";
+        i = i + 2;
+        continue
+      }
+
+      if (arg_idx >= len(args)) {
+        res = res + "%!" + char(spec) + "(MISSING)";
+        i = i + 2;
+        continue;
+      }
+      
+      const any arg = args[arg_idx];
+      arg_idx = arg_idx + 1;
+      
+      if (spec == 'b' || spec == 'd' || spec == 'f' || spec == 's' || spec == 'c') {
+        res = res + format_any(arg);
+      } else {
+        res = res + "%!" + char(spec) + "(UNKNOWN)";
+      }
+
+      i = i + 2;
+    } else {
+      res = res + char(ch);
+      i = i + 1;
+    }
+  }
+  return res;
+}
+
+pub func format_any(any val) -> string {
+  match typeof val {
+    int(i) -> { conv:itoa(i); },
+    float(f) -> { conv:ftoa(f); },
+    string(s) -> { s; },
+    bool(b) -> { conv:bool_to_str(b); },
+    byte(b) -> { char(b); },
+    _ -> { "<unknown>"; },
+  };
+}
+
+pub func printf(string fmt, array<any> args) {
+  const str = sprintf(fmt, args);
+  print(str);
+}
+
+pub func print(string str) {
+  print(str);
+}
+
+pub func println(string str) {
+  print(str + "\n");
+}

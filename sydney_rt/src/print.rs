@@ -1,14 +1,21 @@
 use std::ffi::CStr;
+use std::io::Write;
 use std::os::raw::c_char;
+
+fn flush() {
+    let _ = std::io::stdout().flush();
+}
 
 #[no_mangle]
 pub extern "C" fn sydney_print_int(val: i64) {
-    print!("{}", val)
+    print!("{}", val);
+    flush();
 }
 
 #[no_mangle]
 pub extern "C" fn sydney_print_float(val: f64) {
-    print!("{}", val)
+    print!("{}", val);
+    flush();
 }
 
 #[no_mangle]
@@ -18,6 +25,7 @@ pub extern "C" fn sydney_print_bool(val: i8) {
     } else {
         print!("false");
     }
+    flush();
 }
 
 #[no_mangle]
@@ -28,6 +36,7 @@ pub extern "C" fn sydney_print_string(ptr: *const c_char) {
     }
     let s = unsafe { CStr::from_ptr(ptr) };
     print!("{}", s.to_str().unwrap_or("<invalid utf8>"));
+    flush();
 }
 
 #[no_mangle]
@@ -37,5 +46,6 @@ pub extern "C" fn sydney_print_newline() {
 
 #[no_mangle]
 pub extern "C" fn sydney_print_byte(val: u8) {
-    print!("{}", val as char)
+    print!("{}", val as char);
+    flush();
 }
