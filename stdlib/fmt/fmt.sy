@@ -59,10 +59,14 @@ pub func printf(string fmt, array<any> args) {
   print(str);
 }
 
-pub func print(string str) {
-  print(str);
-}
-
-pub func println(string str) {
-  print(str + "\n");
+pub func println(any val) {
+  const r = match typeof val {
+    int(i) -> { conv:itoa(i); },
+    string(s) -> { s; },
+    bool(b) -> { conv:bool_to_str(b); },
+    float(f) -> { conv:ftoa(f); },
+    byte(b) -> { char(b); },
+    _ -> { "unknown"; },
+  };
+  print(r + "\n");
 }

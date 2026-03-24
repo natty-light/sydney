@@ -79,7 +79,7 @@ entry:
   call void @sydney_gc_init()
   %t0 = add i64 1, 2
   call void @sydney_print_int(i64 %t0)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -100,7 +100,7 @@ entry:
   call void @sydney_gc_add_global_root(ptr @pi)
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -124,7 +124,7 @@ entry:
   store double 2.000000, ptr @pi
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -164,11 +164,11 @@ entry:
   br i1 %t2, label %then.0, label %else.1
 then.0:
     call void @sydney_print_string(ptr @.str.0)
-    call void @sydney_print_newline()
+  
   br label %merge.2
 else.1:
     call void @sydney_print_string(ptr @.str.1)
-    call void @sydney_print_newline()
+  
   br label %merge.2
 merge.2:
   %t3 = load i64, ptr @x
@@ -185,7 +185,7 @@ merge.5:
   call void @sydney_gc_add_global_root(ptr @z)
   %t7 = load i64, ptr @z
   call void @sydney_print_int(i64 %t7)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -214,7 +214,7 @@ cond.0:
 loop.1:
     %t2 = load i64, ptr @i
     call void @sydney_print_int(i64 %t2)
-    call void @sydney_print_newline()
+  
     %t3 = load i64, ptr @i
     %t4 = add i64 %t3, 1
     store i64 %t4, ptr @i
@@ -257,7 +257,7 @@ loop.1:
 then.3:
       %t5 = load i64, ptr @i
       call void @sydney_print_int(i64 %t5)
-      call void @sydney_print_newline()
+    
     br label %merge.4
 merge.4:
     %t6 = load i64, ptr @i
@@ -340,15 +340,15 @@ entry:
   call void @sydney_print_string(ptr @.str.0)
   %t4 = load i64, ptr @x
   call void @sydney_print_int(i64 %t4)
-  call void @sydney_print_newline()
+
   call void @sydney_print_string(ptr @.str.1)
   %t5 = load i64, ptr @xPlusFive
   call void @sydney_print_int(i64 %t5)
-  call void @sydney_print_newline()
+
   call void @sydney_print_string(ptr @.str.2)
   %t6 = load i64, ptr @xPlusSix
   call void @sydney_print_int(i64 %t6)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -378,12 +378,12 @@ entry:
   %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
   %t5 = load i64, ptr %t4
   call void @sydney_print_int(i64 %t5)
-  call void @sydney_print_newline()
+
   %t6 = load ptr, ptr @p
   %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
   %t8 = load i64, ptr %t7
   call void @sydney_print_int(i64 %t8)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -418,12 +418,12 @@ entry:
   %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
   %t5 = load i64, ptr %t4
   call void @sydney_print_int(i64 %t5)
-  call void @sydney_print_newline()
+
   %t6 = load ptr, ptr @p
   %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
   %t8 = load i64, ptr %t7
   call void @sydney_print_int(i64 %t8)
-  call void @sydney_print_newline()
+
   %t9 = load ptr, ptr @p
   %t10 = getelementptr %struct.Point, ptr %t9, i32 0, i32 0
   store i64 1, ptr %t10
@@ -434,12 +434,12 @@ entry:
   %t14 = getelementptr %struct.Point, ptr %t13, i32 0, i32 0
   %t15 = load i64, ptr %t14
   call void @sydney_print_int(i64 %t15)
-  call void @sydney_print_newline()
+
   %t16 = load ptr, ptr @p
   %t17 = getelementptr %struct.Point, ptr %t16, i32 0, i32 1
   %t18 = load i64, ptr %t17
   call void @sydney_print_int(i64 %t18)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -566,7 +566,7 @@ entry:
   call void @sydney_print_string(ptr @.str.0)
   %t10 = load double, ptr @rectA
   call void @sydney_print_float(double %t10)
-  call void @sydney_print_newline()
+
   %t11 = load ptr, ptr @c
   %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
   store ptr %t11, ptr %t13
@@ -578,7 +578,7 @@ entry:
   call void @sydney_print_string(ptr @.str.1)
   %t16 = load double, ptr @circA
   call void @sydney_print_float(double %t16)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -593,7 +593,7 @@ func TestArrays(t *testing.T) {
 		{
 			source: `const array<int> a = [0, 1, 2, 3];
 print(a[1]);`,
-			expected: "1\n",
+			expected: "1",
 		},
 	}
 
@@ -628,7 +628,7 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call i64 %t5(ptr %t7)
   call void @sydney_print_int(i64 %t8)
-  call void @sydney_print_newline()
+
   %t9 = call ptr @sydney_gc_alloc(i64 16)
   %t10 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 0
   store ptr @anon.1, ptr %t10
@@ -646,7 +646,7 @@ entry:
   call void @sydney_gc_add_global_root(ptr @sum)
   %t18 = load i64, ptr @sum
   call void @sydney_print_int(i64 %t18)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -699,7 +699,7 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -767,7 +767,7 @@ entry:
   %t19 = load ptr, ptr %t18
   %t20 = call i64 %t17(ptr %t19, i64 5)
   call void @sydney_print_int(i64 %t20)
-  call void @sydney_print_newline()
+
   %t21 = load ptr, ptr @sixAdder
   %t22 = getelementptr { ptr, ptr }, ptr %t21, i32 0, i32 0
   %t23 = load ptr, ptr %t22
@@ -775,7 +775,7 @@ entry:
   %t25 = load ptr, ptr %t24
   %t26 = call i64 %t23(ptr %t25, i64 5)
   call void @sydney_print_int(i64 %t26)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -836,7 +836,7 @@ entry:
   call void @sydney_gc_init()
   %t0 = call i64 @addTwo(i64 3)
   call void @sydney_print_int(i64 %t0)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -866,7 +866,7 @@ const c = match m[2] {
 	none -> { 99; },
 };
 print(c);`,
-			expected: "1\n0\n99\n",
+			expected: "1099",
 		},
 	}
 	runE2ETests(t, tests)
@@ -881,7 +881,7 @@ func TestNestedCollections(t *testing.T) {
 				none -> { 0; },
 			};
 			print(val);`,
-			expected: "1\n",
+			expected: "1",
 		},
 	}
 	runE2ETests(t, tests)
@@ -912,7 +912,7 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -982,7 +982,7 @@ entry:
   call void @sydney_gc_init()
   %t0 = call i64 @callCountDown()
   call void @sydney_print_int(i64 %t0)
-  call void @sydney_print_newline()
+
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -998,7 +998,7 @@ store ptr @anon.0, ptr %t1
 store ptr %env, ptr %t2
   %t3 = load i64, ptr %x.0.addr
   call void @sydney_print_int(i64 %t3)
-  call void @sydney_print_newline()
+
   %t4 = load i64, ptr %x.0.addr
   %t5 = icmp eq i64 %t4, 0
   br i1 %t5, label %then.0, label %merge.1
@@ -1129,19 +1129,19 @@ func TestE2EForLoops(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `mut sum = 0; for (mut i = 0; i < 5; i = i + 1) { sum = sum + i; } print(sum);`,
-			expected: "10\n",
+			expected: "10",
 		},
 		{ // three-part for with break
 			source:   `mut sum = 0; for (mut i = 0; i < 10; i = i + 1) { if (i == 3) { break; } sum = sum + i; } print(sum);`,
-			expected: "3\n",
+			expected: "3",
 		},
 		{ // continue skips even numbers
 			source:   `mut sum = 0; for (mut i = 0; i < 6; i = i + 1) { if (i % 2 == 0) { continue; } sum = sum + i; } print(sum);`,
-			expected: "9\n",
+			expected: "9",
 		},
 		{ // reuse loop var name
 			source:   `for (mut i = 0; i < 2; i = i + 1) { print(i); } for (mut i = 10; i < 12; i = i + 1) { print(i); }`,
-			expected: "0\n1\n10\n11\n",
+			expected: "011011",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1151,7 +1151,7 @@ func TestE2EStringEquality(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `print("hello" == "hello"); print("hello" == "world"); print("a" != "b");`,
-			expected: "true\nfalse\ntrue\n",
+			expected: "truefalsetrue",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1161,7 +1161,7 @@ func TestE2EConversionBuiltins(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `print(int('a')); print(char(byte(72)));`,
-			expected: "97\nH\n",
+			expected: "97H",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1171,7 +1171,7 @@ func TestE2EModulo(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `print(10 % 3); print(15 % 5);`,
-			expected: "1\n0\n",
+			expected: "10",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1181,7 +1181,7 @@ func TestE2EAppend(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `const array<int> a = [1, 2, 3]; const b = append(a, 4); print(len(b)); print(b[3]);`,
-			expected: "4\n4\n",
+			expected: "44",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1191,7 +1191,7 @@ func TestE2EEscapeSequences(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `print("hello\tworld"); print("line1\nline2");`,
-			expected: "hello\tworld\nline1\nline2\n",
+			expected: "hello\tworldline1\nline2",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1201,7 +1201,7 @@ func TestE2EIfAsStatement(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `mut r = 0; for (mut i = 0; i < 4; i = i + 1) { if (i % 2 == 0) { r = r + 1; } else { r = r + 10; } } print(r);`,
-			expected: "22\n",
+			expected: "22",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1211,19 +1211,19 @@ func TestE2EArraySlice(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `const a = [1, 2, 3, 4, 5]; const b = a[1:4]; print(len(b)); print(b[0]); print(b[1]); print(b[2]);`,
-			expected: "3\n2\n3\n4\n",
+			expected: "3234",
 		},
 		{
 			source:   `const a = [10, 20, 30]; const b = a[0:2]; print(len(b)); print(b[0]); print(b[1]);`,
-			expected: "2\n10\n20\n",
+			expected: "21020",
 		},
 		{
 			source:   `const a = [1, 2, 3, 4, 5]; const b = a[3:]; print(len(b)); print(b[0]); print(b[1]);`,
-			expected: "2\n4\n5\n",
+			expected: "245",
 		},
 		{
 			source:   `const a = [1, 2, 3, 4, 5]; const b = a[:2]; print(len(b)); print(b[0]); print(b[1]);`,
-			expected: "2\n1\n2\n",
+			expected: "212",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1233,19 +1233,19 @@ func TestE2EStringSlice(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `const s = "Hello, World!"; print(s[0:5]);`,
-			expected: "Hello\n",
+			expected: "Hello",
 		},
 		{
 			source:   `const s = "Hello, World!"; print(s[7:12]);`,
-			expected: "World\n",
+			expected: "World",
 		},
 		{
 			source:   `const s = "abcdef"; print(s[2:]);`,
-			expected: "cdef\n",
+			expected: "cdef",
 		},
 		{
 			source:   `const s = "abcdef"; print(s[:3]);`,
-			expected: "abc\n",
+			expected: "abc",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1256,17 +1256,17 @@ func TestE2EGenericFunctions(t *testing.T) {
 		{
 			source: `func identity<T>(T x) -> T { x; }
 			         print(identity<int>(42));`,
-			expected: "42\n",
+			expected: "42",
 		},
 		{
 			source: `func identity<T>(T x) -> T { x; }
 			         print(identity<string>("hello"));`,
-			expected: "hello\n",
+			expected: "hello",
 		},
 		{
 			source: `func first<T>(array<T> a) -> T { a[0]; }
 			         print(first<int>([10, 20, 30]));`,
-			expected: "10\n",
+			expected: "10",
 		},
 		{
 			source: `func sum<T>(array<T> vals) -> T {
@@ -1277,7 +1277,7 @@ func TestE2EGenericFunctions(t *testing.T) {
 				acc;
 			}
 			print(sum<int>([1, 2, 3, 4, 5]));`,
-			expected: "15\n",
+			expected: "15",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1289,20 +1289,20 @@ func TestE2EGenericStructs(t *testing.T) {
 			source: `define struct Box<T> { value T }
 			         const b = Box<int> { value: 42 };
 			         print(b.value);`,
-			expected: "42\n",
+			expected: "42",
 		},
 		{
 			source: `define struct Box<T> { value T }
 			         const b = Box<string> { value: "hello" };
 			         print(b.value);`,
-			expected: "hello\n",
+			expected: "hello",
 		},
 		{
 			source: `define struct Box<T> { value T }
 			         const a = Box<int> { value: 5 };
 			         const b = Box<int> { value: 10 };
 			         print(a.value + b.value);`,
-			expected: "15\n",
+			expected: "15",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1313,24 +1313,24 @@ func TestE2EForInArray(t *testing.T) {
 		// Basic value iteration
 		{
 			source:   `const a = [1, 2, 3]; for (v in a) { print(v); }`,
-			expected: "1\n2\n3\n",
+			expected: "123",
 		},
 		// Index and value iteration
 		{
 			source:   `const a = [10, 20, 30]; for (i, v in a) { print(i); print(v); }`,
-			expected: "0\n10\n1\n20\n2\n30\n",
+			expected: "010120230",
 		},
 		// Sum with accumulator
 		{
 			source:   `mut s = 0; const a = [1, 2, 3, 4]; for (v in a) { s = s + v; } print(s);`,
-			expected: "10\n",
+			expected: "10",
 		},
 		// Nested for-in
 		{
 			source: `const a = [1, 2];
 			         const b = [10, 20];
 			         for (x in a) { for (y in b) { print(x * y); } }`,
-			expected: "10\n20\n20\n40\n",
+			expected: "10202040",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1341,12 +1341,12 @@ func TestE2EForInMap(t *testing.T) {
 		// Map iteration - print values
 		{
 			source:   `mut s = 0; const m = {"a": 1, "b": 2, "c": 3}; for (k, v in m) { s = s + v; } print(s);`,
-			expected: "6\n",
+			expected: "6",
 		},
 		// Map iteration with int keys
 		{
 			source:   `mut s = 0; const m = {1: 10, 2: 20}; for (k, v in m) { s = s + k + v; } print(s);`,
-			expected: "33\n",
+			expected: "33",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1356,7 +1356,7 @@ func TestE2EBufferedChannel(t *testing.T) {
 	tests := []e2eTestCase{
 		{
 			source:   `const ch = chan<int>(1); ch <- 42; const val = <- ch; print(val);`,
-			expected: "42\n",
+			expected: "42",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1371,7 +1371,7 @@ func TestE2ESpawnWithChannel(t *testing.T) {
 			}();
 			const val = <- ch;
 			print(val);`,
-			expected: "99\n",
+			expected: "99",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1386,7 +1386,7 @@ func TestE2EOptionMatch(t *testing.T) {
 				none -> { 0; },
 			};
 			print(y);`,
-			expected: "43\n",
+			expected: "43",
 		},
 		{ // none arm
 			source: `const option<int> x = none();
@@ -1395,7 +1395,7 @@ func TestE2EOptionMatch(t *testing.T) {
 				none -> { 0; },
 			};
 			print(y);`,
-			expected: "0\n",
+			expected: "0",
 		},
 		{ // none first ordering
 			source: `const option<int> x = some(10);
@@ -1404,7 +1404,7 @@ func TestE2EOptionMatch(t *testing.T) {
 				some(val) -> { val * 2; },
 			};
 			print(y);`,
-			expected: "20\n",
+			expected: "20",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1429,7 +1429,7 @@ func TestE2ETypeMatch(t *testing.T) {
 			}
 			const c = Circle { radius: 5 };
 			print(describe(c));`,
-			expected: "5\n",
+			expected: "5",
 		},
 		{ // match second arm
 			source: `define struct Circle { radius int }
@@ -1448,7 +1448,7 @@ func TestE2ETypeMatch(t *testing.T) {
 			}
 			const r = Rect { w: 3, h: 4 };
 			print(describe(r));`,
-			expected: "7\n",
+			expected: "7",
 		},
 		{ // match default arm
 			source: `define struct Circle { radius int }
@@ -1470,7 +1470,7 @@ func TestE2ETypeMatch(t *testing.T) {
 			}
 			const t = Tri { b: 10 };
 			print(describe(t));`,
-			expected: "99\n",
+			expected: "99",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1643,7 +1643,7 @@ match cr {
 
 	<-serverDone
 
-	if string(out) != "hello\n" {
+	if string(out) != "hello" {
 		t.Fatalf("expected hello, got %q", string(out))
 	}
 }
@@ -1658,7 +1658,7 @@ func TestE2EAnyTypeMatch(t *testing.T) {
 				};
 			}
 			print(check(42));`,
-			expected: "42\n",
+			expected: "42",
 		},
 		{
 			source: `func check(any val) -> string {
@@ -1674,7 +1674,7 @@ func TestE2EAnyTypeMatch(t *testing.T) {
 			print(check("hello"));
 			print(check(3.14));
 			print(check(true));`,
-			expected: "hello\nfloat\nbool\n",
+			expected: "hellofloatbool",
 		},
 	}
 	runE2ETests(t, tests)
@@ -1697,7 +1697,7 @@ func TestE2EAnyArrayBoxing(t *testing.T) {
 				total;
 			}
 			print(sum_ints([1, 2, 3]));`,
-			expected: "6\n",
+			expected: "6",
 		},
 		{
 			source: `func describe(array<any> items) -> string {
@@ -1717,7 +1717,7 @@ func TestE2EAnyArrayBoxing(t *testing.T) {
 				res;
 			}
 			print(describe(["hi", 1, 3.14, false]));`,
-			expected: "sifb\n",
+			expected: "sifb",
 		},
 	}
 	runE2ETests(t, tests)
