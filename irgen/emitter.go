@@ -1698,7 +1698,7 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 
 	ret := SydneyTypeToIrType(fType.Return)
 
-	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
+	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret, sydneyParamTypes: fType.Params}
 	if decl.MangledName != "" {
 		e.funcSigs[decl.Name.Value] = e.funcSigs[name]
 		e.funcSigs[decl.MangledName] = e.funcSigs[name]
@@ -2046,7 +2046,6 @@ func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrT
 	args := make([]string, len(expr.Arguments))
 	for i, arg := range expr.Arguments {
 		val, valType := e.emitExpr(arg)
-		// box params into tagged unions
 		if len(sig.sydneyParamTypes) > i && sig.sydneyParamTypes[i] == types.Any && arg.GetResolvedType() != types.Any {
 			val = e.emitBoxAny(val, valType)
 		}
