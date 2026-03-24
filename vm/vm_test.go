@@ -1446,3 +1446,74 @@ func TestTypeMatch(t *testing.T) {
 
 	runVmTests(t, tests)
 }
+
+func TestAnyTypeMatch(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			`func check(any val) -> int {
+				match typeof val {
+					int(i) -> { i; },
+					_ -> { 0; },
+				};
+			}
+			check(42);`,
+			42,
+		},
+		{
+			`func check(any val) -> string {
+				match typeof val {
+					int(i) -> { "int"; },
+					string(s) -> { s; },
+					_ -> { "other"; },
+				};
+			}
+			check("hello");`,
+			"hello",
+		},
+		{
+			`func check(any val) -> string {
+				match typeof val {
+					int(i) -> { "int"; },
+					float(f) -> { "float"; },
+					bool(b) -> { "bool"; },
+					_ -> { "other"; },
+				};
+			}
+			check(true);`,
+			"bool",
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestAnyArrayTypeMatch(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			`func first_type(array<any> args) -> string {
+				const any a = args[0];
+				match typeof a {
+					int(i) -> { "int"; },
+					string(s) -> { "string"; },
+					_ -> { "other"; },
+				};
+			}
+			first_type([42]);`,
+			"int",
+		},
+		{
+			`func first_type(array<any> args) -> string {
+				const any a = args[0];
+				match typeof a {
+					int(i) -> { "int"; },
+					string(s) -> { "string"; },
+					_ -> { "other"; },
+				};
+			}
+			first_type(["hello"]);`,
+			"string",
+		},
+	}
+
+	runVmTests(t, tests)
+}

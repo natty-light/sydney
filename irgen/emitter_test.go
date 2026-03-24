@@ -1647,3 +1647,78 @@ match cr {
 		t.Fatalf("expected hello, got %q", string(out))
 	}
 }
+
+func TestE2EAnyTypeMatch(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source: `func check(any val) -> int {
+				match typeof val {
+					int(i) -> { i; },
+					_ -> { 0; },
+				};
+			}
+			print(check(42));`,
+			expected: "42\n",
+		},
+		{
+			source: `func check(any val) -> string {
+				match typeof val {
+					int(i) -> { "int"; },
+					float(f) -> { "float"; },
+					string(s) -> { s; },
+					bool(b) -> { "bool"; },
+					byte(b) -> { "byte"; },
+					_ -> { "other"; },
+				};
+			}
+			print(check("hello"));
+			print(check(3.14));
+			print(check(true));`,
+			expected: "hello\nfloat\nbool\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
+
+func TestE2EAnyArrayBoxing(t *testing.T) {
+	tests := []e2eTestCase{
+		{
+			source: `func sum_ints(array<any> args) -> int {
+				mut total = 0;
+				mut i = 0;
+				for (i < len(args)) {
+					const any a = args[i];
+					match typeof a {
+						int(n) -> { total = total + n; },
+						_ -> {},
+					};
+					i = i + 1;
+				}
+				total;
+			}
+			print(sum_ints([1, 2, 3]));`,
+			expected: "6\n",
+		},
+		{
+			source: `func describe(array<any> items) -> string {
+				mut res = "";
+				mut i = 0;
+				for (i < len(items)) {
+					const any item = items[i];
+					match typeof item {
+						int(n) -> { res = res + "i"; },
+						string(s) -> { res = res + "s"; },
+						float(f) -> { res = res + "f"; },
+						bool(b) -> { res = res + "b"; },
+						_ -> { res = res + "?"; },
+					};
+					i = i + 1;
+				}
+				res;
+			}
+			print(describe(["hi", 1, 3.14, false]));`,
+			expected: "sifb\n",
+		},
+	}
+	runE2ETests(t, tests)
+}
