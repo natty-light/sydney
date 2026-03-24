@@ -65,6 +65,8 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrUnit
 	case types.Byte:
 		return IrInt8
+	case types.Any:
+		return IrPtr // ptr to { i8, i64 } tagged union
 	}
 
 	switch t.(type) {
@@ -90,6 +92,49 @@ func SydneyTypeToIrType(t types.Type) IrType {
 		return IrPtr
 	}
 	return IrUnit
+}
+
+const IrAnyTaggedUnion BasicIrType = "{ i8, i64 }"
+
+// Tag values for the any tagged union
+const (
+	AnyTagInt    = 0
+	AnyTagFloat  = 1
+	AnyTagString = 2
+	AnyTagBool   = 3
+	AnyTagByte   = 4
+)
+
+func AnyTagForType(t IrType) int {
+	switch t {
+	case IrInt:
+		return AnyTagInt
+	case IrFloat:
+		return AnyTagFloat
+	case IrPtr:
+		return AnyTagString
+	case IrBool:
+		return AnyTagBool
+	case IrInt8:
+		return AnyTagByte
+	}
+	return -1
+}
+
+func IrTypeForAnyTag(tag int) IrType {
+	switch tag {
+	case AnyTagInt:
+		return IrInt
+	case AnyTagFloat:
+		return IrFloat
+	case AnyTagString:
+		return IrPtr
+	case AnyTagBool:
+		return IrBool
+	case AnyTagByte:
+		return IrInt8
+	}
+	return IrPtr
 }
 
 func GetResultTaggedUnion(t IrType) IrType {

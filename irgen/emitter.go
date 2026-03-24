@@ -23,9 +23,10 @@ type irGlobal struct {
 }
 
 type funcSig struct {
-	retType    IrType   // IR return type string
-	paramTypes []IrType // IR param type strings
-	name       string   // IR function name (e.g. "@add", "@Circle.area")
+	retType          IrType       // IR return type string
+	paramTypes       []IrType     // IR param type strings
+	name             string       // IR function name (e.g. "@add", "@Circle.area")
+	sydneyParamTypes []types.Type // original Sydney param types (for any-boxing)
 }
 
 type freeVar struct {
@@ -220,7 +221,7 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 		}
 
 		ret := SydneyTypeToIrType(fType.Return)
-		e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret}
+		e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret, sydneyParamTypes: fType.Params}
 		if node.MangledName != "" {
 			e.funcSigs[node.MangledName] = e.funcSigs[name]
 			e.funcSigs[node.Name.Value] = e.funcSigs[name]
@@ -1234,6 +1235,11 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	if valType == IrUnit || stmt.Value == nil {
 		val, valType = e.getZeroValue(stmt.Type)
 	}
+	// box anys into tagged unions
+	if stmt.Type == types.Any && stmt.Value != nil && stmt.Value.GetResolvedType() != types.Any {
+		val = e.emitBoxAny(val, valType)
+		valType = IrPtr
+	}
 
 	name := stmt.Name.Value
 	if isGlobal {
@@ -2039,7 +2045,11 @@ func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string, typ IrType) (
 func (e *Emitter) emitFunctionCall(expr *ast.CallExpr, sig funcSig) (string, IrType) {
 	args := make([]string, len(expr.Arguments))
 	for i, arg := range expr.Arguments {
-		val, _ := e.emitExpr(arg)
+		val, valType := e.emitExpr(arg)
+		// box params into tagged unions
+		if len(sig.sydneyParamTypes) > i && sig.sydneyParamTypes[i] == types.Any && arg.GetResolvedType() != types.Any {
+			val = e.emitBoxAny(val, valType)
+		}
 		args[i] = fmt.Sprintf("%s %s", sig.paramTypes[i], val)
 	}
 	argsStr := strings.Join(args, ", ")
@@ -2401,8 +2411,17 @@ func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
 	//  %t2 = getelementptr i64, ptr %t0, i32 1
 	//  store i64 2, ptr %t2
 	e.emit(line)
+	// if elems are any, need to box into tagged union
+	isAnyArray := false
+	if at, ok := arr.GetResolvedType().(types.ArrayType); ok {
+		isAnyArray = at.ElemType == types.Any
+	}
 	for i, element := range arr.Elements {
 		val, valType := e.emitExpr(element)
+		if isAnyArray && element.GetResolvedType() != types.Any {
+			val = e.emitBoxAny(val, valType)
+			valType = IrPtr
+		}
 		elemPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 %d", elemPtr, valType, buf, i)
 		e.emit(line)
@@ -2459,6 +2478,11 @@ func (e *Emitter) emitHashLiteral(lit *ast.HashLiteral) (string, IrType) {
 		v := lit.Pairs[k]
 		key, _ := e.emitExpr(k)
 		val, valType := e.emitExpr(v)
+		// if any, box into tagged union
+		if t.ValueType == types.Any && v.GetResolvedType() != types.Any {
+			val = e.emitBoxAny(val, valType)
+			valType = IrPtr
+		}
 		if valType == IrPtr {
 			val = e.emitPtrToInt(val)
 		}
@@ -2898,25 +2922,29 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 }
 
 func (e *Emitter) emitTypeMatchExpr(expr *ast.MatchTypeExpr) (string, IrType) {
-	// Emit subject — this is an interface fat pointer { ptr, ptr }
+	subjType := expr.Subject.GetResolvedType()
+	if subjType == types.Any {
+		return e.emitAnyTypeMatch(expr)
+	}
+	return e.emitInterfaceTypeMatch(expr)
+}
+
+func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
+	// subj is interface fat ptr
 	subjPtr, _ := e.emitExpr(expr.Subject)
 	rt := SydneyTypeToIrType(expr.ResolvedType)
 
-	// Get the interface name from the subject's resolved type
 	ifaceType := expr.Subject.GetResolvedType().(types.InterfaceType)
 	ifaceName := ifaceType.Name
 
-	// Load the fat pointer
 	ifaceVal := e.tmp()
 	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, subjPtr)
 	e.emit(line)
 
-	// Extract vtable pointer (index 1)
 	vtablePtr := e.tmp()
 	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
 	e.emit(line)
 
-	// Allocate result if needed
 	result := ""
 	if rt != IrUnit {
 		result = e.tmp()
@@ -2925,33 +2953,29 @@ func (e *Emitter) emitTypeMatchExpr(expr *ast.MatchTypeExpr) (string, IrType) {
 
 	endLab := e.label("typematch.end")
 
-	// Emit each arm: compare vtable pointer against known vtable global
 	for i, arm := range expr.Arms {
 		structName := arm.Type.(types.StructType).Name
 		matchLab := e.label(fmt.Sprintf("typematch.%s", structName))
 		nextLab := e.label(fmt.Sprintf("typematch.next.%d", i))
 
-		// Compare vtable pointer against @vtable.StructName.InterfaceName
+		// cmp vtable ptr to resolve branch
 		cmp := e.tmp()
 		line = fmt.Sprintf("%s = icmp eq ptr %s, @vtable.%s.%s", cmp, vtablePtr, structName, ifaceName)
 		e.emit(line)
 		e.emitBranch(cmp, matchLab, nextLab)
 
-		// Matched arm
 		e.emitLabel(matchLab)
 
-		// Extract value pointer (index 0) — this is the concrete struct
 		valPtr := e.tmp()
 		line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
 		e.emit(line)
 
-		// Store value pointer into an alloca so the binding works like a normal local
+		// alloca so it works like a local
 		bindAlloca := e.tmp() + ".addr"
 		e.emitAlloca(bindAlloca, IrPtr)
 		line = fmt.Sprintf("store ptr %s, ptr %s", valPtr, bindAlloca)
 		e.emit(line)
 
-		// Bind the value in a new scope
 		e.pushScope()
 		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
 		armResult, _, _ := e.emitBlock(arm.Body)
@@ -2967,11 +2991,95 @@ func (e *Emitter) emitTypeMatchExpr(expr *ast.MatchTypeExpr) (string, IrType) {
 			e.emitJmp(endLab)
 		}
 
-		// Next arm starts here
 		e.emitLabel(nextLab)
 	}
 
-	// Default arm
+	if expr.Default != nil {
+		defaultResult, _, _ := e.emitBlock(expr.Default)
+		defaultTerminated := e.blockTerminated
+		e.blockTerminated = false
+		if !defaultTerminated {
+			if rt != IrUnit {
+				line = fmt.Sprintf("store %s %s, ptr %s", rt, defaultResult, result)
+				e.emit(line)
+			}
+			e.emitJmp(endLab)
+		}
+	} else {
+		e.emitJmp(endLab)
+	}
+
+	e.emitLabel(endLab)
+	finalVal := ""
+	if rt != IrUnit {
+		finalVal = e.tmp()
+		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
+		e.emit(line)
+	}
+
+	return finalVal, rt
+}
+
+func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
+	// { i8, i64 }
+	subjPtr, _ := e.emitExpr(expr.Subject)
+	rt := SydneyTypeToIrType(expr.ResolvedType)
+
+	tagPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 0", tagPtr, subjPtr)
+	e.emit(line)
+	tag := e.tmp()
+	line = fmt.Sprintf("%s = load i8, ptr %s", tag, tagPtr)
+	e.emit(line)
+
+	// so it works like a local
+	result := ""
+	if rt != IrUnit {
+		result = e.tmp()
+		e.emitAlloca(result, rt)
+	}
+
+	endLab := e.label("typematch.end")
+
+	for i, arm := range expr.Arms {
+		armIrType := SydneyTypeToIrType(arm.Type)
+		armTag := AnyTagForType(armIrType)
+		typeName := arm.Type.Signature()
+		matchLab := e.label(fmt.Sprintf("typematch.%s", typeName))
+		nextLab := e.label(fmt.Sprintf("typematch.next.%d", i))
+
+		cmp := e.tmp()
+		line = fmt.Sprintf("%s = icmp eq i8 %s, %d", cmp, tag, armTag)
+		e.emit(line)
+		e.emitBranch(cmp, matchLab, nextLab)
+
+		e.emitLabel(matchLab)
+		unboxed, unboxedType := e.emitUnboxAny(subjPtr, armIrType)
+
+		// store unboxed in alloca
+		bindAlloca := e.tmp() + ".addr"
+		e.emitAlloca(bindAlloca, unboxedType)
+		line = fmt.Sprintf("store %s %s, ptr %s", unboxedType, unboxed, bindAlloca)
+		e.emit(line)
+
+		e.pushScope()
+		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: unboxedType}
+		armResult, _, _ := e.emitBlock(arm.Body)
+		armTerminated := e.blockTerminated
+		e.blockTerminated = false
+		e.popScope()
+
+		if !armTerminated {
+			if rt != IrUnit {
+				line = fmt.Sprintf("store %s %s, ptr %s", rt, armResult, result)
+				e.emit(line)
+			}
+			e.emitJmp(endLab)
+		}
+
+		e.emitLabel(nextLab)
+	}
+
 	if expr.Default != nil {
 		defaultResult, _, _ := e.emitBlock(expr.Default)
 		defaultTerminated := e.blockTerminated
@@ -3392,4 +3500,38 @@ func (e *Emitter) fromI64(reg string, typ IrType) (string, IrType) {
 		e.emit(fmt.Sprintf("%s = inttoptr i64 %s to ptr", r, reg))
 		return r, IrPtr
 	}
+}
+
+// boxes into { i8, i64 } tagged union
+func (e *Emitter) emitBoxAny(reg string, srcType IrType) string {
+	tag := AnyTagForType(srcType)
+	alloc := e.tmp()
+	line := fmt.Sprintf("%s = call ptr @sydney_gc_alloc(i64 16)", alloc)
+	e.emit(line)
+	tagPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 0", tagPtr, alloc)
+	e.emit(line)
+	line = fmt.Sprintf("store i8 %d, ptr %s", tag, tagPtr)
+	e.emit(line)
+
+	// bitcast to i64
+	valI64 := e.toI64(reg, srcType)
+	valPtr := e.tmp()
+	line = fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 1", valPtr, alloc)
+	e.emit(line)
+	line = fmt.Sprintf("store i64 %s, ptr %s", valI64, valPtr)
+	e.emit(line)
+	return alloc
+}
+
+// extracts val from { i8, i64 },
+func (e *Emitter) emitUnboxAny(reg string, targetType IrType) (string, IrType) {
+	valPtr := e.tmp()
+	line := fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 1", valPtr, reg)
+	e.emit(line)
+	rawVal := e.tmp()
+	line = fmt.Sprintf("%s = load i64, ptr %s", rawVal, valPtr)
+	e.emit(line)
+	// bitcast back to target
+	return e.fromI64(rawVal, targetType)
 }
