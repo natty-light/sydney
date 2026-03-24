@@ -1,7 +1,7 @@
 module "stats"
 
 pub func mean<T>(array<T> vals) -> float {
-    mut T x = 0;
+    mut T x;
     for (mut i = 0; i < len(vals); i = i + 1) {
         x = x + vals[i];
     }
