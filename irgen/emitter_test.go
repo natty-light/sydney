@@ -79,7 +79,6 @@ entry:
   call void @sydney_gc_init()
   %t0 = add i64 1, 2
   call void @sydney_print_int(i64 %t0)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -100,7 +99,6 @@ entry:
   call void @sydney_gc_add_global_root(ptr @pi)
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -124,7 +122,6 @@ entry:
   store double 2.000000, ptr @pi
   %t1 = load double, ptr @pi
   call void @sydney_print_float(double %t1)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -164,11 +161,9 @@ entry:
   br i1 %t2, label %then.0, label %else.1
 then.0:
     call void @sydney_print_string(ptr @.str.0)
-  
   br label %merge.2
 else.1:
     call void @sydney_print_string(ptr @.str.1)
-  
   br label %merge.2
 merge.2:
   %t3 = load i64, ptr @x
@@ -185,7 +180,6 @@ merge.5:
   call void @sydney_gc_add_global_root(ptr @z)
   %t7 = load i64, ptr @z
   call void @sydney_print_int(i64 %t7)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -214,7 +208,6 @@ cond.0:
 loop.1:
     %t2 = load i64, ptr @i
     call void @sydney_print_int(i64 %t2)
-  
     %t3 = load i64, ptr @i
     %t4 = add i64 %t3, 1
     store i64 %t4, ptr @i
@@ -257,7 +250,6 @@ loop.1:
 then.3:
       %t5 = load i64, ptr @i
       call void @sydney_print_int(i64 %t5)
-    
     br label %merge.4
 merge.4:
     %t6 = load i64, ptr @i
@@ -340,15 +332,12 @@ entry:
   call void @sydney_print_string(ptr @.str.0)
   %t4 = load i64, ptr @x
   call void @sydney_print_int(i64 %t4)
-
   call void @sydney_print_string(ptr @.str.1)
   %t5 = load i64, ptr @xPlusFive
   call void @sydney_print_int(i64 %t5)
-
   call void @sydney_print_string(ptr @.str.2)
   %t6 = load i64, ptr @xPlusSix
   call void @sydney_print_int(i64 %t6)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -378,12 +367,10 @@ entry:
   %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
   %t5 = load i64, ptr %t4
   call void @sydney_print_int(i64 %t5)
-
   %t6 = load ptr, ptr @p
   %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
   %t8 = load i64, ptr %t7
   call void @sydney_print_int(i64 %t8)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -418,12 +405,10 @@ entry:
   %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
   %t5 = load i64, ptr %t4
   call void @sydney_print_int(i64 %t5)
-
   %t6 = load ptr, ptr @p
   %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
   %t8 = load i64, ptr %t7
   call void @sydney_print_int(i64 %t8)
-
   %t9 = load ptr, ptr @p
   %t10 = getelementptr %struct.Point, ptr %t9, i32 0, i32 0
   store i64 1, ptr %t10
@@ -434,12 +419,10 @@ entry:
   %t14 = getelementptr %struct.Point, ptr %t13, i32 0, i32 0
   %t15 = load i64, ptr %t14
   call void @sydney_print_int(i64 %t15)
-
   %t16 = load ptr, ptr @p
   %t17 = getelementptr %struct.Point, ptr %t16, i32 0, i32 1
   %t18 = load i64, ptr %t17
   call void @sydney_print_int(i64 %t18)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -566,7 +549,6 @@ entry:
   call void @sydney_print_string(ptr @.str.0)
   %t10 = load double, ptr @rectA
   call void @sydney_print_float(double %t10)
-
   %t11 = load ptr, ptr @c
   %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
   store ptr %t11, ptr %t13
@@ -578,7 +560,6 @@ entry:
   call void @sydney_print_string(ptr @.str.1)
   %t16 = load double, ptr @circA
   call void @sydney_print_float(double %t16)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -628,7 +609,6 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call i64 %t5(ptr %t7)
   call void @sydney_print_int(i64 %t8)
-
   %t9 = call ptr @sydney_gc_alloc(i64 16)
   %t10 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 0
   store ptr @anon.1, ptr %t10
@@ -646,7 +626,6 @@ entry:
   call void @sydney_gc_add_global_root(ptr @sum)
   %t18 = load i64, ptr @sum
   call void @sydney_print_int(i64 %t18)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -699,7 +678,6 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -767,7 +745,6 @@ entry:
   %t19 = load ptr, ptr %t18
   %t20 = call i64 %t17(ptr %t19, i64 5)
   call void @sydney_print_int(i64 %t20)
-
   %t21 = load ptr, ptr @sixAdder
   %t22 = getelementptr { ptr, ptr }, ptr %t21, i32 0, i32 0
   %t23 = load ptr, ptr %t22
@@ -775,7 +752,6 @@ entry:
   %t25 = load ptr, ptr %t24
   %t26 = call i64 %t23(ptr %t25, i64 5)
   call void @sydney_print_int(i64 %t26)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -836,7 +812,6 @@ entry:
   call void @sydney_gc_init()
   %t0 = call i64 @addTwo(i64 3)
   call void @sydney_print_int(i64 %t0)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -912,7 +887,6 @@ entry:
   %t7 = load ptr, ptr %t6
   %t8 = call i64 %t5(ptr %t7, i64 5)
   call void @sydney_print_int(i64 %t8)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -982,7 +956,6 @@ entry:
   call void @sydney_gc_init()
   %t0 = call i64 @callCountDown()
   call void @sydney_print_int(i64 %t0)
-
   call void @sydney_join_all()
   call void @sydney_gc_shutdown()
   ret i32 0
@@ -998,7 +971,6 @@ store ptr @anon.0, ptr %t1
 store ptr %env, ptr %t2
   %t3 = load i64, ptr %x.0.addr
   call void @sydney_print_int(i64 %t3)
-
   %t4 = load i64, ptr %x.0.addr
   %t5 = icmp eq i64 %t4, 0
   br i1 %t5, label %then.0, label %merge.1
