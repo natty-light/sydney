@@ -27,11 +27,10 @@ type VM struct {
 	scheduler *Scheduler
 	globals   []object.Object
 	debugger  *Debugger
-	sourceMap *code.SourceMap
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
-	mainFn := &object.CompiledFunction{Instructions: bytecode.Instructions}
+	mainFn := &object.CompiledFunction{Instructions: bytecode.Instructions, SourceMap: bytecode.SourceMap}
 	mainClosure := &object.Closure{Fn: mainFn}
 	mainFrame := NewFrame(mainClosure, 0)
 
@@ -56,10 +55,6 @@ func NewWithGlobalStore(bytecode *compiler.Bytecode, globals []object.Object) *V
 
 func (vm *VM) AttachDebugger(debugger *Debugger) {
 	vm.debugger = debugger
-}
-
-func (vm *VM) InjectSourceMap(sm *code.SourceMap) {
-	vm.sourceMap = sm
 }
 
 func (vm *VM) StackTop() object.Object {
@@ -125,8 +120,9 @@ func (vm *VM) runFiber() error {
 
 		vm.currentFrame().ip++
 
-		if vm.debugger != nil && vm.debugger.shouldStop(vm.currentFrame().ip, vm.sourceMap) {
-			line, _, file := vm.sourceMap.LineForOffset(vm.currentFrame().ip)
+		sm := vm.currentFrame().cl.Fn.SourceMap
+		if vm.debugger != nil && sm != nil && vm.debugger.shouldStop(vm.currentFrame().ip, sm) {
+			line, _, file := sm.LineForOffset(vm.currentFrame().ip)
 			vm.debugger.lastLine = line
 			vm.debugger.lastFile = file
 			vm.debugger.eventCh <- &StoppedEvent{

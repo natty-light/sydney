@@ -29,11 +29,11 @@ type Compiler struct {
 	itabMapping    map[ItabKey]int
 
 	currentModule string
+	fileName      string
 
 	loopContexts []*LoopContext
 	loopIndex    int
 
-	sourceMap *code.SourceMap
 }
 
 type Bytecode struct {
@@ -51,6 +51,7 @@ type CompilationScope struct {
 	instructions        code.Instructions
 	lastInstruction     EmittedInstruction
 	previousInstruction EmittedInstruction
+	sourceMap           *code.SourceMap
 }
 
 type LoopContext struct {
@@ -65,6 +66,7 @@ func New() *Compiler {
 		instructions:        code.Instructions{},
 		lastInstruction:     EmittedInstruction{},
 		previousInstruction: EmittedInstruction{},
+		sourceMap:           code.New(),
 	}
 
 	symbolTable := NewSymbolTable()
@@ -85,8 +87,6 @@ func New() *Compiler {
 
 		loopContexts: make([]*LoopContext, 0),
 		loopIndex:    0,
-
-		sourceMap: code.New(),
 	}
 }
 
@@ -95,6 +95,10 @@ func NewWithState(symbolTable *SymbolTable, constants []object.Object) *Compiler
 	compiler.symbolTable = symbolTable
 	compiler.constants = constants
 	return compiler
+}
+
+func (c *Compiler) SetFileName(fn string) {
+	c.fileName = fn
 }
 
 func (c *Compiler) Compile(node ast.Node) error {
@@ -585,7 +589,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		freeSymbols := c.symbolTable.FreeSymbols
 		numLocals := c.symbolTable.numDefinitions
-		instructions := c.leaveScope()
+		instructions, fnSourceMap := c.leaveScope()
 
 		// iterate over free symbols and load them onto stack
 		for _, s := range freeSymbols {
@@ -596,6 +600,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Params),
+			SourceMap:     fnSourceMap,
 		}
 
 		fnIdx := c.addConstant(compiledFn)
@@ -634,7 +639,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		freeSymbols := c.symbolTable.FreeSymbols
 		numLocals := c.symbolTable.numDefinitions
 		// leave scope so we can load free symbols into enclosing scope
-		instructions := c.leaveScope()
+		instructions, fnSourceMap := c.leaveScope()
 
 		// iterate over free symbols and load them onto stack
 		for _, s := range freeSymbols {
@@ -645,6 +650,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Parameters),
+			SourceMap:     fnSourceMap,
 		}
 
 		fnIdx := c.addConstant(compiledFn)
@@ -836,6 +842,7 @@ func (c *Compiler) CompilePackages(packages []*loader.Package) error {
 		for _, program := range pkg.Programs {
 			merged.Stmts = append(merged.Stmts, program.Stmts...)
 		}
+		c.SetFileName(pkg.Name)
 		err := c.Compile(merged)
 		if err != nil {
 			return err
@@ -850,7 +857,7 @@ func (c *Compiler) Bytecode() *Bytecode {
 	return &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
-		SourceMap:    c.sourceMap,
+		SourceMap:    c.scopes[c.scopeIndex].sourceMap,
 	}
 }
 
@@ -859,11 +866,16 @@ func (c *Compiler) emitAt(node ast.Node, op code.Opcode, operands ...int) int {
 
 	line, col := node.Pos()
 
-	c.sourceMap.Mappings[ins] = &code.SourceMapping{
+	fileName := c.fileName
+	if c.currentModule != "" {
+		fileName = c.currentModule
+	}
+
+	c.scopes[c.scopeIndex].sourceMap.Mappings[ins] = &code.SourceMapping{
 		InstructionOffset: ins,
 		Line:              line,
 		Col:               col,
-		File:              c.currentModule,
+		File:              fileName,
 	}
 
 	return ins
@@ -942,6 +954,7 @@ func (c *Compiler) enterScope() {
 		instructions:        code.Instructions{},
 		lastInstruction:     EmittedInstruction{},
 		previousInstruction: EmittedInstruction{},
+		sourceMap:           code.New(),
 	}
 
 	c.scopes = append(c.scopes, scope)
@@ -950,15 +963,16 @@ func (c *Compiler) enterScope() {
 	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
 }
 
-func (c *Compiler) leaveScope() code.Instructions {
+func (c *Compiler) leaveScope() (code.Instructions, *code.SourceMap) {
 	instructions := c.currentInstructions()
+	sourceMap := c.scopes[c.scopeIndex].sourceMap
 
 	c.scopes = c.scopes[:len(c.scopes)-1]
 	c.scopeIndex--
 
 	c.symbolTable = c.symbolTable.Outer
 
-	return instructions
+	return instructions, sourceMap
 }
 
 func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
