@@ -23,7 +23,7 @@ type Debugger struct {
 
 func NewDebugger() *Debugger {
 	return &Debugger{
-		Flag:        DebugContinue,
+		Flag:        DebugStepLine,
 		cmdCh:       make(chan DebugCommand),
 		eventCh:     make(chan DebugEvent),
 		breakpoints: make(map[string]map[int]bool),
@@ -195,4 +195,12 @@ func (d *Debugger) handleGetSource(cmd *GetSource) {
 func isResumeCommand(cmd DebugCommand) bool {
 	_, ok := cmd.(*SetMode)
 	return ok
+}
+
+func (d *Debugger) SendCommand(cmd DebugCommand) {
+	d.cmdCh <- cmd
+}
+
+func (d *Debugger) EventCh() chan DebugEvent {
+	return d.eventCh
 }
