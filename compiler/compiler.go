@@ -33,7 +33,6 @@ type Compiler struct {
 
 	loopContexts []*LoopContext
 	loopIndex    int
-
 }
 
 type Bytecode struct {
@@ -196,7 +195,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if node.Value == nil {
 			if node.Type != nil {
-				err := c.emitZeroValue(node.Type)
+				err := c.emitZeroValue(node, node.Type)
 				if err != nil {
 					return err
 				}
@@ -218,7 +217,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 				cde = code.OpSetImmutableGlobal
 			}
 
-			c.emit(cde, symbol.Index)
+			c.emitAt(node, cde, symbol.Index)
 		} else {
 			symbol := c.symbolTable.DefineMutable(name)
 			cde := code.OpSetMutableLocal
@@ -263,7 +262,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		c.emit(code.OpIndexSet)
+		c.emitAt(node, code.OpIndexSet)
 	case *ast.ReturnStmt:
 		err := c.Compile(node.ReturnValue)
 		if err != nil {
@@ -342,9 +341,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 
 			if node.Operator == "<" {
-				c.emit(code.OpGt)
+				c.emitAt(node, code.OpGt)
 			} else {
-				c.emit(code.OpGte)
+				c.emitAt(node, code.OpGte)
 			}
 			return nil
 		}
@@ -362,27 +361,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 		switch node.Operator {
 
 		case "+":
-			c.emit(code.OpAdd)
+			c.emitAt(node, code.OpAdd)
 		case "-":
-			c.emit(code.OpSub)
+			c.emitAt(node, code.OpSub)
 		case "*":
-			c.emit(code.OpMul)
+			c.emitAt(node, code.OpMul)
 		case "/":
-			c.emit(code.OpDiv)
+			c.emitAt(node, code.OpDiv)
 		case "==":
-			c.emit(code.OpEqual)
+			c.emitAt(node, code.OpEqual)
 		case "!=":
-			c.emit(code.OpNotEqual)
+			c.emitAt(node, code.OpNotEqual)
 		case ">":
-			c.emit(code.OpGt)
+			c.emitAt(node, code.OpGt)
 		case ">=":
-			c.emit(code.OpGte)
+			c.emitAt(node, code.OpGte)
 		case "&&":
-			c.emit(code.OpAnd)
+			c.emitAt(node, code.OpAnd)
 		case "||":
-			c.emit(code.OpOr)
+			c.emitAt(node, code.OpOr)
 		case "%":
-			c.emit(code.OpModulo)
+			c.emitAt(node, code.OpModulo)
 		default:
 			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
@@ -394,9 +393,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		switch node.Operator {
 		case "!":
-			c.emit(code.OpBang)
+			c.emitAt(node, code.OpBang)
 		case "-":
-			c.emit(code.OpMinus)
+			c.emitAt(node, code.OpMinus)
 		default:
 			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
@@ -456,7 +455,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		c.emit(code.OpIndex)
+		c.emitAt(node, code.OpIndex)
 	case *ast.Identifier:
 		name := node.Value
 		symbol, _, ok := c.symbolTable.Resolve(name)
@@ -500,24 +499,24 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emitAt(node, code.OpCall, len(node.Arguments))
 	case *ast.IntegerLiteral:
 		integer := &object.Integer{Value: node.Value}
-		c.emit(code.OpConstant, c.addConstant(integer))
+		c.emitAt(node, code.OpConstant, c.addConstant(integer))
 	case *ast.ByteLiteral:
 		byt := &object.Byte{Value: node.Value}
-		c.emit(code.OpConstant, c.addConstant(byt))
+		c.emitAt(node, code.OpConstant, c.addConstant(byt))
 	case *ast.FloatLiteral:
 		float := &object.Float{Value: node.Value}
-		c.emit(code.OpConstant, c.addConstant(float))
+		c.emitAt(node, code.OpConstant, c.addConstant(float))
 	case *ast.BooleanLiteral:
 		if node.Value {
-			c.emit(code.OpTrue)
+			c.emitAt(node, code.OpTrue)
 		} else {
-			c.emit(code.OpFalse)
+			c.emitAt(node, code.OpFalse)
 		}
 	case *ast.NullLiteral:
-		c.emit(code.OpNull)
+		c.emitAt(node, code.OpNull)
 	case *ast.StringLiteral:
 		str := &object.String{Value: node.Value}
-		c.emit(code.OpConstant, c.addConstant(str))
+		c.emitAt(node, code.OpConstant, c.addConstant(str))
 	case *ast.ArrayLiteral:
 		for _, el := range node.Elements {
 			err := c.Compile(el)
@@ -525,7 +524,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 				return err
 			}
 		}
-		c.emit(code.OpArray, len(node.Elements))
+		c.emitAt(node, code.OpArray, len(node.Elements))
 	case *ast.HashLiteral:
 		keys := make([]ast.Expr, 0)
 		for k := range node.Pairs {
@@ -549,7 +548,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		c.emit(code.OpHash, len(node.Pairs)*2)
+		c.emitAt(node, code.OpHash, len(node.Pairs)*2)
 	case *ast.FunctionDeclarationStmt:
 		if node.IsExtern {
 			return nil
@@ -739,7 +738,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 				return err
 			}
 		} else {
-			err := c.emitZeroValue(types.Int)
+			err := c.emitZeroValue(node, types.Int)
 			if err != nil {
 				return err
 			}
@@ -1229,24 +1228,24 @@ func (c *Compiler) loadSymbol(s Symbol) {
 	}
 }
 
-func (c *Compiler) emitZeroValue(t types.Type) error {
+func (c *Compiler) emitZeroValue(node ast.Node, t types.Type) error {
 	switch t {
 	case types.Bool:
-		c.emit(code.OpFalse)
+		c.emitAt(node, code.OpFalse)
 	case types.Int:
 		i := &object.Integer{Value: 0}
-		c.emit(code.OpConstant, c.addConstant(i))
+		c.emitAt(node, code.OpConstant, c.addConstant(i))
 	case types.Float:
 		f := &object.Float{Value: 0}
-		c.emit(code.OpConstant, c.addConstant(f))
+		c.emitAt(node, code.OpConstant, c.addConstant(f))
 	case types.String:
 		s := &object.String{Value: ""}
-		c.emit(code.OpConstant, c.addConstant(s))
+		c.emitAt(node, code.OpConstant, c.addConstant(s))
 	case types.Byte:
 		b := &object.Byte{Value: 0}
-		c.emit(code.OpConstant, c.addConstant(b))
+		c.emitAt(node, code.OpConstant, c.addConstant(b))
 	default:
-		c.emit(code.OpNull)
+		c.emitAt(node, code.OpNull)
 	}
 
 	return nil
