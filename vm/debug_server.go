@@ -82,6 +82,8 @@ func parseCommand(line string) (DebugCommand, error) {
 		return &SetMode{Flag: DebugStepInstruction}, nil
 	case "step_out":
 		return &SetMode{Flag: DebugStepOut}, nil
+	case "step_over":
+		return &SetMode{Flag: DebugStepOver}, nil
 	case "get_locals":
 		return &GetLocals{}, nil
 	case "get_stack":
