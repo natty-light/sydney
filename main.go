@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"sydney/ast"
@@ -363,57 +361,7 @@ func Debug(args []string, flags map[Flag]bool) int {
 
 	dbg := vm.NewDebugger()
 	machine.AttachDebugger(dbg)
-
-	// drain events from the debugger
-	go func() {
-		for evt := range dbg.EventCh() {
-			switch e := evt.(type) {
-			case *vm.StoppedEvent:
-				fmt.Printf("[stopped] %s:%d (%s)\n>> ", e.File, e.Line, e.Reason)
-			case *vm.TerminatedEvent:
-				fmt.Printf("[terminated] %s\n", e.Error)
-			case *vm.OutputEvent:
-				fmt.Print(e.Text)
-			}
-		}
-	}()
-
-	// read commands from stdin
-	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
-		fmt.Print(">> ")
-		for scanner.Scan() {
-			line := scanner.Text()
-			if len(line) == 0 {
-				fmt.Print(">> ")
-				continue
-			}
-			switch line[0] {
-			case 'b':
-				parts := strings.Split(line, " ")
-				if len(parts) < 2 {
-					fmt.Println("usage: b <line>")
-					fmt.Print(">> ")
-					continue
-				}
-				ln, err := strconv.Atoi(parts[1])
-				if err != nil {
-					fmt.Printf("invalid line number: %s\n>> ", parts[1])
-					continue
-				}
-				dbg.SendCommand(&vm.AddBreakpoint{File: filename, Line: ln})
-				fmt.Printf("breakpoint set at %s:%d\n>> ", filename, ln)
-			case 'n':
-				dbg.SendCommand(&vm.SetMode{Flag: vm.DebugStepLine})
-			case 'c':
-				dbg.SendCommand(&vm.SetMode{Flag: vm.DebugContinue})
-			case 'q':
-				os.Exit(0)
-			default:
-				fmt.Printf("unknown command: %s\n>> ", line)
-			}
-		}
-	}()
+	dbg.WaitForClient()
 
 	err = machine.Run()
 	if err != nil {
