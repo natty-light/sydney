@@ -40,6 +40,7 @@ var commands = map[string]CommandFunc{
 	"compile": Compile,
 	"run":     Run,
 	"test":    Test,
+	"debug":   Debug,
 }
 
 func main() {
@@ -255,6 +256,116 @@ func Compile(args []string, flags map[Flag]bool) int {
 		return 1
 	}
 	i.Write(strings.Replace(filename, ".sy", ".ll", -1))
+
+	return 0
+}
+
+func Debug(args []string, flags map[Flag]bool) int {
+	filename := args[0]
+	constants := []object.Object{}
+	globals := make([]object.Object, vm.GlobalsSize)
+	symbolTable := compiler.NewSymbolTable()
+	typeEnv := typechecker.NewTypeEnv(nil)
+	for i, v := range object.Builtins {
+		symbolTable.DefineBuiltin(i, v.Name)
+	}
+
+	file, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Printf("Honk! Cannot read file %s\n", filename)
+		return 1
+	}
+
+	src := string(file)
+
+	imports := loader.ScanImports(src)
+	deriveImports := codegen.ScanDeriveImports(src)
+	imports = append(imports, deriveImports...)
+	ld := loader.NewFromImports(imports)
+	sourceDir := filepath.Dir(filename)
+	stdLib := filepath.Join(sourceDir, "stdlib")
+	ld.SetPaths(stdLib, sourceDir)
+	packages, tt, gns, err := ld.Load(make(map[string]bool))
+	if err != nil {
+		fmt.Printf("loader error: %s\n", err)
+		return 1
+	}
+
+	l := lexer.New(src)
+	p := parser.NewWithGenericNames(l, gns)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		printParserErrors(os.Stdout, p.Errors())
+		return 1
+	}
+
+	for _, pkg := range packages {
+		for _, pr := range pkg.Programs {
+			codegen.ExpandDerives(pr)
+		}
+	}
+
+	codegen.ExpandDerives(program)
+
+	if flags[dumpAst] {
+		ast.Dump(program, 0)
+		for _, pkg := range packages {
+			fmt.Println(pkg)
+			for _, pr := range pkg.Programs {
+				ast.Dump(pr, 0)
+			}
+		}
+	}
+
+	c := typechecker.NewWithModuleTypes(typeEnv, tt)
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("typechecker panic:", r)
+			for _, e := range c.Errors() {
+				fmt.Println("  error:", e)
+			}
+		}
+	}()
+	typeErrs := c.Check(program, packages)
+
+	if flags[dumpTypes] {
+		ast.Dump(program, 0)
+	}
+
+	if len(typeErrs) != 0 {
+		printParserErrors(os.Stdout, typeErrs)
+		return 1
+	}
+
+	ast.FilterGenericTemplates(program)
+	for _, pkg := range packages {
+		for _, prog := range pkg.Programs {
+			ast.FilterGenericTemplates(prog)
+		}
+	}
+
+	comp := compiler.NewWithState(symbolTable, constants)
+	err = comp.CompilePackages(packages)
+	if err != nil {
+		fmt.Printf("compiler error: %s\n", err)
+		return 1
+	}
+	err = comp.Compile(program)
+	if err != nil {
+		fmt.Printf("compiler error: %s\n", err)
+		return 1
+	}
+
+	machine := vm.NewWithGlobalStore(comp.Bytecode(), globals)
+	machine.InjectSourceMap(comp.Bytecode().SourceMap)
+
+	dbg := vm.NewDebugger()
+	machine.AttachDebugger(dbg)
+	err = machine.Run()
+	if err != nil {
+		fmt.Printf("Runtime error: %s\n", err)
+		return 1
+	}
 
 	return 0
 }
