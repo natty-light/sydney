@@ -121,7 +121,7 @@ func (vm *VM) runFiber() error {
 		vm.currentFrame().ip++
 
 		sm := vm.currentFrame().cl.Fn.SourceMap
-		if vm.debugger != nil && sm != nil && vm.debugger.shouldStop(vm.currentFrame().ip, sm) {
+		if vm.debugger != nil && sm != nil && vm.debugger.shouldStop(vm.currentFrame().ip, vm.frameIdx(), sm) {
 			line, _, file := sm.LineForOffset(vm.currentFrame().ip)
 			vm.debugger.lastLine = line
 			vm.debugger.lastFile = file
@@ -135,6 +135,9 @@ func (vm *VM) runFiber() error {
 				cmd := <-vm.debugger.cmdCh
 				if isResumeCommand(cmd) {
 					vm.debugger.handleCommand(cmd)
+					if isMode(cmd, DebugStepOver) || isMode(cmd, DebugStepOut) {
+						vm.debugger.stepFrame = vm.frameIdx()
+					}
 					break
 				}
 				vm.debugger.handleCommand(cmd)

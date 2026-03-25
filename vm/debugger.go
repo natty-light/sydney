@@ -17,8 +17,10 @@ type Debugger struct {
 	cmdCh       chan DebugCommand
 	eventCh     chan DebugEvent
 	breakpoints map[string]map[int]bool // file  -> line -> enabled
+	sources     map[string]string       // file  -> contents
 	lastLine    int
 	lastFile    string
+	stepFrame   int
 }
 
 func NewDebugger() *Debugger {
@@ -27,8 +29,10 @@ func NewDebugger() *Debugger {
 		cmdCh:       make(chan DebugCommand),
 		eventCh:     make(chan DebugEvent),
 		breakpoints: make(map[string]map[int]bool),
+		sources:     make(map[string]string),
 		lastLine:    0,
 		lastFile:    "",
+		stepFrame:   0,
 	}
 }
 
@@ -129,7 +133,7 @@ func (g *GetStack) dbgCmd()         {}
 func (g *GetCallStack) dbgCmd()     {}
 func (g *GetSource) dbgCmd()        {}
 
-func (d *Debugger) shouldStop(ip int, sm *code.SourceMap) bool {
+func (d *Debugger) shouldStop(ip int, frameIdx int, sm *code.SourceMap) bool {
 	line, _, file := sm.LineForOffset(ip)
 	if line == 0 {
 		return false
@@ -140,6 +144,12 @@ func (d *Debugger) shouldStop(ip int, sm *code.SourceMap) bool {
 		return d.breakpoints[file][line]
 	case DebugStepLine:
 		return file != d.lastFile || line != d.lastLine
+	case DebugStepOver:
+		return (file != d.lastFile || line != d.lastLine) && frameIdx <= d.stepFrame
+	case DebugStepOut:
+		return frameIdx < d.stepFrame
+	case DebugStepInstruction:
+		return true
 	}
 
 	return false
@@ -190,11 +200,22 @@ func (d *Debugger) handleGetCallStack(cmd *GetCallStack) {
 }
 
 func (d *Debugger) handleGetSource(cmd *GetSource) {
+	content := d.sources[cmd.File]
+	d.eventCh <- &SourceResponse{File: cmd.File, Content: content}
+}
+
+func (d *Debugger) AddSource(file string, content string) {
+	d.sources[file] = content
 }
 
 func isResumeCommand(cmd DebugCommand) bool {
 	_, ok := cmd.(*SetMode)
 	return ok
+}
+
+func isMode(cmd DebugCommand, mode DebugMode) bool {
+	sm, ok := cmd.(*SetMode)
+	return ok && sm.Flag == mode
 }
 
 func (d *Debugger) SendCommand(cmd DebugCommand) {
