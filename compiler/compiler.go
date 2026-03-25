@@ -32,11 +32,14 @@ type Compiler struct {
 
 	loopContexts []*LoopContext
 	loopIndex    int
+
+	sourceMap *code.SourceMap
 }
 
 type Bytecode struct {
 	Instructions code.Instructions
 	Constants    []object.Object
+	SourceMap    *code.SourceMap
 }
 
 type EmittedInstruction struct {
@@ -82,6 +85,8 @@ func New() *Compiler {
 
 		loopContexts: make([]*LoopContext, 0),
 		loopIndex:    0,
+
+		sourceMap: code.New(),
 	}
 }
 
@@ -216,7 +221,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			if symbol.Scope == GlobalScope {
 				cde = code.OpSetMutableGlobal
 			}
-			c.emit(cde, symbol.Index)
+			c.emitAt(node, cde, symbol.Index)
 
 		}
 	case *ast.VarAssignmentStmt:
@@ -235,9 +240,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		if symbol.Scope == GlobalScope {
-			c.emit(code.OpSetMutableGlobal, symbol.Index)
+			c.emitAt(node, code.OpSetMutableGlobal, symbol.Index)
 		} else {
-			c.emit(code.OpSetMutableLocal, symbol.Index)
+			c.emitAt(node, code.OpSetMutableLocal, symbol.Index)
 		}
 	case *ast.IndexAssignmentStmt:
 		err := c.Compile(node.Left.Left) // compile collection ident
@@ -260,7 +265,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if err != nil {
 			return err
 		}
-		c.emit(code.OpReturnValue)
+		c.emitAt(node, code.OpReturnValue)
 	case *ast.ForStmt:
 		c.pushBlockScope()
 		if node.Init != nil {
@@ -278,7 +283,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		// emit with operand to be replaced later
-		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+		jumpNotTruthyPos := c.emitAt(node, code.OpJumpNotTruthy, 9999)
 
 		err = c.Compile(node.Body)
 		if err != nil {
@@ -488,7 +493,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		c.emit(code.OpCall, len(node.Arguments))
+		c.emitAt(node, code.OpCall, len(node.Arguments))
 	case *ast.IntegerLiteral:
 		integer := &object.Integer{Value: node.Value}
 		c.emit(code.OpConstant, c.addConstant(integer))
@@ -845,7 +850,23 @@ func (c *Compiler) Bytecode() *Bytecode {
 	return &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
+		SourceMap:    c.sourceMap,
 	}
+}
+
+func (c *Compiler) emitAt(node ast.Node, op code.Opcode, operands ...int) int {
+	ins := c.emit(op, operands...)
+
+	line, col := node.Pos()
+
+	c.sourceMap.Mappings[ins] = &code.SourceMapping{
+		InstructionOffset: ins,
+		Line:              line,
+		Col:               col,
+		File:              c.currentModule,
+	}
+
+	return ins
 }
 
 func (c *Compiler) emit(op code.Opcode, operands ...int) int {

@@ -6,13 +6,16 @@ import (
 	"hash/fnv"
 	"strconv"
 	"strings"
+
 	"sydney/ast"
 	"sydney/code"
 	"sydney/types"
 )
 
-type ObjectType string
-type BuiltInFunction func(args ...Object) Object
+type (
+	ObjectType      string
+	BuiltInFunction func(args ...Object) Object
+)
 
 type AsyncBuiltInFunction func(args []Object, done func(Object))
 
@@ -135,6 +138,7 @@ type (
 		Instructions  code.Instructions
 		NumLocals     int
 		NumParameters int
+		SourceMap     *code.SourceMap
 	}
 
 	Closure struct {

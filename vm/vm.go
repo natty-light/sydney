@@ -26,6 +26,8 @@ type VM struct {
 	constants []object.Object
 	scheduler *Scheduler
 	globals   []object.Object
+	debugger  *Debugger
+	sourceMap *code.SourceMap
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -50,6 +52,14 @@ func NewWithGlobalStore(bytecode *compiler.Bytecode, globals []object.Object) *V
 	vm := New(bytecode)
 	vm.globals = globals
 	return vm
+}
+
+func (vm *VM) AttachDebugger(debugger *Debugger) {
+	vm.debugger = debugger
+}
+
+func (vm *VM) InjectSourceMap(sm *code.SourceMap) {
+	vm.sourceMap = sm
 }
 
 func (vm *VM) StackTop() object.Object {
@@ -105,12 +115,35 @@ func (vm *VM) runFiber() error {
 	budget := fiberQuantum
 
 	for vm.frameIdx() > 0 && vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
-		budget--
-		if budget <= 0 {
-			return nil // preempt — re-enqueue this fiber
+
+		if vm.debugger == nil {
+			budget--
+			if budget <= 0 {
+				return nil // preempt — re-enqueue this fiber
+			}
 		}
 
 		vm.currentFrame().ip++
+
+		if vm.debugger != nil && vm.debugger.shouldStop(vm.currentFrame().ip, vm.sourceMap) {
+			line, _, file := vm.sourceMap.LineForOffset(vm.currentFrame().ip)
+			vm.debugger.lastLine = line
+			vm.debugger.lastFile = file
+			vm.debugger.eventCh <- &StoppedEvent{
+				Reason: "breakpoint hit",
+				Line:   line,
+				File:   file,
+				Fiber:  vm.scheduler.current.id,
+			}
+			for {
+				cmd := <-vm.debugger.cmdCh
+				if isResumeCommand(cmd) {
+					vm.debugger.handleCommand(cmd)
+					break
+				}
+				vm.debugger.handleCommand(cmd)
+			}
+		}
 
 		ip = vm.currentFrame().ip
 		ins = vm.currentFrame().Instructions()
