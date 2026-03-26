@@ -602,7 +602,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
 		for n, sym := range c.symbolTable.store {
-			symbols[sym.Index] = &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+			dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+			if sym.Type != nil {
+				dbg.Type = (*sym.Type).Signature()
+			}
+			symbols[sym.Index] = dbg
 		}
 		compiledFn := &object.CompiledFunction{
 			Instructions:  instructions,
@@ -660,7 +664,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
 		for n, sym := range c.symbolTable.store {
-			symbols[sym.Index] = &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+			dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+			if sym.Type != nil {
+				dbg.Type = (*sym.Type).Signature()
+			}
+			symbols[sym.Index] = dbg
 		}
 
 		compiledFn := &object.CompiledFunction{
