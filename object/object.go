@@ -139,6 +139,7 @@ type (
 		NumLocals     int
 		NumParameters int
 		SourceMap     *code.SourceMap
+		DebugSymbols  *code.DebugSymbols
 	}
 
 	Closure struct {

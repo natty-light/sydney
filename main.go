@@ -359,7 +359,7 @@ func Debug(args []string, flags map[Flag]bool) int {
 
 	machine := vm.NewWithGlobalStore(comp.Bytecode(), globals)
 
-	dbg := vm.NewDebugger()
+	dbg := vm.NewDebugger(symbolTable)
 	dbg.AddSource(filename, src)
 	machine.AttachDebugger(dbg)
 	dbg.WaitForClient()
