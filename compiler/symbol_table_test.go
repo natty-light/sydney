@@ -266,10 +266,10 @@ func TestResolveUnresolvableFree(t *testing.T) {
 	secondLocal.DefineImmutable("f")
 
 	expected := []Symbol{
-		{"a", GlobalScope, 0, true},
-		{"c", FreeScope, 0, true},
-		{"e", LocalScope, 0, true},
-		{"f", LocalScope, 1, true},
+		{"a", GlobalScope, 0, true, nil},
+		{"c", FreeScope, 0, true, nil},
+		{"e", LocalScope, 0, true, nil},
+		{"f", LocalScope, 1, true, nil},
 	}
 
 	for _, sym := range expected {
