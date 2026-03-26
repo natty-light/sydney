@@ -595,11 +595,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.loadSymbol(s)
 		}
 
+		symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
+		for n, sym := range c.symbolTable.store {
+			symbols[sym.Index] = &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+		}
 		compiledFn := &object.CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Params),
 			SourceMap:     fnSourceMap,
+			DebugSymbols: &code.DebugSymbols{
+				Locals: symbols,
+			},
 		}
 
 		fnIdx := c.addConstant(compiledFn)
@@ -645,11 +652,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.loadSymbol(s)
 		}
 
+		symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
+		for n, sym := range c.symbolTable.store {
+			symbols[sym.Index] = &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+		}
+
 		compiledFn := &object.CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Parameters),
 			SourceMap:     fnSourceMap,
+			DebugSymbols: &code.DebugSymbols{
+				Locals: symbols,
+			},
 		}
 
 		fnIdx := c.addConstant(compiledFn)
