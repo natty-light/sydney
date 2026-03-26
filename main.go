@@ -345,6 +345,7 @@ func Debug(args []string, flags map[Flag]bool) int {
 	}
 
 	comp := compiler.NewWithState(symbolTable, constants)
+	comp.ShouldEmitDebug(true)
 	err = comp.CompilePackages(packages)
 	if err != nil {
 		fmt.Printf("compiler error: %s\n", err)

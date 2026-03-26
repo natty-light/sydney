@@ -383,11 +383,26 @@ func (m *Macro) Inspect() string {
 }
 
 func (c *CompiledFunction) Inspect() string {
-	return fmt.Sprintf("CompiledFunction[%p]", c)
+	var out bytes.Buffer
+	out.WriteString("CompiledFunction {\n")
+	out.WriteString(fmt.Sprintf("\tparam count: %d\n", c.NumParameters))
+	out.WriteString(fmt.Sprintf("\tnum locals: %d\n", c.NumLocals))
+	out.WriteString("}")
+
+	return out.String()
 }
 
 func (c *Closure) Inspect() string {
-	return fmt.Sprintf("Closure[%p]", c)
+	var out bytes.Buffer
+	out.WriteString("Closure {\n")
+	out.WriteString(fmt.Sprintf("\tCompiledFunction: %s", c.Fn.Inspect()))
+	out.WriteString("\tfree: [\n")
+	for _, f := range c.Free {
+		out.WriteString(fmt.Sprintf("\t\t%s\n", f.Inspect()))
+	}
+	out.WriteString("\t]\n}")
+
+	return out.String()
 }
 
 func (s *Struct) Inspect() string {

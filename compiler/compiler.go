@@ -33,6 +33,8 @@ type Compiler struct {
 
 	loopContexts []*LoopContext
 	loopIndex    int
+
+	shouldEmitDebug bool
 }
 
 type Bytecode struct {
@@ -95,6 +97,10 @@ func NewWithState(symbolTable *SymbolTable, constants []object.Object) *Compiler
 	compiler.symbolTable = symbolTable
 	compiler.constants = constants
 	return compiler
+}
+
+func (c *Compiler) ShouldEmitDebug(flag bool) {
+	c.shouldEmitDebug = flag
 }
 
 func (c *Compiler) SetFileName(fn string) {
@@ -601,22 +607,28 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.loadSymbol(s)
 		}
 
-		symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
-		for n, sym := range c.symbolTable.store {
-			dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
-			if sym.Type != nil {
-				dbg.Type = (*sym.Type).Signature()
-			}
-			symbols[sym.Index] = dbg
-		}
 		compiledFn := &object.CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Params),
 			SourceMap:     fnSourceMap,
-			DebugSymbols: &code.DebugSymbols{
+		}
+
+		if c.shouldEmitDebug {
+			symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
+			for n, sym := range c.symbolTable.store {
+				if sym.Scope == BuiltinScope {
+					continue
+				}
+				dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+				if sym.Type != nil {
+					dbg.Type = (*sym.Type).Signature()
+				}
+				symbols[sym.Index] = dbg
+			}
+			compiledFn.DebugSymbols = &code.DebugSymbols{
 				Locals: symbols,
-			},
+			}
 		}
 
 		fnIdx := c.addConstant(compiledFn)
@@ -663,23 +675,28 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.loadSymbol(s)
 		}
 
-		symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
-		for n, sym := range c.symbolTable.store {
-			dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
-			if sym.Type != nil {
-				dbg.Type = (*sym.Type).Signature()
-			}
-			symbols[sym.Index] = dbg
-		}
-
 		compiledFn := &object.CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Parameters),
 			SourceMap:     fnSourceMap,
-			DebugSymbols: &code.DebugSymbols{
+		}
+
+		if c.shouldEmitDebug {
+			symbols := make([]*code.DebugSymbol, len(c.symbolTable.store))
+			for n, sym := range c.symbolTable.store {
+				if sym.Scope == BuiltinScope {
+					continue
+				}
+				dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+				if sym.Type != nil {
+					dbg.Type = (*sym.Type).Signature()
+				}
+				symbols[sym.Index] = dbg
+			}
+			compiledFn.DebugSymbols = &code.DebugSymbols{
 				Locals: symbols,
-			},
+			}
 		}
 
 		fnIdx := c.addConstant(compiledFn)
@@ -889,23 +906,27 @@ func (c *Compiler) Bytecode() *Bytecode {
 			count++
 		}
 	}
-	symbols := make([]*code.DebugSymbol, count)
-	for n, sym := range c.symbolTable.store {
-		if sym.Scope == BuiltinScope {
-			continue
+	var dbgs *code.DebugSymbols
+	if c.shouldEmitDebug {
+		symbols := make([]*code.DebugSymbol, count)
+		for n, sym := range c.symbolTable.store {
+			if sym.Scope == BuiltinScope {
+				continue
+			}
+			dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+			if sym.Type != nil {
+				dbg.Type = (*sym.Type).Signature()
+			}
+			symbols[sym.Index] = dbg
 		}
-		dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
-		if sym.Type != nil {
-			dbg.Type = (*sym.Type).Signature()
-		}
-		symbols[sym.Index] = dbg
+		dbgs = &code.DebugSymbols{Locals: symbols}
 	}
 
 	return &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
 		SourceMap:    c.scopes[c.scopeIndex].sourceMap,
-		DebugSymbols: &code.DebugSymbols{Locals: symbols},
+		DebugSymbols: dbgs,
 	}
 }
 

@@ -58,8 +58,11 @@ type (
 		Type  string
 		Value string
 	}
-	StackEntry struct{}
-	FrameInfo  struct{}
+	StackEntry struct {
+		Value string
+		Type  string
+	}
+	FrameInfo struct{}
 )
 
 // events
@@ -173,8 +176,6 @@ func (d *Debugger) handleCommand(cmd DebugCommand) {
 		d.handleAddBreakpoint(c)
 	case *RemoveBreakpoint:
 		d.handleRemoveBreakpoint(c)
-	case *GetStack:
-		d.handleGetStack(c)
 	case *GetCallStack:
 		d.handleGetCallStack(c)
 	case *GetSource:
@@ -201,6 +202,9 @@ func (d *Debugger) handleRemoveBreakpoint(cmd *RemoveBreakpoint) {
 func (d *Debugger) handleGetLocals(dbgSyms *code.DebugSymbols, stack []object.Object, bp int) {
 	locals := make([]LocalVar, len(dbgSyms.Locals))
 	for i, local := range dbgSyms.Locals {
+		if local == nil {
+			continue
+		}
 		l := LocalVar{
 			Name: local.Name,
 			Type: local.Type,
@@ -215,7 +219,22 @@ func (d *Debugger) handleGetLocals(dbgSyms *code.DebugSymbols, stack []object.Ob
 	}
 }
 
-func (d *Debugger) handleGetStack(cmd *GetStack) {
+func (d *Debugger) handleGetStack(stack []object.Object) {
+	entries := make([]StackEntry, 0)
+	for _, e := range stack {
+		if e == nil {
+			continue
+		}
+		ee := StackEntry{
+			Value: e.Inspect(),
+			Type:  string(e.Type()),
+		}
+		entries = append(entries, ee)
+	}
+
+	d.eventCh <- &StackResponse{
+		Stack: entries,
+	}
 }
 
 func (d *Debugger) handleGetCallStack(cmd *GetCallStack) {
