@@ -39,6 +39,7 @@ type Bytecode struct {
 	Instructions code.Instructions
 	Constants    []object.Object
 	SourceMap    *code.SourceMap
+	DebugSymbols *code.DebugSymbols
 }
 
 type EmittedInstruction struct {
@@ -882,10 +883,29 @@ func (c *Compiler) CompilePackages(packages []*loader.Package) error {
 }
 
 func (c *Compiler) Bytecode() *Bytecode {
+	count := 0
+	for _, sym := range c.symbolTable.store {
+		if sym.Scope != BuiltinScope {
+			count++
+		}
+	}
+	symbols := make([]*code.DebugSymbol, count)
+	for n, sym := range c.symbolTable.store {
+		if sym.Scope == BuiltinScope {
+			continue
+		}
+		dbg := &code.DebugSymbol{Name: n, Scope: string(sym.Scope)}
+		if sym.Type != nil {
+			dbg.Type = (*sym.Type).Signature()
+		}
+		symbols[sym.Index] = dbg
+	}
+
 	return &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
 		SourceMap:    c.scopes[c.scopeIndex].sourceMap,
+		DebugSymbols: &code.DebugSymbols{Locals: symbols},
 	}
 }
 

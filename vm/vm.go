@@ -30,7 +30,7 @@ type VM struct {
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
-	mainFn := &object.CompiledFunction{Instructions: bytecode.Instructions, SourceMap: bytecode.SourceMap}
+	mainFn := &object.CompiledFunction{Instructions: bytecode.Instructions, SourceMap: bytecode.SourceMap, DebugSymbols: bytecode.DebugSymbols}
 	mainClosure := &object.Closure{Fn: mainFn}
 	mainFrame := NewFrame(mainClosure, 0)
 
@@ -140,6 +140,10 @@ func (vm *VM) runFiber() error {
 					}
 					break
 				}
+
+				if _, ok := cmd.(*GetLocals); ok && vm.currentFrame().cl.Fn.DebugSymbols != nil {
+					vm.debugger.handleGetLocals(vm.currentFrame().cl.Fn.DebugSymbols, vm.scheduler.current.stack, vm.currentFrame().basePointer)
+				}
 				vm.debugger.handleCommand(cmd)
 			}
 		}
@@ -155,7 +159,7 @@ func (vm *VM) runFiber() error {
 			constIdx := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2 // update instruction pointer
 
-			// push constant onto stack
+			// push constant onto k
 			err := vm.push(vm.constants[constIdx])
 			if err != nil {
 				return err
