@@ -144,6 +144,10 @@ func (vm *VM) runFiber() error {
 				if _, ok := cmd.(*GetLocals); ok && vm.currentFrame().cl.Fn.DebugSymbols != nil {
 					vm.debugger.handleGetLocals(vm.currentFrame().cl.Fn.DebugSymbols, vm.scheduler.current.stack, vm.currentFrame().basePointer)
 				}
+
+				if _, ok := cmd.(*GetStack); ok {
+					vm.debugger.handleGetStack(vm.scheduler.current.stack)
+				}
 				vm.debugger.handleCommand(cmd)
 			}
 		}
