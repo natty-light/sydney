@@ -124,6 +124,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 					name = c.mangleModule(c.currentModule, name)
 				}
 				sym := c.symbolTable.DefineImmutable(name)
+				c.symbolTable.AnnotateType(name, fn.Type)
 				if fn.MangledName != "" {
 					c.symbolTable.DefineAlias(fn.Name.Value, sym)
 					c.symbolTable.DefineAlias(fn.MangledName, sym)
@@ -169,6 +170,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 					name = c.mangleModule(c.currentModule, name)
 				}
 				sym := c.symbolTable.DefineImmutable(name)
+				c.symbolTable.AnnotateType(name, fn.Type)
 				if fn.MangledName != "" {
 					c.symbolTable.DefineAlias(fn.Name.Value, sym)
 				}
@@ -211,6 +213,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if node.Constant {
 			symbol := c.symbolTable.DefineImmutable(name)
+			c.symbolTable.AnnotateType(name, node.Type)
 			cde := code.OpSetImmutableLocal
 
 			if symbol.Scope == GlobalScope {
@@ -220,6 +223,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emitAt(node, cde, symbol.Index)
 		} else {
 			symbol := c.symbolTable.DefineMutable(name)
+			c.symbolTable.AnnotateType(name, node.Type)
 			cde := code.OpSetMutableLocal
 			if symbol.Scope == GlobalScope {
 				cde = code.OpSetMutableGlobal
@@ -571,6 +575,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.symbolTable.DefineFunctionName(node.Name.Value)
 		for _, p := range node.Params {
 			c.symbolTable.DefineMutable(p.Value)
+			c.symbolTable.AnnotateType(p.Value, node.Type)
 		}
 
 		err := c.Compile(node.Body)
@@ -627,6 +632,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		for _, p := range node.Parameters {
 			c.symbolTable.DefineImmutable(p.Value)
+			c.symbolTable.AnnotateType(p.Value, p.GetResolvedType())
 		}
 
 		err := c.Compile(node.Body)
@@ -1006,6 +1012,7 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	c.emit(code.OpResultValue)
 
 	sym := c.symbolTable.DefineImmutable(node.OkArm.Pattern.Binding.Value)
+	c.symbolTable.AnnotateType(node.OkArm.Pattern.Binding.Value, node.GetResolvedType())
 	if sym.Scope == GlobalScope {
 		c.emit(code.OpSetImmutableGlobal, sym.Index)
 	} else {
@@ -1036,6 +1043,7 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	}
 	c.emit(code.OpResultValue)
 	sym = c.symbolTable.DefineImmutable(node.ErrArm.Pattern.Binding.Value)
+	c.symbolTable.AnnotateType(node.ErrArm.Pattern.Binding.Value, node.GetResolvedType())
 	if sym.Scope == GlobalScope {
 		c.emit(code.OpSetImmutableGlobal, sym.Index)
 	} else {
@@ -1076,6 +1084,7 @@ func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
 	c.emit(code.OpResultValue)
 
 	sym := c.symbolTable.DefineImmutable(node.SomeArm.Pattern.Binding.Value)
+	c.symbolTable.AnnotateType(node.SomeArm.Pattern.Binding.Value, node.GetResolvedType())
 	if sym.Scope == GlobalScope {
 		c.emit(code.OpSetImmutableGlobal, sym.Index)
 	} else {
@@ -1145,6 +1154,7 @@ func (c *Compiler) compileTypeMatch(expr *ast.MatchTypeExpr) error {
 		c.emit(code.OpUnboxInterface)
 		c.enterBlockScope()
 		sym := c.symbolTable.DefineImmutable(arm.Binding.Value)
+		c.symbolTable.AnnotateType(arm.Binding.Value, arm.Type)
 		if sym.Scope == GlobalScope {
 			c.emit(code.OpSetImmutableGlobal, sym.Index)
 		} else {
@@ -1473,6 +1483,7 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	}
 	// store iterable in hidden var
 	iterSym := c.symbolTable.DefineMutable(iter)
+	c.symbolTable.AnnotateType(iter, node.Iterable.GetResolvedType())
 	c.emitSet(iterSym)
 
 	// insert len compilation for array case
@@ -1480,11 +1491,13 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	c.emitGet(iterSym)
 	c.emit(code.OpCall, 1)
 	lenSym := c.symbolTable.DefineMutable(leng)
+	c.symbolTable.AnnotateType(leng, types.Int)
 	c.emitSet(lenSym)
 
 	// Init index = 0
 	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 0}))
 	idxSym := c.symbolTable.DefineMutable(idx)
+	c.symbolTable.AnnotateType(idx, types.Int)
 	c.emitSet(idxSym)
 
 	conditionPos := len(c.currentInstructions())
@@ -1498,12 +1511,14 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	if node.Key != nil {
 		c.emitGet(idxSym)
 		keySym := c.symbolTable.DefineMutable(node.Key.Value)
+		c.symbolTable.AnnotateType(node.Key.Value, types.Int)
 		c.emitSet(keySym)
 	}
 	c.emitGet(iterSym)
 	c.emitGet(idxSym)
 	c.emit(code.OpIndex)
 	valSym := c.symbolTable.DefineMutable(node.Value.Value)
+	c.symbolTable.AnnotateType(node.Value.Value, node.Value.GetResolvedType())
 	c.emitSet(valSym)
 
 	// Compile body
@@ -1557,12 +1572,14 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 		return err
 	}
 	iterSym := c.symbolTable.DefineMutable(iter)
+	c.symbolTable.AnnotateType(iter, node.Iterable.GetResolvedType())
 	c.emitSet(iterSym)
 
 	c.emit(code.OpGetBuiltIn, 3) // keys builtin
 	c.emitGet(iterSym)
 	c.emit(code.OpCall, 1)
 	keysSym := c.symbolTable.DefineMutable(keys)
+	c.symbolTable.AnnotateType(keys, types.ArrayType{ElemType: node.Key.GetResolvedType()})
 	c.emitSet(keysSym)
 
 	// compute len(keys)
@@ -1570,11 +1587,13 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	c.emitGet(keysSym)
 	c.emit(code.OpCall, 1)
 	lenSym := c.symbolTable.DefineMutable(leng)
+	c.symbolTable.AnnotateType(leng, types.Int)
 	c.emitSet(lenSym)
 
 	// idx = 0
 	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 0}))
 	idxSym := c.symbolTable.DefineMutable(idx)
+	c.symbolTable.AnnotateType(idx, types.Int)
 	c.emitSet(idxSym)
 
 	// condition: len > idx
@@ -1590,6 +1609,7 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	c.emitGet(idxSym)
 	c.emit(code.OpIndex)
 	keySym := c.symbolTable.DefineMutable(node.Key.Value)
+	c.symbolTable.AnnotateType(node.Key.Value, node.Key.GetResolvedType())
 	c.emitSet(keySym)
 
 	// v = map[k] (unwrap option — key is guaranteed to exist)
@@ -1598,6 +1618,7 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	c.emit(code.OpIndex)
 	c.emit(code.OpResultValue)
 	valSym := c.symbolTable.DefineMutable(node.Value.Value)
+	c.symbolTable.AnnotateType(node.Value.Value, node.Value.GetResolvedType())
 	c.emitSet(valSym)
 
 	// Compile body

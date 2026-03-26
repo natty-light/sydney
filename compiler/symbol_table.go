@@ -1,5 +1,7 @@
 package compiler
 
+import "sydney/types"
+
 type SymbolScopes string
 
 const (
@@ -15,6 +17,7 @@ type Symbol struct {
 	Scope      SymbolScopes
 	Index      int
 	IsConstant bool
+	Type       *types.Type
 }
 
 type SymbolTable struct {
@@ -88,6 +91,12 @@ func (s *SymbolTable) defineFree(original Symbol) Symbol {
 	s.store[original.Name] = symbol
 
 	return symbol
+}
+
+func (s *SymbolTable) AnnotateType(name string, typ types.Type) {
+	sym := s.store[name]
+	sym.Type = &typ
+	s.store[name] = sym
 }
 
 // symbol, fromOuter, ok
