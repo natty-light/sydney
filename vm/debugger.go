@@ -1,6 +1,10 @@
 package vm
 
-import "sydney/code"
+import (
+	"sydney/code"
+	"sydney/compiler"
+	"sydney/object"
+)
 
 type DebugMode int
 
@@ -21,9 +25,10 @@ type Debugger struct {
 	lastLine    int
 	lastFile    string
 	stepFrame   int
+	symbolTable *compiler.SymbolTable
 }
 
-func NewDebugger() *Debugger {
+func NewDebugger(symbolTable *compiler.SymbolTable) *Debugger {
 	return &Debugger{
 		Flag:        DebugStepLine,
 		cmdCh:       make(chan DebugCommand),
@@ -33,6 +38,7 @@ func NewDebugger() *Debugger {
 		lastLine:    0,
 		lastFile:    "",
 		stepFrame:   0,
+		symbolTable: symbolTable,
 	}
 }
 
@@ -47,7 +53,11 @@ type (
 )
 
 type (
-	LocalVar   struct{}
+	LocalVar struct {
+		Name  string
+		Type  string
+		Value string
+	}
 	StackEntry struct{}
 	FrameInfo  struct{}
 )
@@ -163,8 +173,6 @@ func (d *Debugger) handleCommand(cmd DebugCommand) {
 		d.handleAddBreakpoint(c)
 	case *RemoveBreakpoint:
 		d.handleRemoveBreakpoint(c)
-	case *GetLocals:
-		d.handleGetLocals(c)
 	case *GetStack:
 		d.handleGetStack(c)
 	case *GetCallStack:
@@ -190,7 +198,21 @@ func (d *Debugger) handleRemoveBreakpoint(cmd *RemoveBreakpoint) {
 	d.breakpoints[cmd.File][cmd.Line] = false
 }
 
-func (d *Debugger) handleGetLocals(cmd *GetLocals) {
+func (d *Debugger) handleGetLocals(dbgSyms *code.DebugSymbols, stack []object.Object, bp int) {
+	locals := make([]LocalVar, len(dbgSyms.Locals))
+	for i, local := range dbgSyms.Locals {
+		l := LocalVar{
+			Name: local.Name,
+			Type: local.Type,
+		}
+		if stack[bp+i] != nil {
+			l.Value = stack[bp+i].Inspect()
+		}
+		locals[i] = l
+	}
+	d.eventCh <- &LocalsResponse{
+		Locals: locals,
+	}
 }
 
 func (d *Debugger) handleGetStack(cmd *GetStack) {
