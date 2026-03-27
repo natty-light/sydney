@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"sydney/ast"
+	"sydney/errors"
 	"sydney/loader"
 	"sydney/object"
 	"sydney/types"
@@ -14,7 +15,7 @@ import (
 
 type Checker struct {
 	env                    *TypeEnv
-	errors                 []string
+	errors                 []errors.PositionError
 	currentReturnType      types.Type
 	currentMatchResultType types.Type
 	definedStructs         map[string]types.StructType
@@ -41,11 +42,9 @@ func New(globalEnv *TypeEnv) *Checker {
 		env.Set(v.Name, v.BuiltIn.T)
 	}
 
-	errors := make([]string, 0)
-
 	return &Checker{
 		env:                    env,
-		errors:                 errors,
+		errors:                 make([]errors.PositionError, 0),
 		currentReturnType:      nil,
 		currentMatchResultType: nil,
 		definedStructs:         make(map[string]types.StructType),
@@ -68,11 +67,9 @@ func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]ty
 		env.Set(v.Name, v.BuiltIn.T)
 	}
 
-	errors := make([]string, 0)
-
 	return &Checker{
 		env:                    env,
-		errors:                 errors,
+		errors:                 make([]errors.PositionError, 0),
 		currentReturnType:      nil,
 		currentMatchResultType: nil,
 		definedStructs:         make(map[string]types.StructType),
@@ -98,11 +95,11 @@ func (c *Checker) popScope() {
 	c.env = env
 }
 
-func (c *Checker) Errors() []string {
+func (c *Checker) Errors() []errors.PositionError {
 	return c.errors
 }
 
-func (c *Checker) Check(node ast.Node, packages []*loader.Package) []string {
+func (c *Checker) Check(node ast.Node, packages []*loader.Package) []errors.PositionError {
 	if packages != nil {
 		c.checkPackages(packages)
 	}
@@ -114,7 +111,7 @@ func (c *Checker) Check(node ast.Node, packages []*loader.Package) []string {
 	return c.errors
 }
 
-func (c *Checker) checkPackages(packages []*loader.Package) []string {
+func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionError {
 	registry := make(map[string]*TypeEnv)
 
 	for _, pkg := range packages {
@@ -2363,11 +2360,11 @@ func mangleName(base string, tt []types.Type) string {
 
 func (c *Checker) appendError(msg string, node ast.Node) {
 	if node == nil {
-		c.errors = append(c.errors, msg)
+		c.errors = append(c.errors, errors.PositionError{Line: 0, Col: 0, Message: msg})
 		return
 	}
 	line, col := node.Pos()
-	c.errors = append(c.errors, fmt.Sprintf("%d:%d %s", line, col, msg))
+	c.errors = append(c.errors, errors.PositionError{Line: line, Col: col, Message: msg})
 }
 
 func (c *Checker) inferTypeArgs(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) []types.Type {

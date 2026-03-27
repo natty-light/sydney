@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sydney/errors"
 
 	"sydney/ast"
 	"sydney/codegen"
@@ -145,7 +146,7 @@ func Run(args []string, flags map[Flag]bool) int {
 	}
 
 	if len(typeErrs) != 0 {
-		printParserErrors(os.Stdout, typeErrs)
+		errors.PrintPositionErrors(os.Stdout, typeErrs)
 		return 1
 	}
 
@@ -238,7 +239,7 @@ func Compile(args []string, flags map[Flag]bool) int {
 	}
 
 	if len(errs) != 0 {
-		printParserErrors(os.Stdout, errs)
+		errors.PrintPositionErrors(os.Stdout, errs)
 		return 1
 	}
 
@@ -333,7 +334,7 @@ func Debug(args []string, flags map[Flag]bool) int {
 	}
 
 	if len(typeErrs) != 0 {
-		printParserErrors(os.Stdout, typeErrs)
+		errors.PrintPositionErrors(os.Stdout, typeErrs)
 		return 1
 	}
 
@@ -458,7 +459,7 @@ func runTestFile(filename string) (passed, failed int) {
 	c := typechecker.NewWithModuleTypes(nil, tt)
 	typeErrs := c.Check(program, packages)
 	if len(typeErrs) != 0 {
-		printParserErrors(os.Stdout, typeErrs)
+		errors.PrintPositionErrors(os.Stdout, typeErrs)
 		return 0, 1
 	}
 
