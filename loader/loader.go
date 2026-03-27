@@ -215,6 +215,13 @@ func (l *Loader) SetPaths(stdlib, sourceDir string) {
 	l.sourceDir = sourceDir
 }
 
+func ResolveStdlib(sourceDir string) string {
+	if root := os.Getenv("SYDNEY_PATH"); root != "" {
+		return filepath.Join(root, "stdlib")
+	}
+	return filepath.Join(sourceDir, "stdlib")
+}
+
 func (l *Loader) ExtractTypes(pkg *Package) map[string]types.Type {
 	tt := map[string]types.Type{}
 	for _, prog := range pkg.Programs {

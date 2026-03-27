@@ -96,7 +96,7 @@ func Run(args []string, flags map[Flag]bool) int {
 	imports = append(imports, deriveImports...)
 	ld := loader.NewFromImports(imports)
 	sourceDir := filepath.Dir(filename)
-	stdLib := filepath.Join(sourceDir, "stdlib")
+	stdLib := loader.ResolveStdlib(sourceDir)
 	ld.SetPaths(stdLib, sourceDir)
 	packages, tt, gns, err := ld.Load(make(map[string]bool))
 	if err != nil {
@@ -194,7 +194,7 @@ func Compile(args []string, flags map[Flag]bool) int {
 	imports = append(imports, deriveImports...)
 	ld := loader.NewFromImports(imports)
 	sourceDir := filepath.Dir(filename)
-	stdLib := filepath.Join(sourceDir, "stdlib")
+	stdLib := loader.ResolveStdlib(sourceDir)
 	ld.SetPaths(stdLib, sourceDir)
 	packages, tt, gns, err := ld.Load(make(map[string]bool))
 	if err != nil {
@@ -284,7 +284,7 @@ func Debug(args []string, flags map[Flag]bool) int {
 	imports = append(imports, deriveImports...)
 	ld := loader.NewFromImports(imports)
 	sourceDir := filepath.Dir(filename)
-	stdLib := filepath.Join(sourceDir, "stdlib")
+	stdLib := loader.ResolveStdlib(sourceDir)
 	ld.SetPaths(stdLib, sourceDir)
 	packages, tt, gns, err := ld.Load(make(map[string]bool))
 	if err != nil {
@@ -435,7 +435,7 @@ func runTestFile(filename string) (passed, failed int) {
 
 	ld := loader.NewFromImports(allImports)
 	cwd, _ := os.Getwd()
-	stdLib := filepath.Join(cwd, "stdlib")
+	stdLib := loader.ResolveStdlib(cwd)
 	ld.SetPaths(stdLib, sourceDir)
 	packages, tt, gns, err := ld.Load(make(map[string]bool))
 	if err != nil {
