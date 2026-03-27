@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sydney/ast"
 	"sydney/lsp/messages"
@@ -53,6 +54,12 @@ func (l *LSP) HandleHover(req *messages.Request) {
 		log.Printf("hover: found globally scoped type %s", typ)
 	}
 	if !ok {
+		sel := ast.FindSelectorAt(l.program, params.Position.Line+1, params.Position.Character+1)
+		if sel != nil {
+			typ, ok = l.resolveMethodType(sel, ident, foundScope)
+		}
+	}
+	if !ok {
 		log.Printf("hover: cannot resolve type for %s", ident.Value)
 		return
 	}
@@ -71,4 +78,43 @@ func (l *LSP) HandleHover(req *messages.Request) {
 	if err != nil {
 		log.Printf("%s: Error writing response: %v", messages.Hover, err)
 	}
+}
+
+func (l *LSP) resolveMethodType(sel *ast.SelectorExpr, method *ast.Identifier, scope ast.Scope) (types.Type, bool) {
+	if receiver, ok := sel.Left.(*ast.Identifier); ok {
+		var receiverType types.Type
+		var found bool
+		if scope != nil {
+			receiverType, _, found = scope.Get(receiver.Value)
+		}
+		if !found {
+			receiverType, _, found = l.env.Get(receiver.Value)
+		}
+		if !found || receiverType == nil {
+			return nil, false
+		}
+
+		var structName string
+		switch rt := receiverType.(type) {
+		case types.StructType:
+			structName = rt.Name
+		case types.ScopeType:
+			structName = rt.Name
+		}
+		if structName == "" {
+			return nil, false
+		}
+
+		mangled := fmt.Sprintf("%s.%s", structName, method.Value)
+		log.Printf("hover: trying mangled method %s", mangled)
+		if scope != nil {
+			if typ, _, ok := scope.Get(mangled); ok {
+				return typ, true
+			}
+		}
+		if typ, _, ok := l.env.Get(mangled); ok {
+			return typ, true
+		}
+	}
+	return nil, false
 }
