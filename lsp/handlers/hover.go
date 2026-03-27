@@ -2,11 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"sydney/ast"
 	"sydney/lsp/messages"
-	"sydney/lsp/transport"
 )
 
 type HoverResult struct {
@@ -20,7 +18,7 @@ type MarkupContents struct {
 	Value string `json:"value"`
 }
 
-func (l *LSP) HandleHover(w io.Writer, req *messages.Request) {
+func (l *LSP) HandleHover(req *messages.Request) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Hover panicked: %v", r)
@@ -58,7 +56,7 @@ func (l *LSP) HandleHover(w io.Writer, req *messages.Request) {
 		Version: messages.Version,
 		Result:  result,
 	}
-	err = transport.WriteResponse(w, resp)
+	err = l.WriteResponse(resp)
 	if err != nil {
 		log.Printf("%s: Error writing response: %v", messages.Hover, err)
 	}
