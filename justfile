@@ -16,6 +16,9 @@ build-smoke-opt:
     llc -filetype=obj smoke_opt.ll -o smoke.o
     clang smoke.o -Lsydney_rt/target/release -L/opt/homebrew/opt/openssl/lib -lsydney_rt -lssl -lcrypto  -o smoke
 
+build-lsp:
+    go build -o bin/sydney-lsp ./cmd/lsp/
+
 clean-smoke:
     rm smoke.o
 build:
