@@ -15,7 +15,7 @@ func FindAt(node Node, line, col int) (*Identifier, Scope) {
 			}
 		}
 	case *BlockStmt:
-		log.Printf("FindAt *BlockStmt, scope==nil", node.Scope == nil)
+		log.Print("FindAt *BlockStmt, scope==nil", node.Scope == nil)
 		for _, stmt := range node.Stmts {
 			if found, _ := FindAt(stmt, line, col); found != nil {
 				return found, node.Scope
