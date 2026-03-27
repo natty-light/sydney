@@ -21,6 +21,11 @@ type MarkupContents struct {
 }
 
 func (l *LSP) HandleHover(w io.Writer, req *messages.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Hover panicked: %v", r)
+		}
+	}()
 	if l.program == nil || l.env == nil {
 		return
 	}
