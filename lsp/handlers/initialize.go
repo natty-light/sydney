@@ -1,10 +1,8 @@
 package handlers
 
 import (
-	"io"
 	"log"
 	"sydney/lsp/messages"
-	"sydney/lsp/transport"
 )
 
 type ServerCapabilities struct {
@@ -24,7 +22,7 @@ type ServerInfo struct {
 	Version string `json:"version"`
 }
 
-func (l *LSP) HandleInitialize(w io.Writer, r *messages.Request) {
+func (l *LSP) HandleInitialize(r *messages.Request) {
 	res := &InitializeResult{
 		ServerInfo: ServerInfo{
 			Name:    "sydney-lsp",
@@ -42,7 +40,7 @@ func (l *LSP) HandleInitialize(w io.Writer, r *messages.Request) {
 		Id:      r.Id,
 	}
 
-	if err := transport.WriteResponse(w, resp); err != nil {
+	if err := l.WriteResponse(resp); err != nil {
 		log.Fatal(err)
 	}
 }

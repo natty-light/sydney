@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sydney/lsp/handlers"
 	"sydney/lsp/messages"
-	"sydney/lsp/transport"
 )
 
 func main() {
@@ -20,7 +19,7 @@ func main() {
 	w := io.Writer(os.Stdout)
 	r := io.Reader(os.Stdin)
 
-	lsp := handlers.New()
+	lsp := handlers.New(w)
 	log.Printf("sydney-lsp started")
 
 	reader := bufio.NewReader(r)
@@ -55,21 +54,22 @@ func main() {
 
 		switch req.Method {
 		case messages.Initialize:
-			lsp.HandleInitialize(w, &req)
+			lsp.HandleInitialize(&req)
 		case messages.Initialized:
 		case messages.DocumentOpen:
 			lsp.HandleDocumentOpen(&req)
 		case messages.DocumentChange:
+			lsp.HandleDocumentChange(&req)
 		case messages.DocumentClose:
 		case messages.Hover:
-			lsp.HandleHover(w, &req)
+			lsp.HandleHover(&req)
 		case messages.Shutdown:
 			resp := &messages.Response{
 				Id:      req.Id,
 				Version: messages.Version,
 				Result:  nil,
 			}
-			transport.WriteResponse(w, resp)
+			lsp.WriteResponse(resp)
 			os.Exit(0)
 		}
 	}

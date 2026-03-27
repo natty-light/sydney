@@ -7,8 +7,8 @@ import (
 	"sydney/lsp/messages"
 )
 
-func (l *LSP) HandleDocumentOpen(req *messages.Request) {
-	var params messages.DocumentOpenParams
+func (l *LSP) HandleDocumentChange(req *messages.Request) {
+	var params messages.DocumentChangeParams
 	err := json.Unmarshal(req.Params, &params)
 	if err != nil {
 		log.Printf("%s: Error unmarshalling params: %v", messages.DocumentOpen, err)
@@ -20,8 +20,10 @@ func (l *LSP) HandleDocumentOpen(req *messages.Request) {
 		log.Printf("%s: Error parsing URI: %v", messages.DocumentOpen, err)
 		return
 	}
-	filePath := u.Path
-	src := params.TextDocument.Text
+	log.Printf("parsed %s uri", u.String())
 
-	l.parse(messages.DocumentOpen, filePath, src)
+	filePath := u.Path
+	src := params.ContentChanges[0].Text
+
+	l.parse(messages.DocumentChange, filePath, src)
 }
