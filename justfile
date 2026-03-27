@@ -38,5 +38,5 @@ compile-opt:
 compile-native base:
     ./sydney compile {{base}}.sy
     llc -filetype=obj {{base}}.ll -o {{base}}.o
-    clang {{base}}.o -Lsydney_rt/target/release -lsydney_rt -o {{base}}
+    clang {{base}}.o -Lsydney_rt/target/release -L/opt/homebrew/opt/openssl/lib -lsydney_rt -lssl -lcrypto -o {{base}}
     rm {{base}}.o
