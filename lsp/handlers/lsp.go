@@ -141,8 +141,13 @@ func (l *LSP) parseModule(method messages.Method, filePath string, src string) {
 		merged.Stmts = append(merged.Stmts, prog.Stmts...)
 	}
 
+	// assumes module declaration is on the first line (TODO: enforce in parser)
+	moduleName := strings.TrimPrefix(strings.Split(src, "\n")[0], "module ")
+	moduleName = strings.Trim(moduleName, "\" \r")
+
 	typeEnv := typechecker.NewTypeEnv(nil)
 	c := typechecker.NewWithModuleTypes(typeEnv, tt)
+	c.SetCurrentModule(moduleName)
 	errs := c.Check(merged, packages)
 	if len(errs) > 0 {
 		log.Printf("%s: Errors found: %v", method, errs)
