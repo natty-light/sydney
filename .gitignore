@@ -23,3 +23,9 @@ sydney
 .sockets
 .concurrency
 server
+.debugger
+.derive
+.matching
+.typematch
+.claude
+index.html
