@@ -14,10 +14,15 @@ func FindAt(node Node, line, col int) (*Identifier, Scope) {
 				return found, scope
 			}
 		}
+	case *PubStatement:
+		return FindAt(node.Stmt, line, col)
 	case *BlockStmt:
 		log.Print("FindAt *BlockStmt, scope==nil", node.Scope == nil)
 		for _, stmt := range node.Stmts {
-			if found, _ := FindAt(stmt, line, col); found != nil {
+			if found, scope := FindAt(stmt, line, col); found != nil {
+				if scope != nil {
+					return found, scope
+				}
 				return found, node.Scope
 			}
 		}
@@ -67,22 +72,24 @@ func FindAt(node Node, line, col int) (*Identifier, Scope) {
 		return FindAt(node.ReturnValue, line, col)
 	case *ForStmt:
 		if node.Init != nil {
-			if found, scope := FindAt(node.Init, line, col); found != nil {
-				return found, scope
+			if found, _ := FindAt(node.Init, line, col); found != nil {
+				return found, node.Body.Scope
 			}
 		}
-		if found, scope := FindAt(node.Condition, line, col); found != nil {
-			return found, scope
+		if found, _ := FindAt(node.Condition, line, col); found != nil {
+			return found, node.Body.Scope
 		}
 		if found, scope := FindAt(node.Body, line, col); found != nil {
 			return found, scope
 		}
 		if node.Post != nil {
-			return FindAt(node.Post, line, col)
+			if found, _ := FindAt(node.Post, line, col); found != nil {
+				return found, node.Body.Scope
+			}
 		}
 	case *ForInStmt:
-		if found, scope := FindAt(node.Iterable, line, col); found != nil {
-			return found, scope
+		if found, _ := FindAt(node.Iterable, line, col); found != nil {
+			return found, node.Body.Scope
 		}
 		return FindAt(node.Body, line, col)
 	case *IfExpr:
@@ -95,6 +102,57 @@ func FindAt(node Node, line, col int) (*Identifier, Scope) {
 
 		if node.Alternative != nil {
 			return FindAt(node.Alternative, line, col)
+		}
+	case *InterfaceDefinitionStmt:
+		return FindAt(node.Name, line, col)
+	case *StructDefinitionStmt:
+		return FindAt(node.Name, line, col)
+	case *InterfaceImplementationStmt:
+		if found, scope := FindAt(node.StructName, line, col); found != nil {
+			return found, scope
+		}
+
+		for _, iface := range node.InterfaceNames {
+			if found, scope := FindAt(iface, line, col); found != nil {
+				return found, scope
+			}
+		}
+	case *MatchExpr:
+		if found, scope := FindAt(node.Subject, line, col); found != nil {
+			return found, scope
+		}
+
+		if node.SomeArm != nil {
+			if found, scope := FindAt(node.SomeArm.Pattern.Binding, line, col); found != nil {
+				return found, scope
+			}
+
+			if found, scope := FindAt(node.SomeArm.Body, line, col); found != nil {
+				return found, scope
+			}
+		}
+		if node.NoneArm != nil {
+			if found, scope := FindAt(node.NoneArm.Body, line, col); found != nil {
+				return found, scope
+			}
+		}
+		if node.OkArm != nil {
+			if found, scope := FindAt(node.OkArm.Pattern.Binding, line, col); found != nil {
+				return found, scope
+			}
+
+			if found, scope := FindAt(node.OkArm.Body, line, col); found != nil {
+				return found, scope
+			}
+		}
+		if node.ErrArm != nil {
+			if found, scope := FindAt(node.ErrArm.Pattern.Binding, line, col); found != nil {
+				return found, scope
+			}
+
+			if found, scope := FindAt(node.ErrArm.Body, line, col); found != nil {
+				return found, scope
+			}
 		}
 	}
 

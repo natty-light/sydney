@@ -214,7 +214,8 @@ func (c *Checker) checkReturnStmt(node *ast.ReturnStmt) types.Type {
 }
 
 func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
-	oldEnv := c.pushScope()
+	oldEnv := c.env
+	c.env = NewTypeEnv(oldEnv)
 	if node.Init != nil {
 		c.check(node.Init)
 	}
@@ -226,7 +227,7 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 	if node.Post != nil {
 		c.check(node.Post)
 	}
-	c.check(node.Body)
+	c.checkBlockStmtInCurrentScope(node.Body)
 	c.env = oldEnv
 	c.inLoop = false
 
@@ -234,7 +235,8 @@ func (c *Checker) checkForStmt(node *ast.ForStmt) types.Type {
 }
 
 func (c *Checker) checkForInStmt(node *ast.ForInStmt) types.Type {
-	oldEnv := c.pushScope()
+	oldEnv := c.env
+	c.env = NewTypeEnv(oldEnv)
 
 	iterType := c.typeOf(node.Iterable, nil)
 	m, mok := iterType.(types.MapType)
@@ -256,7 +258,7 @@ func (c *Checker) checkForInStmt(node *ast.ForInStmt) types.Type {
 	}
 
 	c.inLoop = true
-	c.check(node.Body)
+	c.checkBlockStmtInCurrentScope(node.Body)
 	c.env = oldEnv
 	c.inLoop = false
 
@@ -340,14 +342,17 @@ func (c *Checker) checkVarAssignmentStmt(node *ast.VarAssignmentStmt) types.Type
 func (c *Checker) checkBlockStmt(node *ast.BlockStmt) types.Type {
 	oldEnv := c.env
 	c.env = NewTypeEnv(oldEnv)
+	lastType := c.checkBlockStmtInCurrentScope(node)
+	c.env = oldEnv
+	return lastType
+}
+
+func (c *Checker) checkBlockStmtInCurrentScope(node *ast.BlockStmt) types.Type {
 	var lastType types.Type = types.Unit
 	for _, stmt := range node.Stmts {
 		lastType = c.check(stmt)
 	}
-
 	node.Scope = c.env
-	c.env = oldEnv
-
 	return lastType
 }
 
@@ -522,6 +527,12 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 
 		if len(node.TypeParams) > 0 {
 			c.genericFunctions[node.Name.Value] = node
+			subs := make(map[string]types.Type)
+			for _, tp := range node.TypeParams {
+				subs[tp.Name] = types.Any
+			}
+			resolved := types.SubstituteTypeParams(fType, subs).(types.FunctionType)
+			c.env.Set(name, resolved)
 			return
 		}
 
@@ -1772,6 +1783,7 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 
 func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) types.Type {
 	if len(node.TypeParams) > 0 {
+		c.checkGenericFunctionBody(node)
 		return types.Unit
 	}
 	name := node.Name.Value
@@ -1821,6 +1833,35 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 	}
 
 	return types.Unit
+}
+
+func (c *Checker) checkGenericFunctionBody(node *ast.FunctionDeclarationStmt) {
+	subs := make(map[string]types.Type)
+	for _, tp := range node.TypeParams {
+		subs[tp.Name] = types.Any
+	}
+	fType := types.SubstituteTypeParams(node.Type.(types.FunctionType), subs).(types.FunctionType)
+
+	oldErrors := c.errors
+	c.errors = nil
+
+	oldInLoop := c.inLoop
+	c.inLoop = false
+	oldReturnType := c.currentReturnType
+	c.currentReturnType = fType.Return
+	oldEnv := c.env
+	c.env = NewTypeEnv(oldEnv)
+
+	for i, param := range node.Params {
+		c.env.Set(param.Value, fType.Params[i])
+	}
+
+	c.check(node.Body)
+
+	c.env = oldEnv
+	c.currentReturnType = oldReturnType
+	c.inLoop = oldInLoop
+	c.errors = oldErrors
 }
 
 func allPathsReturn(block *ast.BlockStmt) bool {
