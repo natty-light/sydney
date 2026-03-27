@@ -143,8 +143,8 @@ func (l *Lexer) peekChar() byte {
 func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
 	l.skipWhitespace()
-	tok.Line = l.line
-	tok.Column = l.column
+	line := l.line
+	col := l.column
 	switch l.char {
 	// grouping
 	case leftParen:
@@ -297,10 +297,10 @@ func (l *Lexer) NextToken() token.Token {
 
 	default:
 		if utils.IsAlpha(string(l.char)) {
+			tok.Line = line
+			tok.Column = col
 			tok.Literal = l.readIdentifer()
 			tok.Type = LookupIdent(tok.Literal)
-			tok.Line = l.line
-			tok.Column = l.column
 			return tok // This is to avoid the l.readChar() call before this functions return
 		} else if utils.IsNumeric(string(l.char)) {
 
@@ -320,6 +320,8 @@ func (l *Lexer) NextToken() token.Token {
 	}
 
 	l.readChar()
+	tok.Line = line
+	tok.Column = col
 	return tok
 }
 

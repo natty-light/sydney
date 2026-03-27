@@ -6,15 +6,22 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"lsp/handlers"
-	"lsp/messages"
 	"os"
 	"strings"
+	"sydney/lsp/handlers"
+	"sydney/lsp/messages"
+	"sydney/lsp/transport"
 )
 
 func main() {
+	f, _ := os.Create("/tmp/sydney-lsp.log")
+	log.SetOutput(f)
+
 	w := io.Writer(os.Stdout)
 	r := io.Reader(os.Stdin)
+
+	lsp := handlers.New()
+	log.Printf("sydney-lsp started")
 
 	reader := bufio.NewReader(r)
 	for {
@@ -44,12 +51,26 @@ func main() {
 			log.Fatal(err)
 		}
 
+		log.Printf("recv: %s", req.Method)
+
 		switch req.Method {
 		case messages.Initialize:
-			handlers.HandleInitialize(w, &req)
+			lsp.HandleInitialize(w, &req)
+		case messages.Initialized:
+		case messages.DocumentOpen:
+			lsp.HandleDocumentOpen(&req)
+		case messages.DocumentChange:
+		case messages.DocumentClose:
+		case messages.Hover:
+			lsp.HandleHover(w, &req)
+		case messages.Shutdown:
+			resp := &messages.Response{
+				Id:      req.Id,
+				Version: messages.Version,
+				Result:  nil,
+			}
+			transport.WriteResponse(w, resp)
+			os.Exit(0)
 		}
-
 	}
-
-	os.Exit(0)
 }

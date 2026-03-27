@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"lsp/messages"
+	"sydney/lsp/messages"
 )
 
 func WriteResponse(w io.Writer, r *messages.Response) error {

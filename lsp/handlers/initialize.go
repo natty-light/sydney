@@ -3,8 +3,8 @@ package handlers
 import (
 	"io"
 	"log"
-	"lsp/messages"
-	"lsp/transport"
+	"sydney/lsp/messages"
+	"sydney/lsp/transport"
 )
 
 type ServerCapabilities struct {
@@ -24,7 +24,7 @@ type ServerInfo struct {
 	Version string `json:"version"`
 }
 
-func HandleInitialize(w io.Writer, r *messages.Request) {
+func (l *LSP) HandleInitialize(w io.Writer, r *messages.Request) {
 	res := &InitializeResult{
 		ServerInfo: ServerInfo{
 			Name:    "sydney-lsp",
