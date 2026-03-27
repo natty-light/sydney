@@ -168,9 +168,6 @@ func (l *LSP) parseProgram(method messages.Method, filePath string, src string) 
 	deriveImports := codegen.ScanDeriveImports(src)
 	imports = append(imports, deriveImports...)
 
-	siblingPrograms, siblingImports := l.loadSiblings(filePath, src)
-	imports = append(imports, siblingImports...)
-
 	ld := loader.NewFromImports(imports)
 	stdLib := loader.ResolveStdlib(sourceDir)
 	ld.SetPaths(stdLib, sourceDir)
@@ -192,11 +189,6 @@ func (l *LSP) parseProgram(method messages.Method, filePath string, src string) 
 
 	codegen.ExpandDerives(program)
 
-	for _, sp := range siblingPrograms {
-		codegen.ExpandDerives(sp)
-		program.Stmts = append(program.Stmts, sp.Stmts...)
-	}
-
 	c := typechecker.NewWithModuleTypes(typeEnv, tt)
 	errs := c.Check(program, packages)
 	if len(errs) > 0 {
@@ -206,7 +198,7 @@ func (l *LSP) parseProgram(method messages.Method, filePath string, src string) 
 	l.SendTypecheckerDiagnostics(errs, filePath)
 
 	l.program = program
-	l.env = typeEnv
+	l.env = c.Env()
 	log.Printf("%s: parsed %d statements", method, len(program.Stmts))
 }
 
@@ -239,80 +231,4 @@ func (l *LSP) readDirSources(dir, currentBase, currentSrc string) ([]string, []s
 		return []string{currentSrc}, []string{currentBase}
 	}
 	return sources, names
-}
-
-func (l *LSP) loadSiblings(filePath string, currentSrc string) ([]*ast.Program, []string) {
-	dir := filepath.Dir(filePath)
-	base := filepath.Base(filePath)
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, nil
-	}
-
-	var sources []string
-	var filenames []string
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sy") || strings.HasSuffix(entry.Name(), "_test.sy") {
-			continue
-		}
-		if entry.Name() == base {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		sources = append(sources, string(data))
-		filenames = append(filenames, entry.Name())
-	}
-
-	if len(sources) == 0 {
-		return nil, nil
-	}
-
-	allStructs := map[string]types.Type{}
-	allInterfaces := map[string]types.Type{}
-
-	scan := parser.New(lexer.New(currentSrc))
-	scan.ParseDefinitions()
-	for k, v := range scan.DefinedStructs() {
-		allStructs[k] = v
-	}
-	for k, v := range scan.DefinedInterfaces() {
-		allInterfaces[k] = v
-	}
-	for _, source := range sources {
-		scan := parser.New(lexer.New(source))
-		scan.ParseDefinitions()
-		for k, v := range scan.DefinedStructs() {
-			allStructs[k] = v
-		}
-		for k, v := range scan.DefinedInterfaces() {
-			allInterfaces[k] = v
-		}
-	}
-
-	var programs []*ast.Program
-	var extraImports []string
-	for _, source := range sources {
-		p := parser.New(lexer.New(source))
-		p.SetDefinedTypes(allStructs, allInterfaces)
-		prog := p.ParseProgram()
-		if len(p.Errors()) > 0 {
-			log.Printf("loadSiblings: parse errors in sibling: %v", p.Errors())
-			continue
-		}
-
-		for _, imp := range loader.ScanImports(source) {
-			extraImports = append(extraImports, imp)
-		}
-		for _, imp := range codegen.ScanDeriveImports(source) {
-			extraImports = append(extraImports, imp)
-		}
-
-		programs = append(programs, prog)
-	}
-
-	return programs, extraImports
 }
