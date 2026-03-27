@@ -46,7 +46,11 @@ func runDeriveTest(t *testing.T, source string) *VM {
 	c := typechecker.NewWithModuleTypes(typechecker.NewTypeEnv(nil), tt)
 	typeErrs := c.Check(program, packages)
 	if len(typeErrs) != 0 {
-		t.Fatalf("type errors: %s", strings.Join(typeErrs, "\n"))
+		errs := make([]string, 0, len(typeErrs))
+		for i, e := range typeErrs {
+			errs[i] = e.Message
+		}
+		t.Fatalf("type errors: %s", strings.Join(errs, "\n"))
 	}
 
 	ast.FilterGenericTemplates(program)

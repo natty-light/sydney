@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sydney/compiler"
+	"sydney/errors"
 	"sydney/evaluator"
 	"sydney/lexer"
 	"sydney/object"
@@ -37,7 +38,7 @@ func StartEval(in io.Reader, out io.Writer) {
 		c.Check(program, nil)
 
 		if len(c.Errors()) != 0 {
-			printErrors(out, c.Errors())
+			errors.PrintPositionErrors(out, c.Errors())
 			continue
 		}
 
@@ -87,7 +88,7 @@ func StartVM(in io.Reader, out io.Writer) {
 		errs := c.Check(program, nil)
 
 		if len(errs) != 0 {
-			printErrors(out, errs)
+			errors.PrintPositionErrors(out, errs)
 			continue
 		}
 

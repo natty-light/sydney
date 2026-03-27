@@ -770,7 +770,7 @@ func testTypeErrors(t *testing.T, tests []TypeErrorTest) {
 			t.Fatalf("input %q expected error but got none", tt.input)
 		}
 
-		if !strings.Contains(errors[0], tt.expectedError) {
+		if !strings.Contains(errors[0].Message, tt.expectedError) {
 			t.Fatalf("input %q expected error %q but got %q", tt.input, tt.expectedError, errors[0])
 		}
 	}
@@ -1755,4 +1755,3 @@ func TestTypeMatchExprErrors(t *testing.T) {
 
 	testTypeErrors(t, tt)
 }
-
