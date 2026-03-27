@@ -99,6 +99,44 @@ func (c *Checker) Errors() []errors.PositionError {
 	return c.errors
 }
 
+func (c *Checker) SetCurrentModule(name string) {
+	c.currentModule = name
+}
+
+func (c *Checker) Env() *TypeEnv {
+	return c.env
+}
+
+func (c *Checker) CheckAsPackage(node ast.Node, packages []*loader.Package) []errors.PositionError {
+	if packages != nil {
+		c.checkPackages(packages)
+	}
+
+	pkgEnv := NewTypeEnv(nil)
+	for _, v := range object.Builtins {
+		pkgEnv.Set(v.Name, v.BuiltIn.T)
+	}
+	for _, env := range c.packages {
+		for name, typ := range env.store {
+			if strings.Contains(name, ".") {
+				pkgEnv.Set(name, typ)
+			}
+		}
+	}
+
+	pkgChecker := NewWithModuleTypes(pkgEnv, c.moduleTypes)
+	pkgChecker.packages = c.packages
+	pkgChecker.currentModule = c.currentModule
+
+	if program, ok := node.(*ast.Program); ok {
+		pkgChecker.program = program
+	}
+	pkgChecker.check(node)
+
+	c.env = pkgChecker.env
+	return pkgChecker.errors
+}
+
 func (c *Checker) Check(node ast.Node, packages []*loader.Package) []errors.PositionError {
 	if packages != nil {
 		c.checkPackages(packages)

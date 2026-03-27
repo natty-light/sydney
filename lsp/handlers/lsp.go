@@ -148,7 +148,7 @@ func (l *LSP) parseModule(method messages.Method, filePath string, src string) {
 	typeEnv := typechecker.NewTypeEnv(nil)
 	c := typechecker.NewWithModuleTypes(typeEnv, tt)
 	c.SetCurrentModule(moduleName)
-	errs := c.Check(merged, packages)
+	errs := c.CheckAsPackage(merged, packages)
 	if len(errs) > 0 {
 		log.Printf("%s: Errors found: %v", method, errs)
 	}
@@ -156,7 +156,7 @@ func (l *LSP) parseModule(method messages.Method, filePath string, src string) {
 	l.SendTypecheckerDiagnostics(errs, filePath)
 
 	l.program = merged
-	l.env = typeEnv
+	l.env = c.Env()
 	log.Printf("%s: parsed %d statements", method, len(merged.Stmts))
 }
 
