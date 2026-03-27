@@ -86,6 +86,10 @@ func (a *annotatable) SetAnnotations(annotations []*Annotation) {
 	a.Annotations = annotations
 }
 
+type Scope interface {
+	Get(name string) (types.Type, bool, bool)
+}
+
 type MatchArm struct {
 	Pattern *MatchPattern
 	Body    *BlockStmt
@@ -129,6 +133,7 @@ type (
 	BlockStmt struct {
 		Token token.Token
 		Stmts []Stmt
+		Scope Scope
 		annotatable
 	}
 

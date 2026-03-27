@@ -86,6 +86,7 @@ func cloneBlockStmt(stmt *BlockStmt) *BlockStmt {
 	for i, s := range stmt.Stmts {
 		cloned.Stmts[i] = cloneStmt(s)
 	}
+	cloned.Scope = stmt.Scope
 
 	return &cloned
 }

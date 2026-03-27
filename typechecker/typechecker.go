@@ -345,6 +345,7 @@ func (c *Checker) checkBlockStmt(node *ast.BlockStmt) types.Type {
 		lastType = c.check(stmt)
 	}
 
+	node.Scope = c.env
 	c.env = oldEnv
 
 	return lastType
@@ -1814,7 +1815,6 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 		if fType.Return != types.Unit && !allPathsReturn(node.Body) {
 			c.appendError(fmt.Sprintf("function %s missing return on all paths", node.Name.Value), node)
 		}
-
 		c.env = oldEnv
 		c.currentReturnType = oldReturnType
 		c.inLoop = oldInLoop

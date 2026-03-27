@@ -5,6 +5,7 @@ import (
 	"log"
 	"sydney/ast"
 	"sydney/lsp/messages"
+	"sydney/types"
 )
 
 type HoverResult struct {
@@ -35,15 +36,25 @@ func (l *LSP) HandleHover(req *messages.Request) {
 	}
 
 	log.Printf("hover: line=%d col=%d", params.Position.Line+1, params.Position.Character+1)
-	ident := ast.FindAt(l.program, params.Position.Line+1, params.Position.Character+1)
+	ident, foundScope := ast.FindAt(l.program, params.Position.Line+1, params.Position.Character+1)
 	if ident == nil {
 		log.Printf("hover: no ident found")
 		return
 	}
 	log.Printf("hover: found ident %s", ident.Value)
-	typ, _, ok := l.env.Get(ident.Value)
+	log.Printf("hover: found scope %t", foundScope != nil)
+	var typ types.Type
+	var ok bool
+	if foundScope != nil {
+		typ, _, ok = foundScope.Get(ident.Value)
+		log.Printf("hover: found block scoped type %s", typ)
+	} else {
+		typ, _, ok = l.env.Get(ident.Value)
+		log.Printf("hover: found globally scoped type %s", typ)
+	}
 	if !ok {
 		log.Printf("hover: cannot resolve type for %s", ident.Value)
+		return
 	}
 	result := &HoverResult{
 		Contents: MarkupContents{
