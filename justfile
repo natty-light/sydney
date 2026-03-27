@@ -19,6 +19,10 @@ build-smoke-opt:
 build-lsp:
     go build -o bin/sydney-lsp ./cmd/lsp/
 
+build-all:
+  just build
+  just build-lsp
+
 clean-smoke:
     rm smoke.o
 build:
