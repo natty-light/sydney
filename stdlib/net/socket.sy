@@ -24,7 +24,7 @@ pub func listen(string host, int port) -> result<Listener> {
     match r {
         ok(h) -> { ok(Listener { handle: h }); },
         err(msg) -> { err(msg); },
-    }
+    };
 }
 
 pub func accept(Listener l) -> result<Socket> {

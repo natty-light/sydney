@@ -1,11 +1,13 @@
-mod print;
-mod string;
+mod channel;
+mod error;
+mod file;
+mod floats;
 mod gc;
 mod map;
-mod file;
-mod error;
-mod floats;
 mod panic;
-mod channel;
+mod print;
 mod socket;
+mod string;
 mod tls;
+
+mod term;

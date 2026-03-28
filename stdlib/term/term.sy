@@ -1,0 +1,21 @@
+module "term"
+
+pub extern func set_raw(int fd) -> result<int>;
+
+pub extern func restore(int fd) -> result<int>;
+
+pub define struct Term { fd int }
+
+pub func make_raw(Term t) -> result<Term> {
+  match set_raw(t.fd) {
+    ok(fd) -> { ok(t); },
+    err(msg) -> { err(msg); },
+  };
+}
+
+pub func reset(Term t) -> result<Term> {
+  match restore(t.fd) {
+    ok(fd) -> { ok(t); },
+    err(msg) -> { err(msg); },
+  };
+}
