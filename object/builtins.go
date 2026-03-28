@@ -221,6 +221,7 @@ var Builtins = []struct {
 				}
 				return &Result{IsOk: false, Error: &String{Value: err.Error()}}
 			},
+			T: types.FunctionType{Params: []types.Type{types.String}, Return: types.ResultType{T: types.Int}},
 		},
 	},
 	{
@@ -237,6 +238,23 @@ var Builtins = []struct {
 				return &Result{Value: &String{Value: string(data)}, Error: nil, IsOk: true}
 			},
 			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.String}},
+		},
+	},
+	{
+		"freadn",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				n := args[1].(*Integer).Value
+				f := os.NewFile(uintptr(fd), "")
+				buf := make([]byte, n)
+				_, err := f.Read(buf)
+				if err != nil {
+					return &Result{IsOk: false, Value: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &String{Value: string(buf)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.Int}, Return: types.ResultType{T: types.String}},
 		},
 	},
 	{

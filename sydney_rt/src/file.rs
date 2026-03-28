@@ -89,6 +89,34 @@ pub extern "C" fn sydney_file_read(fd: i64) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn sydney_file_readn(fd: i64, n: i64) -> *const c_char {
+    use std::io::Read;
+    let mut file = unsafe { File::from_raw_fd(fd as i32) };
+    let mut contents = vec![0; n as usize];
+    match file.read(&mut contents) {
+        Ok(_) => {
+            std::mem::forget(file);
+            match CString::new(contents) {
+                Ok(cs) => cs.into_raw(),
+                Err(err) => {
+                    LAST_ERROR.with(|e| {
+                        *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
+                    });
+                    std::ptr::null()
+                }
+            }
+        }
+        Err(err) => {
+            LAST_ERROR.with(|e| {
+                *e.borrow_mut() = Some(CString::new(err.to_string()).unwrap());
+            });
+            std::mem::forget(file);
+            std::ptr::null()
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn sydney_file_write(fd: i64, data: *const c_char) -> i64 {
     use std::io::Write;
     if data.is_null() {

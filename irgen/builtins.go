@@ -21,6 +21,7 @@ var runtimeBuiltins = map[string]RuntimeBuiltin{
 	"io__fwrite":              {RuntimeName: "sydney_file_write", ParamTypes: []IrType{IrInt, IrPtr}, ReturnType: IrInt, WrapResult: true},
 	"io__fclose":              {RuntimeName: "sydney_file_close", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
 	"io__fcreate":             {RuntimeName: "sydney_file_create", ParamTypes: []IrType{IrPtr}, ReturnType: IrInt, WrapResult: true},
+	"io__freadn":              {RuntimeName: "sydney_file_readn", ParamTypes: []IrType{IrInt, IrInt}, ReturnType: IrPtr, WrapResult: true},
 	"conv__atof":              {RuntimeName: "sydney_atof", ParamTypes: []IrType{IrPtr}, ReturnType: IrFloat, WrapResult: true},
 	"conv__ftoa":              {RuntimeName: "sydney_ftoa", ParamTypes: []IrType{IrFloat}, ReturnType: IrPtr, WrapResult: false},
 	"net__tcp_conn":           {RuntimeName: "sydney_tcp_connect", ParamTypes: []IrType{IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
@@ -100,7 +101,6 @@ func (e *Emitter) emitLenCall(expr *ast.CallExpr) (string, IrType) {
 
 	return result, IrInt
 }
-
 
 func (e *Emitter) wrapIntoResult(val string, typ IrType) (string, IrType) {
 	cmp := e.tmp()
@@ -305,4 +305,3 @@ func (e *Emitter) emitStrValuesCall(expr *ast.CallExpr) (string, IrType) {
 
 	return result, IrPtr
 }
-

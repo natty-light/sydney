@@ -5,6 +5,7 @@ pub extern func fread(int fd) -> result<string>
 pub extern func fwrite(int fd, string data) -> result<int>
 pub extern func fclose(int fd) -> result<int>
 pub extern func fcreate(string path) -> result<int>
+pub extern func freadn(int fd, int n) -> result<string>
 
 pub define struct File { fd int }
 
@@ -42,6 +43,10 @@ pub func openFile(string path) -> result<File> {
 pub func read(File f) -> result<string> {
     return fread(f.fd);
 }
+
+pub func readn(File f, int n) -> result<string> {
+    return freadn(f.fd, n);
+  }
 
 pub func write(File f, string data) -> result<int> {
     return fwrite(f.fd, data);
