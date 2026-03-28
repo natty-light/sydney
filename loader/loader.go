@@ -58,7 +58,6 @@ func NewFromImports(imports []string) *Loader {
 }
 
 func (l *Loader) Read(filename string) (string, error) {
-
 	file, err := os.ReadFile(filename)
 	if err != nil {
 		return "", fmt.Errorf("cannot read file %s", filename)
@@ -115,7 +114,7 @@ func (l *Loader) LoadPackage(dir string) (*Package, error) {
 		p.SetDefinedTypes(allStructs, allInterfaces)
 		program := p.ParseProgram()
 		if len(p.Errors()) > 0 {
-			return nil, fmt.Errorf(strings.Join(p.Errors(), "\n"))
+			return nil, fmt.Errorf("%s", strings.Join(p.Errors(), "\n"))
 		}
 
 		deriveImports := codegen.ScanDeriveImports(source)

@@ -1098,7 +1098,7 @@ func (vm *VM) callBuiltIn(builtin *object.BuiltIn, numArgs int) error {
 	vm.setSp(vm.sp() - numArgs - 1) // pop args and function
 
 	if err, ok := result.(*object.Error); ok {
-		return fmt.Errorf(err.Message)
+		return fmt.Errorf("%s", err.Message)
 	}
 
 	if result != nil {

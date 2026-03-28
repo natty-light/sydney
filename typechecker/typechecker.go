@@ -1115,33 +1115,6 @@ func (c *Checker) checkPrefixExpr(operator string, t types.Type, expr ast.Node) 
 }
 
 func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.Type {
-	if ident, ok := expr.Function.(*ast.Identifier); ok {
-		template, generic := c.genericFunctions[ident.Value]
-
-		if generic && len(expr.TypeArgs) == 0 {
-			typeArgs := c.inferTypeArgs(expr, template)
-			if typeArgs != nil {
-				expr.TypeArgs = typeArgs
-			}
-		}
-
-		if generic && len(expr.TypeArgs) > 0 {
-			return c.monomorphizeCall(expr, template)
-		}
-
-		if len(expr.Arguments) > 0 {
-			receiverType := c.typeOf(expr.Arguments[0], nil)
-			if receiverType == nil {
-				c.appendError(fmt.Sprintf("cannot resolve type for %s function call", ident.Value), expr)
-				return nil
-			}
-			mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), ident.Value)
-			if t, _, ok := c.env.Get(mangled); ok {
-				return c.validateFunctionCall(expr, t)
-			}
-		}
-	}
-
 	if scope, ok := expr.Function.(*ast.ScopeAccessExpr); ok {
 		template, generic := c.genericFunctions[scope.Member.Value]
 
@@ -1194,6 +1167,31 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 	}
 
 	if ident, ok := expr.Function.(*ast.Identifier); ok {
+		template, generic := c.genericFunctions[ident.Value]
+
+		if generic && len(expr.TypeArgs) == 0 {
+			typeArgs := c.inferTypeArgs(expr, template)
+			if typeArgs != nil {
+				expr.TypeArgs = typeArgs
+			}
+		}
+
+		if generic && len(expr.TypeArgs) > 0 {
+			return c.monomorphizeCall(expr, template)
+		}
+
+		if len(expr.Arguments) > 0 {
+			receiverType := c.typeOf(expr.Arguments[0], nil)
+			if receiverType == nil {
+				c.appendError(fmt.Sprintf("cannot resolve type for %s function call", ident.Value), expr)
+				return nil
+			}
+			mangled := fmt.Sprintf("%s.%s", receiverType.Signature(), ident.Value)
+			if t, _, ok := c.env.Get(mangled); ok {
+				return c.validateFunctionCall(expr, t)
+			}
+		}
+
 		switch ident.Value {
 		case "len":
 			return c.checkLenBuiltIn(expr)
@@ -1221,26 +1219,16 @@ func (c *Checker) typeOfCallExpr(expr *ast.CallExpr, expected types.Type) types.
 			return c.checkSomeBuiltIn(expr)
 		case "none":
 			return c.checkNoneBuiltIn(expr, expected)
-		case "int":
-			return c.checkIntBuiltIn(expr)
 		case "float":
 			return c.checkFloatBuiltIn(expr)
-		case "byte":
-			return c.checkByteBuiltIn(expr)
-		case "char":
-			return c.checkCharBuiltIn(expr)
-		case "fopen":
-			return c.checkFopenBuiltIn(expr)
-		case "fclose":
-			return c.checkFcloseBuiltIn(expr)
-		case "fread":
-			return c.checkFreadBuiltIn(expr)
-		case "fwrite":
-			return c.checkFwriteBuiltIn(expr)
 		case "panic":
 			return c.checkPanicCall(expr)
 		case "chan":
 			return c.checkChanBuiltIn(expr)
+		}
+
+		if builtin := object.GetBuiltInByName(ident.Value); builtin != nil {
+			return c.validateFunctionCall(expr, builtin.T)
 		}
 	}
 
@@ -1746,49 +1734,6 @@ func toMap(t types.Type) (types.MapType, bool) {
 	return typ, ok
 }
 
-func isResult(t types.Type) (types.ResultType, bool) {
-	typ, ok := t.(types.ResultType)
-	return typ, ok
-}
-
-func (c *Checker) satisfiesSameInterface(actual, expected types.Type) bool {
-	if as, ok := toStruct(actual); ok {
-		if es, ok := toStruct(expected); ok {
-			authas, ok := c.definedStructs[as.Name]
-			if ok {
-				as = authas
-			}
-			authes, ok := c.definedStructs[es.Name]
-			if ok {
-				es = authes
-			}
-			satisfiesSameIface := true
-			for idx, iface := range es.Interfaces {
-				eIfaceType, ok := iface.(types.InterfaceType)
-				if !ok {
-					c.appendError(fmt.Sprintf("%s is not an interface", eIfaceType.Signature()), nil)
-					satisfiesSameIface = false
-					continue
-				}
-				aIfaceType, ok := as.Interfaces[idx].(types.InterfaceType)
-				if !ok {
-					c.appendError(fmt.Sprintf("%s is not an interface", aIfaceType.Signature()), nil)
-					satisfiesSameIface = false
-					continue
-				}
-
-				if aIfaceType.Name != eIfaceType.Name {
-					satisfiesSameIface = false
-				}
-			}
-
-			return satisfiesSameIface
-		}
-	}
-
-	return false
-}
-
 func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type {
 	c.typeOf(node.Left, nil)
 	t := c.typeOf(node.Left.Left, nil)
@@ -2173,70 +2118,6 @@ func (c *Checker) resolveFunctionType(ft types.FunctionType) types.FunctionType 
 	return ft
 }
 
-func (c *Checker) checkFopenBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 1 {
-		c.appendError("fopen() expects exactly 1 argument", expr)
-		return &types.ResultType{T: types.Int}
-	}
-	t := c.typeOf(expr.Arguments[0], types.String)
-	if t != types.String {
-		c.appendError(fmt.Sprintf("invalid argument type %s for fopen(), expected string", t.Signature()), expr)
-	}
-	return types.ResultType{T: types.Int}
-}
-
-func (c *Checker) checkFreadBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 1 {
-		c.appendError("fread() expects exactly 1 argument", expr)
-		return &types.ResultType{T: types.String}
-	}
-	t := c.typeOf(expr.Arguments[0], types.Int)
-	if t != types.Int {
-		c.appendError(fmt.Sprintf("invalid argument type %s for fread(), expected int", t.Signature()), expr)
-	}
-	return types.ResultType{T: types.String}
-}
-
-func (c *Checker) checkFwriteBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 2 {
-		c.appendError("fwrite() expects exactly 2 arguments", expr)
-		return &types.ResultType{T: types.Int}
-	}
-	fdType := c.typeOf(expr.Arguments[0], types.Int)
-	if fdType != types.Int {
-		c.appendError(fmt.Sprintf("invalid argument type %s for fwrite() fd, expected int", fdType.Signature()), expr)
-	}
-	dataType := c.typeOf(expr.Arguments[1], types.String)
-	if dataType != types.String {
-		c.appendError(fmt.Sprintf("invalid argument type %s for fwrite() data, expected string", dataType.Signature()), expr)
-	}
-	return types.ResultType{T: types.Int}
-}
-
-func (c *Checker) checkFcloseBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 1 {
-		c.appendError("fclose() expects exactly 1 argument", expr)
-		return &types.ResultType{T: types.Int}
-	}
-	t := c.typeOf(expr.Arguments[0], types.Int)
-	if t != types.Int {
-		c.appendError(fmt.Sprintf("invalid argument type %s for fclose(), expected int", t.Signature()), expr)
-	}
-	return types.ResultType{T: types.Int}
-}
-
-func (c *Checker) checkIntBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 1 {
-		c.appendError("int() expects exactly 1 argument", expr)
-		return types.Int
-	}
-	t := c.typeOf(expr.Arguments[0], types.Byte)
-	if t != types.Byte {
-		c.appendError(fmt.Sprintf("invalid argument type %s for int(), expected byte", t.Signature()), expr)
-	}
-	return types.Int
-}
-
 func (c *Checker) checkFloatBuiltIn(expr *ast.CallExpr) types.Type {
 	if len(expr.Arguments) != 1 {
 		c.appendError("float() expects exactly 1 argument", expr)
@@ -2248,30 +2129,6 @@ func (c *Checker) checkFloatBuiltIn(expr *ast.CallExpr) types.Type {
 	}
 
 	return types.Float
-}
-
-func (c *Checker) checkByteBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 1 {
-		c.appendError("byte() expects exactly 1 argument", expr)
-		return types.Byte
-	}
-	t := c.typeOf(expr.Arguments[0], types.Int)
-	if t != types.Int {
-		c.appendError(fmt.Sprintf("invalid argument type %s for byte(), expected int", t.Signature()), expr)
-	}
-	return types.Byte
-}
-
-func (c *Checker) checkCharBuiltIn(expr *ast.CallExpr) types.Type {
-	if len(expr.Arguments) != 1 {
-		c.appendError("char() expects exactly 1 argument", expr)
-		return types.String
-	}
-	t := c.typeOf(expr.Arguments[0], types.Byte)
-	if t != types.Byte {
-		c.appendError(fmt.Sprintf("invalid argument type %s for char(), expected byte", t.Signature()), expr)
-	}
-	return types.String
 }
 
 func (c *Checker) checkPanicCall(expr *ast.CallExpr) types.Type {

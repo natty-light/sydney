@@ -12,6 +12,8 @@ import (
 	"sync"
 
 	"sydney/types"
+
+	"golang.org/x/term"
 )
 
 // Slab storage for TCP connections and listeners.
@@ -20,6 +22,8 @@ var (
 	tcpStreams   []gonet.Conn
 	tcpListeners []gonet.Listener
 	tcpMu        sync.Mutex
+	tsMu         sync.Mutex
+	termState    *term.State
 )
 
 func slabInsertConn(c gonet.Conn) int64 {
@@ -605,6 +609,39 @@ var Builtins = []struct {
 					return &Result{IsOk: false, Error: &String{Value: err.Error()}}
 				}
 				return &Result{IsOk: true, Value: &Integer{Value: 0}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"term_set_raw",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				state, err := term.MakeRaw(int(fd))
+				tsMu.Lock()
+				defer tsMu.Unlock()
+				if err != nil {
+					return &Result{IsOk: false, Value: &String{Value: err.Error()}}
+				}
+				termState = state
+				return &Result{IsOk: true, Value: &Integer{Value: fd}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
+		},
+	},
+	{
+		"term_reset",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				tsMu.Lock()
+				defer tsMu.Unlock()
+				err := term.Restore(int(fd), termState)
+				if err != nil {
+					return &Result{IsOk: false, Value: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &Integer{Value: fd}}
 			},
 			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
 		},

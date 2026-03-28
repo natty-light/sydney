@@ -689,9 +689,9 @@ func TestThreePartForLoopScoping(t *testing.T) {
 
 func TestConversionBuiltinErrors(t *testing.T) {
 	tests := []TypeErrorTest{
-		{`const x = int("hello");`, `invalid argument type string for int(), expected byte`},
-		{`const x = byte("hello");`, `invalid argument type string for byte(), expected int`},
-		{`const x = char(5);`, `invalid argument type int for char(), expected byte`},
+		{`const x = int("hello");`, `type mismatch: got string for arg 1 in function int call, expected byte`},
+		{`const x = byte("hello");`, `type mismatch: got string for arg 1 in function byte call, expected int`},
+		{`const x = char(5);`, `type mismatch: got int for arg 1 in function char call, expected byte`},
 	}
 	testTypeErrors(t, tests)
 }
