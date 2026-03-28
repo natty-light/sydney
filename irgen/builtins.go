@@ -35,8 +35,8 @@ var runtimeBuiltins = map[string]RuntimeBuiltin{
 	"net__tls_read":           {RuntimeName: "sydney_tls_read", ParamTypes: []IrType{IrInt, IrInt}, ReturnType: IrPtr, WrapResult: true},
 	"net__tls_write":          {RuntimeName: "sydney_tls_write", ParamTypes: []IrType{IrInt, IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
 	"net__tls_close_stream":   {RuntimeName: "sydney_tls_close", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
-	"term__set_raw":           {RuntimeName: "sydney_term_enable_raw", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
-	"term__restore":           {RuntimeName: "sydney_restore_state", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"term__term_set_raw":      {RuntimeName: "sydney_term_enable_raw", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"term__term_reset":        {RuntimeName: "sydney_restore_state", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
 }
 
 func (e *Emitter) emitRuntimeBuiltinCall(builtin RuntimeBuiltin, expr *ast.CallExpr) (string, IrType) {

@@ -420,7 +420,8 @@ declare ptr @sydney_tls_close(i64)
 declare ptr @sydney_ftoa(double)
 declare i64 @sydney_file_create(ptr)
 declare i64 @sydney_term_enable_raw(i64)
-declare i64 @sydney_restore_state(i64)`)
+declare i64 @sydney_restore_state(i64)
+declare ptr @sydney_file_readn(i64, i64)`)
 
 	e.emit("")
 
