@@ -1,6 +1,8 @@
 package lexer
 
 import (
+	"strconv"
+
 	"sydney/token"
 	"sydney/utils"
 )
@@ -81,6 +83,20 @@ func (l *Lexer) readIdentifer() string {
 	return l.source[position:l.position]
 }
 
+func (l *Lexer) readHex(n int) []byte {
+	res := make([]byte, 0)
+	for i := 0; i < n; i++ {
+		ch := l.char
+		if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') {
+			res = append(res, ch)
+			if i < n-1 {
+				l.readChar()
+			}
+		}
+	}
+	return res
+}
+
 func (l *Lexer) readNumber() (string, bool) {
 	position := l.position
 	encounteredDecimal := false
@@ -116,6 +132,11 @@ func (l *Lexer) readString() string {
 				result = append(result, '"')
 			case '0':
 				result = append(result, 0)
+			case 'x':
+				l.readChar()
+				hex := l.readHex(2)
+				val, _ := strconv.ParseUint(string(hex), 16, 8)
+				result = append(result, byte(val))
 			default:
 				result = append(result, '\\', l.char)
 			}

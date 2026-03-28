@@ -23,7 +23,9 @@ type Checker struct {
 
 	moduleTypes map[string]map[string]types.Type
 
-	inLoop bool
+	inLoop            bool
+	inDiscardPosition bool
+	isLastInBlock     bool
 
 	genericFunctions map[string]*ast.FunctionDeclarationStmt // templates
 	genericStructs   map[string]*ast.StructDefinitionStmt    // templates
@@ -387,8 +389,11 @@ func (c *Checker) checkBlockStmt(node *ast.BlockStmt) types.Type {
 
 func (c *Checker) checkBlockStmtInCurrentScope(node *ast.BlockStmt) types.Type {
 	var lastType types.Type = types.Unit
-	for _, stmt := range node.Stmts {
+	for i, stmt := range node.Stmts {
+		prev := c.isLastInBlock
+		c.isLastInBlock = i == len(node.Stmts)-1
 		lastType = c.check(stmt)
+		c.isLastInBlock = prev
 	}
 	node.Scope = c.env
 	return lastType
@@ -452,7 +457,11 @@ func (c *Checker) check(n ast.Node) types.Type {
 	case *ast.PubStatement:
 		return c.check(node.Stmt)
 	case *ast.ExpressionStmt:
-		return c.typeOf(node.Expr, nil)
+		prev := c.inDiscardPosition
+		c.inDiscardPosition = c.currentReturnType == nil || !c.isLastInBlock
+		t := c.typeOf(node.Expr, nil)
+		c.inDiscardPosition = prev
+		return t
 	case *ast.ReturnStmt:
 		return c.checkReturnStmt(node)
 	case *ast.ForStmt:
@@ -774,7 +783,7 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 		if expr.Alternative != nil {
 			aType = c.check(expr.Alternative)
 
-			if !c.typesMatch(cType, aType) {
+			if !c.inDiscardPosition && !c.typesMatch(cType, aType) {
 				c.appendError(fmt.Sprintf("consequence and alternative for if expression must result in same type"), expr)
 				return types.Unit
 			}
@@ -1971,7 +1980,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 		c.appendError(fmt.Sprintf("cannot resolve type for err branch"), expr)
 		return nil
 	}
-	if !c.typesMatch(errBranch, okBranch) {
+	if !c.inDiscardPosition && !c.typesMatch(errBranch, okBranch) {
 		c.appendError(fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", okBranch.Signature(), errBranch.Signature()), expr)
 	}
 	c.env = oldEnv
@@ -2026,7 +2035,7 @@ func (c *Checker) checkTypeMatchExpr(expr *ast.MatchTypeExpr) types.Type {
 			resultType = t
 		}
 
-		if resultType != t {
+		if !c.inDiscardPosition && resultType != t {
 			c.appendError("all arms of type match must result in same type", expr)
 			return types.Unit
 		}
@@ -2057,7 +2066,7 @@ func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType)
 		c.appendError("cannot resolve type for none branch", expr)
 		return nil
 	}
-	if !c.typesMatch(noneBranch, someBranch) {
+	if !c.inDiscardPosition && !c.typesMatch(noneBranch, someBranch) {
 		c.appendError(fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", someBranch.Signature(), noneBranch.Signature()), expr)
 	}
 	c.env = oldEnv
