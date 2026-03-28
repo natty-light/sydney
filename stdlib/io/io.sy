@@ -25,7 +25,7 @@ pub func create_file(string path) -> result<File> {
   return rr;
 }
 
-pub func openFile(string path) -> result<File> {
+pub func open_file(string path) -> result<File> {
     const result<int> r = fopen(path);
 
     mut result<File> f = match r {

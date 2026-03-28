@@ -1,0 +1,246 @@
+import "term"
+import "io"
+import "conv"
+import "strings"
+
+const term:Term t = term:Term { fd: 0 };
+const io:File stdout = io:File { fd: 1 };
+const io:File stdin = io:File { fd: 0 };
+
+define struct State {
+  cx int,
+  cy int,
+  mode string,
+  running bool,
+  command string,
+  buffer array<string>,
+}
+
+const render = func(State s) {
+  stdout.write("\x1b[2J");
+  stdout.write("\x1b[H");
+
+  for (item in s.buffer) {
+    if (item == "\n") {
+      stdout.write("\r\n");
+    } else {
+      stdout.write(item);
+    }
+  }
+
+  stdout.write("\x1b[999;1H");
+  stdout.write("\x1b[7m ");
+  stdout.write(s.mode);
+  if (s.mode == "command") {
+    stdout.write(" :" + s.command);
+  }
+  stdout.write(" \x1b[0m");
+
+  stdout.write("\x1b[");
+  stdout.write(conv:itoa(s.cy + 1));
+  stdout.write(";");
+  stdout.write(conv:itoa(s.cx + 1));
+  stdout.write("H");
+};
+
+const handleArrowKeys = func(State s, string chs) {
+  if (chs == "[A") {
+    if (s.cy > 0) {
+      s.cy = s.cy - 1;
+    }
+  }
+
+  if (chs == "[B") {
+    s.cy = s.cy + 1;
+  }
+
+  if (chs == "[C") {
+    s.cx = s.cx + 1;
+  }
+
+  if (chs == "[D") {
+    if (s.cx > 0) {
+      s.cx = s.cx - 1;
+    }
+  }
+};
+
+func executeCommand(State s) {
+  if (s.command == "q") {
+    s.running = false;
+    return;
+  }
+
+  if (strings:starts_with(s.command, "w ")) {
+    const size = len(s.command);
+    const filename = s.command[2:size];
+    mut content = "";
+    for (item in s.buffer) {
+      content = content + item;
+    }
+    const r = io:create_file(filename);
+    match r {
+      ok(f) -> {
+        f.write(content);
+        f.close();
+      },
+      err(msg) -> {},
+    }
+  }
+  
+
+  s.command = "";
+  s.mode = "normal";
+}
+
+func handleCommandInput(State s, string chr) {
+  if (chr == "\r") {
+    return executeCommand(s);
+  }
+  s.command = s.command + chr;
+}
+
+func bufferIndex(State s) -> int {
+  mut idx = 0;
+  mut line = 0;
+  for (item in s.buffer) {
+    if (line == s.cy) {
+      return idx + s.cx;
+    }
+    if (item == "\n") {
+      line = line + 1;
+    }
+    idx = idx + 1;
+  }
+  return idx + s.cx;
+}
+
+func handleBackspace(State s) {
+  const pos = bufferIndex(s);
+  if (pos == 0) {
+    return;
+  }
+  const size = len(s.buffer);
+  const deleted = s.buffer[pos - 1];
+  const before = s.buffer[0:pos - 1];
+  const after = s.buffer[pos:size];
+  s.buffer = before;
+  for (item in after) {
+    s.buffer = append(s.buffer, item);
+  }
+  if (deleted == "\n") {
+    s.cy = s.cy - 1;
+    mut nx = 0;
+    mut line = 0;
+    for (item in s.buffer) {
+      if (line > s.cy) {
+        s.cx = nx;
+        return;
+      }
+      if (item == "\n") {
+        if (line == s.cy) {
+          s.cx = nx;
+          return;
+        }
+        line = line + 1;
+        nx = 0;
+      } else {
+        if (line == s.cy) {
+          nx = nx + 1;
+        }
+      }
+    }
+    s.cx = nx;
+  } else {
+    s.cx = s.cx - 1;
+  }
+}
+
+func handleInsert(State s, string chr) {
+  const pos = bufferIndex(s);
+  const size = len(s.buffer);
+  const before = s.buffer[0:pos];
+  const after = s.buffer[pos:size];
+  s.buffer = append(before, chr);
+  for (item in after) {
+    s.buffer = append(s.buffer, item);
+  }
+  if (chr == "\n") {
+    s.cy = s.cy + 1;
+    s.cx = 0;
+  } else {
+    s.cx = s.cx + 1;
+  }
+}
+
+
+const handleInput = func(State s) {
+  const r = stdin.readn(1);
+  match r {
+    ok(ch) -> {
+      if (ch == "\x1b") {
+        const rr = stdin.nb_readn(2);
+        const chrs = match rr {
+          ok(str) -> { str; },
+          err(msg) -> { ""; },
+        }
+        stdout.write("chrs: " + chrs);
+
+        if (len(chrs) > 0) {
+          return handleArrowKeys(s, chrs);
+        } else {
+          s.mode = "normal";
+          s.command = "";
+          return;
+        }
+      }
+      if (s.mode == "command") {
+        return handleCommandInput(s, ch);
+      }
+
+      if (s.mode == "insert") {
+          if (ch == "\r") {
+            return handleInsert(s, "\n");
+          }
+          if (ch == "\x7f") {
+            return handleBackspace(s);
+          }
+          return handleInsert(s, ch);
+      }
+
+      if (ch == ":" && s.mode == "normal") {
+        s.mode = "command";
+        return;
+      }
+
+    
+      if (ch == "i" && s.mode == "normal") {
+        s.mode = "insert";
+        return;
+      }
+    },
+    err(msg) -> { s.running = false; },
+  }
+};
+
+const is_raw = t.make_raw();
+match is_raw {
+  ok(t) -> {},
+  err(msg) -> { panic(msg); },
+}
+
+mut state = State { cx: 0, cy: 0, mode: "normal", running: true, command: "", buffer: [] };
+
+for (state.running) {
+  render(state);
+  handleInput(state);
+}
+
+match t.reset() {
+  ok(t) -> {
+    stdout.write("\x1b[2J");
+    stdout.write("\x1b[H");
+    print("goodbye");
+  },
+  err(msg) -> { print(msg); },
+}
