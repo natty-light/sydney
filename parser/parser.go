@@ -702,7 +702,7 @@ func (p *Parser) parseFunctionLiteral() ast.Expr {
 	params, ts := p.parseFunctionParameters()
 	function.Parameters = params
 
-	fType := types.FunctionType{Params: ts, Return: nil}
+	fType := types.FunctionType{Params: ts, Return: types.Unit}
 
 	if p.peekTokenIs(token.Arrow) {
 		p.nextToken()
