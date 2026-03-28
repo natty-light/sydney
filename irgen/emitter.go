@@ -418,7 +418,9 @@ declare ptr @sydney_tls_read(i64, i64)
 declare i64 @sydney_tls_write(i64, ptr, i64)
 declare ptr @sydney_tls_close(i64)
 declare ptr @sydney_ftoa(double)
-declare i64 @sydney_file_create(ptr)`)
+declare i64 @sydney_file_create(ptr)
+declare i64 @sydney_term_enable_raw(i64)
+declare i64 @sydney_restore_state(i64)`)
 
 	e.emit("")
 
@@ -1027,8 +1029,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 
 		if e.currentModule != "" {
 			mangled := e.moduleMangle(e.currentModule, name)
-			if fn, ok := runtimeBuiltins[mangled]; ok {
-				return e.emitRuntimeCall(fn, expr)
+			if builtin, ok := runtimeBuiltins[mangled]; ok {
+				return e.emitRuntimeBuiltinCall(builtin, expr)
 			}
 			if sig, ok := e.funcSigs[mangled]; ok {
 				return e.emitFunctionCall(expr, sig)
@@ -1076,8 +1078,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 			return e.emitPanicCall(expr)
 		}
 
-		if fn, ok := runtimeBuiltins[name]; ok {
-			return e.emitRuntimeCall(fn, expr)
+		if builtin, ok := runtimeBuiltins[name]; ok {
+			return e.emitRuntimeBuiltinCall(builtin, expr)
 		}
 
 		sig, exists := e.funcSigs[name]
@@ -1097,37 +1099,8 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 	if scope, ok := expr.Function.(*ast.ScopeAccessExpr); ok {
 		mangled := scope.Module.Value + "__" + scope.Member.Value
 
-		if fn, ok := runtimeBuiltins[mangled]; ok {
-			switch fn {
-			case "sydney_file_open":
-				return e.emitFileOpen(expr)
-			case "sydney_file_read":
-				return e.emitFileRead(expr)
-			case "sydney_file_write":
-				return e.emitFileWrite(expr)
-			case "sydney_file_close":
-				return e.emitFileClose(expr)
-			case "sydney_file_create":
-				return e.emitFileCreate(expr)
-			case "sydney_atof":
-				return e.emitStrToFloatCall(expr)
-			case "sydney_ftoa":
-				return e.emitFloatToStrCall(expr)
-			case "sydney_tcp_connect":
-				return e.emitTcpConnectCall(expr)
-			case "sydney_tcp_listen":
-				return e.emitTcpListenCall(expr)
-			case "sydney_tcp_accept":
-				return e.emitTcpAcceptCall(expr)
-			case "sydney_tcp_read":
-				return e.emitTcpReadCall(expr)
-			case "sydney_tcp_write":
-				return e.emitTcpWriteCall(expr)
-			case "sydney_tcp_close_stream":
-				return e.emitTcpCloseStreamCall(expr)
-			case "sydney_tcp_close_listener":
-				return e.emitTcpCloseListenerCall(expr)
-			}
+		if builtin, ok := runtimeBuiltins[mangled]; ok {
+			return e.emitRuntimeBuiltinCall(builtin, expr)
 		}
 
 		sig, exists := e.funcSigs[mangled]
@@ -3106,45 +3079,11 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 }
 
 func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType) {
-	switch fn {
-	case "sydney_file_open":
-		return e.emitFileOpen(expr)
-	case "sydney_file_read":
-		return e.emitFileRead(expr)
-	case "sydney_file_create":
-		return e.emitFileCreate(expr)
-	case "sydney_file_write":
-		return e.emitFileWrite(expr)
-	case "sydney_file_close":
-		return e.emitFileClose(expr)
-	case "sydney_atof":
-		return e.emitStrToFloatCall(expr)
-	case "sydney_ftoa":
-		return e.emitFloatToStrCall(expr)
-	case "sydney_tcp_connect":
-		return e.emitTcpConnectCall(expr)
-	case "sydney_tcp_listen":
-		return e.emitTcpListenCall(expr)
-	case "sydney_tcp_accept":
-		return e.emitTcpAcceptCall(expr)
-	case "sydney_tcp_read":
-		return e.emitTcpReadCall(expr)
-	case "sydney_tcp_write":
-		return e.emitTcpWriteCall(expr)
-	case "sydney_tcp_close_stream":
-		return e.emitTcpCloseStreamCall(expr)
-	case "sydney_tcp_close_listener":
-		return e.emitTcpCloseListenerCall(expr)
-	case "sydney_tls_connect":
-		return e.emitTlsConnectCall(expr)
-	case "sydney_tls_read":
-		return e.emitTlsReadCall(expr)
-	case "sydney_tls_write":
-		return e.emitTlsWriteCall(expr)
-	case "sydney_tls_close":
-		return e.emitTlsCloseCall(expr)
+	for _, builtin := range runtimeBuiltins {
+		if builtin.RuntimeName == fn {
+			return e.emitRuntimeBuiltinCall(builtin, expr)
+		}
 	}
-
 	return "", IrUnit
 }
 

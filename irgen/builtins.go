@@ -2,30 +2,58 @@ package irgen
 
 import (
 	"fmt"
+	"strings"
 
 	"sydney/ast"
 	"sydney/types"
 )
 
-var runtimeBuiltins = map[string]string{
-	"io__fopen":               "sydney_file_open",
-	"io__fread":               "sydney_file_read",
-	"io__fwrite":              "sydney_file_write",
-	"io__fclose":              "sydney_file_close",
-	"io__fcreate":             "sydney_file_create",
-	"conv__atof":              "sydney_atof",
-	"conv__ftoa":              "sydney_ftoa",
-	"net__tcp_conn":           "sydney_tcp_connect",
-	"net__tcp_listen":         "sydney_tcp_listen",
-	"net__tcp_accept":         "sydney_tcp_accept",
-	"net__tcp_read":           "sydney_tcp_read",
-	"net__tcp_write":          "sydney_tcp_write",
-	"net__tcp_close_stream":   "sydney_tcp_close_stream",
-	"net__tcp_close_listener": "sydney_tcp_close_listener",
-	"net__tls_conn":           "sydney_tls_connect",
-	"net__tls_read":           "sydney_tls_read",
-	"net__tls_write":          "sydney_tls_write",
-	"net__tls_close_stream":   "sydney_tls_close",
+type RuntimeBuiltin struct {
+	RuntimeName string
+	ParamTypes  []IrType
+	ReturnType  IrType
+	WrapResult  bool
+}
+
+var runtimeBuiltins = map[string]RuntimeBuiltin{
+	"io__fopen":               {RuntimeName: "sydney_file_open", ParamTypes: []IrType{IrPtr}, ReturnType: IrInt, WrapResult: true},
+	"io__fread":               {RuntimeName: "sydney_file_read", ParamTypes: []IrType{IrInt}, ReturnType: IrPtr, WrapResult: true},
+	"io__fwrite":              {RuntimeName: "sydney_file_write", ParamTypes: []IrType{IrInt, IrPtr}, ReturnType: IrInt, WrapResult: true},
+	"io__fclose":              {RuntimeName: "sydney_file_close", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"io__fcreate":             {RuntimeName: "sydney_file_create", ParamTypes: []IrType{IrPtr}, ReturnType: IrInt, WrapResult: true},
+	"conv__atof":              {RuntimeName: "sydney_atof", ParamTypes: []IrType{IrPtr}, ReturnType: IrFloat, WrapResult: true},
+	"conv__ftoa":              {RuntimeName: "sydney_ftoa", ParamTypes: []IrType{IrFloat}, ReturnType: IrPtr, WrapResult: false},
+	"net__tcp_conn":           {RuntimeName: "sydney_tcp_connect", ParamTypes: []IrType{IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tcp_listen":         {RuntimeName: "sydney_tcp_listen", ParamTypes: []IrType{IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tcp_accept":         {RuntimeName: "sydney_tcp_accept", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tcp_read":           {RuntimeName: "sydney_tcp_read", ParamTypes: []IrType{IrInt, IrInt}, ReturnType: IrPtr, WrapResult: true},
+	"net__tcp_write":          {RuntimeName: "sydney_tcp_write", ParamTypes: []IrType{IrInt, IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tcp_close_stream":   {RuntimeName: "sydney_tcp_close_stream", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tcp_close_listener": {RuntimeName: "sydney_tcp_close_listener", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tls_conn":           {RuntimeName: "sydney_tls_connect", ParamTypes: []IrType{IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tls_read":           {RuntimeName: "sydney_tls_read", ParamTypes: []IrType{IrInt, IrInt}, ReturnType: IrPtr, WrapResult: true},
+	"net__tls_write":          {RuntimeName: "sydney_tls_write", ParamTypes: []IrType{IrInt, IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},
+	"net__tls_close_stream":   {RuntimeName: "sydney_tls_close", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"term__set_raw":           {RuntimeName: "sydney_term_enable_raw", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+	"term__restore":           {RuntimeName: "sydney_restore_state", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
+}
+
+func (e *Emitter) emitRuntimeBuiltinCall(builtin RuntimeBuiltin, expr *ast.CallExpr) (string, IrType) {
+	args := make([]string, len(expr.Arguments))
+	for i, arg := range expr.Arguments {
+		val, _ := e.emitExpr(arg)
+		args[i] = fmt.Sprintf("%s %s", builtin.ParamTypes[i], val)
+	}
+	argsStr := strings.Join(args, ", ")
+
+	result := e.tmp()
+	line := fmt.Sprintf("%s = call %s @%s(%s)", result, builtin.ReturnType, builtin.RuntimeName, argsStr)
+	e.emit(line)
+
+	if builtin.WrapResult {
+		return e.wrapIntoResult(result, builtin.ReturnType)
+	}
+	return result, builtin.ReturnType
 }
 
 func (e *Emitter) emitPrintCall(expr *ast.CallExpr) (string, IrType) {
@@ -73,46 +101,6 @@ func (e *Emitter) emitLenCall(expr *ast.CallExpr) (string, IrType) {
 	return result, IrInt
 }
 
-func (e *Emitter) emitFileOpen(expr *ast.CallExpr) (string, IrType) {
-	path, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_file_open(ptr %s)", result, path)
-	e.emit(line)
-	return e.wrapIntoResult(result, IrInt)
-}
-
-func (e *Emitter) emitFileRead(expr *ast.CallExpr) (string, IrType) {
-	fd, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call ptr @sydney_file_read(i64 %s)", result, fd)
-	e.emit(line)
-	return e.wrapIntoResult(result, IrPtr)
-}
-
-func (e *Emitter) emitFileWrite(expr *ast.CallExpr) (string, IrType) {
-	fd, _ := e.emitExpr(expr.Arguments[0])
-	data, _ := e.emitExpr(expr.Arguments[1])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_file_write(i64 %s, ptr %s)", result, fd, data)
-	e.emit(line)
-	return e.wrapIntoResult(result, IrInt)
-}
-
-func (e *Emitter) emitFileClose(expr *ast.CallExpr) (string, IrType) {
-	fd, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_file_close(i64 %s)", result, fd)
-	e.emit(line)
-	return e.wrapIntoResult(result, IrInt)
-}
-
-func (e *Emitter) emitFileCreate(expr *ast.CallExpr) (string, IrType) {
-	path, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_file_create(ptr %s)", result, path)
-	e.emit(line)
-	return e.wrapIntoResult(result, IrInt)
-}
 
 func (e *Emitter) wrapIntoResult(val string, typ IrType) (string, IrType) {
 	cmp := e.tmp()
@@ -318,126 +306,3 @@ func (e *Emitter) emitStrValuesCall(expr *ast.CallExpr) (string, IrType) {
 	return result, IrPtr
 }
 
-func (e *Emitter) emitStrToFloatCall(expr *ast.CallExpr) (string, IrType) {
-	m, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call double @sydney_atof(ptr %s)", result, m)
-	e.emit(line)
-	return e.wrapIntoResult(result, IrFloat)
-}
-
-func (e *Emitter) emitFloatToStrCall(expr *ast.CallExpr) (string, IrType) {
-	m, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call ptr @sydney_ftoa(double %s)", result, m)
-	e.emit(line)
-	return result, IrPtr
-}
-
-func (e *Emitter) emitTcpConnectCall(expr *ast.CallExpr) (string, IrType) {
-	host, _ := e.emitExpr(expr.Arguments[0])
-	port, _ := e.emitExpr(expr.Arguments[1])
-	handle := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tcp_connect(ptr %s, i64 %s)", handle, host, port)
-	e.emit(line)
-
-	return e.wrapIntoResult(handle, IrInt)
-}
-
-func (e *Emitter) emitTcpListenCall(expr *ast.CallExpr) (string, IrType) {
-	host, _ := e.emitExpr(expr.Arguments[0])
-	port, _ := e.emitExpr(expr.Arguments[1])
-	handle := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tcp_listen(ptr %s, i64 %s)", handle, host, port)
-	e.emit(line)
-
-	return e.wrapIntoResult(handle, IrInt)
-}
-
-func (e *Emitter) emitTcpAcceptCall(expr *ast.CallExpr) (string, IrType) {
-	handler, _ := e.emitExpr(expr.Arguments[0])
-	handle := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tcp_accept(i64 %s)", handle, handler)
-	e.emit(line)
-
-	return e.wrapIntoResult(handle, IrInt)
-}
-
-func (e *Emitter) emitTcpReadCall(expr *ast.CallExpr) (string, IrType) {
-	handler, _ := e.emitExpr(expr.Arguments[0])
-	maxLen, _ := e.emitExpr(expr.Arguments[1])
-	data := e.tmp()
-	line := fmt.Sprintf("%s = call ptr @sydney_tcp_read(i64 %s, i64 %s)", data, handler, maxLen)
-	e.emit(line)
-
-	return e.wrapIntoResult(data, IrPtr)
-}
-
-func (e *Emitter) emitTcpWriteCall(expr *ast.CallExpr) (string, IrType) {
-	handler, _ := e.emitExpr(expr.Arguments[0])
-	data, _ := e.emitExpr(expr.Arguments[1])
-	l, _ := e.emitExpr(expr.Arguments[2])
-	lwritten := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tcp_write(i64 %s, ptr %s, i64 %s)", lwritten, handler, data, l)
-	e.emit(line)
-
-	return e.wrapIntoResult(lwritten, IrInt)
-}
-
-func (e *Emitter) emitTcpCloseStreamCall(expr *ast.CallExpr) (string, IrType) {
-	stream, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tcp_close_stream(i64 %s)", result, stream)
-	e.emit(line)
-
-	return e.wrapIntoResult(result, IrInt)
-}
-
-func (e *Emitter) emitTcpCloseListenerCall(expr *ast.CallExpr) (string, IrType) {
-	handler, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tcp_close_listener(i64 %s)", result, handler)
-	e.emit(line)
-
-	return e.wrapIntoResult(result, IrInt)
-}
-
-func (e *Emitter) emitTlsConnectCall(expr *ast.CallExpr) (string, IrType) {
-	host, _ := e.emitExpr(expr.Arguments[0])
-	port, _ := e.emitExpr(expr.Arguments[1])
-	handle := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tls_connect(ptr %s, i64 %s)", handle, host, port)
-	e.emit(line)
-
-	return e.wrapIntoResult(handle, IrInt)
-}
-
-func (e *Emitter) emitTlsReadCall(expr *ast.CallExpr) (string, IrType) {
-	handler, _ := e.emitExpr(expr.Arguments[0])
-	maxLen, _ := e.emitExpr(expr.Arguments[1])
-	data := e.tmp()
-	line := fmt.Sprintf("%s = call ptr @sydney_tls_read(i64 %s, i64 %s)", data, handler, maxLen)
-	e.emit(line)
-
-	return e.wrapIntoResult(data, IrPtr)
-}
-
-func (e *Emitter) emitTlsWriteCall(expr *ast.CallExpr) (string, IrType) {
-	handler, _ := e.emitExpr(expr.Arguments[0])
-	data, _ := e.emitExpr(expr.Arguments[1])
-	l, _ := e.emitExpr(expr.Arguments[2])
-	lwritten := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tls_write(i64 %s, ptr %s, i64 %s)", lwritten, handler, data, l)
-	e.emit(line)
-
-	return e.wrapIntoResult(lwritten, IrInt)
-}
-
-func (e *Emitter) emitTlsCloseCall(expr *ast.CallExpr) (string, IrType) {
-	stream, _ := e.emitExpr(expr.Arguments[0])
-	result := e.tmp()
-	line := fmt.Sprintf("%s = call i64 @sydney_tls_close(i64 %s)", result, stream)
-	e.emit(line)
-
-	return e.wrapIntoResult(result, IrInt)
-}

@@ -70,7 +70,9 @@ declare ptr @sydney_tls_read(i64, i64)
 declare i64 @sydney_tls_write(i64, ptr, i64)
 declare ptr @sydney_tls_close(i64)
 declare ptr @sydney_ftoa(double)
-declare i64 @sydney_file_create(ptr)`
+declare i64 @sydney_file_create(ptr)
+declare i64 @sydney_term_enable_raw(i64)
+declare i64 @sydney_restore_state(i64)`
 
 func TestIntInfixExpr(t *testing.T) {
 	source := "print(1 + 2);"
