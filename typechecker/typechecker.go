@@ -458,7 +458,7 @@ func (c *Checker) check(n ast.Node) types.Type {
 		return c.check(node.Stmt)
 	case *ast.ExpressionStmt:
 		prev := c.inDiscardPosition
-		c.inDiscardPosition = c.currentReturnType == nil || !c.isLastInBlock
+		c.inDiscardPosition = c.currentReturnType == nil || c.currentReturnType == types.Unit || !c.isLastInBlock
 		t := c.typeOf(node.Expr, nil)
 		c.inDiscardPosition = prev
 		return t
@@ -778,16 +778,20 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			c.appendError(fmt.Sprintf("cannot use expression of type %s for if condition", t), expr)
 			return nil
 		}
+		discard := c.inDiscardPosition
+		c.inDiscardPosition = false
 		cType := c.check(expr.Consequence)
 		var aType types.Type
 		if expr.Alternative != nil {
 			aType = c.check(expr.Alternative)
 
-			if !c.inDiscardPosition && !c.typesMatch(cType, aType) {
+			if !discard && !c.typesMatch(cType, aType) {
 				c.appendError(fmt.Sprintf("consequence and alternative for if expression must result in same type"), expr)
+				c.inDiscardPosition = discard
 				return types.Unit
 			}
 		}
+		c.inDiscardPosition = discard
 
 		expr.ResolvedType = cType
 		e = expr
@@ -1954,6 +1958,9 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	}
 	expr.SubjectType = result.T
 
+	discard := c.inDiscardPosition
+	c.inDiscardPosition = false
+
 	okEnv := NewTypeEnv(c.env)
 	okEnv.Set(expr.OkArm.Pattern.Binding.Value, c.resolveType(result.T))
 	oldEnv := c.env
@@ -1961,6 +1968,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	okBranch := c.check(expr.OkArm.Body)
 	if okBranch == nil {
 		c.appendError(fmt.Sprintf("cannot resolve type for ok branch"), expr)
+		c.inDiscardPosition = discard
 		return nil
 	}
 	c.env = oldEnv
@@ -1978,11 +1986,13 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	errBranch := c.check(expr.ErrArm.Body)
 	if errBranch == nil {
 		c.appendError(fmt.Sprintf("cannot resolve type for err branch"), expr)
+		c.inDiscardPosition = discard
 		return nil
 	}
-	if !c.inDiscardPosition && !c.typesMatch(errBranch, okBranch) {
+	if !discard && !c.typesMatch(errBranch, okBranch) {
 		c.appendError(fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", okBranch.Signature(), errBranch.Signature()), expr)
 	}
+	c.inDiscardPosition = discard
 	c.env = oldEnv
 	c.currentMatchResultType = oldMatchResultType
 
@@ -2006,12 +2016,16 @@ func (c *Checker) checkTypeMatchExpr(expr *ast.MatchTypeExpr) types.Type {
 		}
 	}
 
+	discard := c.inDiscardPosition
+	c.inDiscardPosition = false
+
 	for i, arm := range expr.Arms {
 		resolved := c.resolveType(arm.Type)
 		if it, ok := subjType.(types.InterfaceType); ok {
 			if st, ok := resolved.(types.StructType); ok {
 				if !c.structSatisfiesInterface(st, it, expr) {
 					c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s", st.Name, it.Name), expr)
+					c.inDiscardPosition = discard
 					return types.Unit
 				}
 			}
@@ -2030,12 +2044,14 @@ func (c *Checker) checkTypeMatchExpr(expr *ast.MatchTypeExpr) types.Type {
 		c.popScope()
 	}
 
+	c.inDiscardPosition = discard
+
 	for _, t := range returnedTypes {
 		if resultType == nil {
 			resultType = t
 		}
 
-		if !c.inDiscardPosition && resultType != t {
+		if !discard && resultType != t {
 			c.appendError("all arms of type match must result in same type", expr)
 			return types.Unit
 		}
@@ -2047,6 +2063,9 @@ func (c *Checker) checkTypeMatchExpr(expr *ast.MatchTypeExpr) types.Type {
 func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType) types.Type {
 	expr.SubjectType = option.T
 
+	discard := c.inDiscardPosition
+	c.inDiscardPosition = false
+
 	someEnv := NewTypeEnv(c.env)
 	someEnv.Set(expr.SomeArm.Pattern.Binding.Value, option.T)
 	oldEnv := c.env
@@ -2054,6 +2073,7 @@ func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType)
 	someBranch := c.check(expr.SomeArm.Body)
 	if someBranch == nil {
 		c.appendError("cannot resolve type for some branch", expr)
+		c.inDiscardPosition = discard
 		return nil
 	}
 	c.env = oldEnv
@@ -2064,11 +2084,13 @@ func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType)
 	noneBranch := c.check(expr.NoneArm.Body)
 	if noneBranch == nil {
 		c.appendError("cannot resolve type for none branch", expr)
+		c.inDiscardPosition = discard
 		return nil
 	}
-	if !c.inDiscardPosition && !c.typesMatch(noneBranch, someBranch) {
+	if !discard && !c.typesMatch(noneBranch, someBranch) {
 		c.appendError(fmt.Sprintf("type mismatch: match arms must result in same type, got %s and %s", someBranch.Signature(), noneBranch.Signature()), expr)
 	}
+	c.inDiscardPosition = discard
 	c.env = oldEnv
 
 	if someBranch == types.Never {
