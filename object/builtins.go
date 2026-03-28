@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"sydney/types"
 
@@ -253,6 +254,26 @@ var Builtins = []struct {
 					return &Result{IsOk: false, Value: &String{Value: err.Error()}}
 				}
 				return &Result{IsOk: true, Value: &String{Value: string(buf)}}
+			},
+			T: types.FunctionType{Params: []types.Type{types.Int, types.Int}, Return: types.ResultType{T: types.String}},
+		},
+	},
+	{
+		"nb_freadn",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				fd := args[0].(*Integer).Value
+				n := args[1].(*Integer).Value
+				f := os.NewFile(uintptr(fd), "")
+				rawFd := f.Fd()
+				syscall.SetNonblock(int(rawFd), true)
+				buf := make([]byte, n)
+				nRead, err := f.Read(buf)
+				syscall.SetNonblock(int(rawFd), false)
+				if err != nil {
+					return &Result{IsOk: false, Value: &String{Value: err.Error()}}
+				}
+				return &Result{IsOk: true, Value: &String{Value: string(buf[:nRead])}}
 			},
 			T: types.FunctionType{Params: []types.Type{types.Int, types.Int}, Return: types.ResultType{T: types.String}},
 		},

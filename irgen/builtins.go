@@ -22,6 +22,7 @@ var runtimeBuiltins = map[string]RuntimeBuiltin{
 	"io__fclose":              {RuntimeName: "sydney_file_close", ParamTypes: []IrType{IrInt}, ReturnType: IrInt, WrapResult: true},
 	"io__fcreate":             {RuntimeName: "sydney_file_create", ParamTypes: []IrType{IrPtr}, ReturnType: IrInt, WrapResult: true},
 	"io__freadn":              {RuntimeName: "sydney_file_readn", ParamTypes: []IrType{IrInt, IrInt}, ReturnType: IrPtr, WrapResult: true},
+	"io__nb_freadn":           {RuntimeName: "sydney_non_blocking_readn", ParamTypes: []IrType{IrInt, IrInt}, ReturnType: IrPtr, WrapResult: true},
 	"conv__atof":              {RuntimeName: "sydney_atof", ParamTypes: []IrType{IrPtr}, ReturnType: IrFloat, WrapResult: true},
 	"conv__ftoa":              {RuntimeName: "sydney_ftoa", ParamTypes: []IrType{IrFloat}, ReturnType: IrPtr, WrapResult: false},
 	"net__tcp_conn":           {RuntimeName: "sydney_tcp_connect", ParamTypes: []IrType{IrPtr, IrInt}, ReturnType: IrInt, WrapResult: true},

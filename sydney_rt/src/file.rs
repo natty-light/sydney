@@ -117,6 +117,30 @@ pub extern "C" fn sydney_file_readn(fd: i64, n: i64) -> *const c_char {
 }
 
 #[no_mangle]
+pub extern "C" fn sydney_non_blocking_readn(fd: i64, n: i64) -> *const c_char {
+    use std::os::unix::io::RawFd;
+    let fd = fd as RawFd;
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+
+        let mut buf = vec![0u8; n as usize];
+        let bytes_read = libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, n as usize);
+
+        libc::fcntl(fd, libc::F_SETFL, flags);
+
+        if bytes_read <= 0 {
+            return std::ptr::null();
+        }
+        buf.truncate(bytes_read as usize);
+        match CString::new(buf) {
+            Ok(cs) => cs.into_raw(),
+            Err(_) => std::ptr::null(),
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn sydney_file_write(fd: i64, data: *const c_char) -> i64 {
     use std::io::Write;
     if data.is_null() {
