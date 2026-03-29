@@ -689,9 +689,9 @@ var Builtins = []struct {
 		"args",
 		&BuiltIn{
 			Fn: func(args ...Object) Object {
-				argv := os.Args
-				res := &Array{Elements: make([]Object, len(argv))}
-				for i, a := range argv[2:] {
+				stripped := os.Args[2:]
+				res := &Array{Elements: make([]Object, len(stripped))}
+				for i, a := range stripped {
 					res.Elements[i] = &String{Value: a}
 				}
 				return res
