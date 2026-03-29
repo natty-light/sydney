@@ -2,6 +2,7 @@ import "term"
 import "io"
 import "conv"
 import "strings"
+import "os"
 
 const term:Term t = term:Term { fd: 0 };
 const io:File stdout = io:File { fd: 1 };
@@ -15,6 +16,8 @@ define struct State {
   command string,
   buffer array<string>,
 }
+
+const argv = os:args();
 
 func render(State s) {
   stdout.write("\x1b[2J");
@@ -248,6 +251,29 @@ match is_raw {
 }
 
 mut state = State { cx: 0, cy: 0, mode: "normal", running: true, command: "", buffer: [] };
+
+if (len(argv) > 1) {
+  const filename = argv[1];
+  const r = io:open_file(filename);
+  match r {
+    ok(f) -> {
+      const datar = f.read()
+      match datar {
+        ok(contents) -> {
+          mut array<string> buf = [];
+          for (mut i = 0; i < len(contents); i = i + 1) {
+            buf = append(buf, char(contents[i]));
+          }
+          state.buffer = buf;
+        },
+        err(msg) -> {},
+      }
+    },
+    err(msg) -> {
+      panic(msg);
+    },
+  }
+}
 
 for (state.running) {
   render(state);
