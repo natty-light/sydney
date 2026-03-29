@@ -1450,13 +1450,13 @@ func TestStructs(t *testing.T) {
 				code.Make(code.OpConstant, 1),
 				code.Make(code.OpStruct, 2, 2),
 
-				code.Make(code.OpSetImmutableGlobal, 0),
-
-				code.Make(code.OpClosure, 3, 0),
 				code.Make(code.OpSetImmutableGlobal, 1),
 
-				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpClosure, 3, 0),
+				code.Make(code.OpSetImmutableGlobal, 0),
+
 				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetGlobal, 1),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 			},
@@ -1484,7 +1484,7 @@ func TestInterfaces(t *testing.T) {
 				&object.Itab{
 					InterfaceName:  "Area",
 					ConcreteName:   "Circle",
-					MethodsIndices: []int{1},
+					MethodsIndices: []int{0},
 				},
 				2.0,
 				&object.TypeObject{
@@ -1512,11 +1512,11 @@ func TestInterfaces(t *testing.T) {
 			expectedInstructions: []code.Instructions{
 				code.Make(code.OpConstant, 1),
 				code.Make(code.OpStruct, 2, 1),
-				code.Make(code.OpSetImmutableGlobal, 0),
-				code.Make(code.OpClosure, 4),
 				code.Make(code.OpSetImmutableGlobal, 1),
-				code.Make(code.OpGetGlobal, 1),
+				code.Make(code.OpClosure, 4),
+				code.Make(code.OpSetImmutableGlobal, 0),
 				code.Make(code.OpGetGlobal, 0),
+				code.Make(code.OpGetGlobal, 1),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 			},
@@ -1697,32 +1697,32 @@ func TestInterfacesAsArguments(t *testing.T) {
 				code.Make(code.OpConstant, 5),
 				code.Make(code.OpConstant, 6),
 				code.Make(code.OpStruct, 7, 2),
-				code.Make(code.OpSetImmutableGlobal, 3),
+				code.Make(code.OpSetImmutableGlobal, 4),
 
 				code.Make(code.OpConstant, 8),
 				code.Make(code.OpConstant, 9),
 				code.Make(code.OpStruct, 10, 2),
-				code.Make(code.OpSetImmutableGlobal, 4),
-
-				code.Make(code.OpClosure, 11, 0),
 				code.Make(code.OpSetImmutableGlobal, 5),
 
+				code.Make(code.OpClosure, 11, 0),
+				code.Make(code.OpSetImmutableGlobal, 3),
+
 				code.Make(code.OpGetGlobal, 2),
-				code.Make(code.OpGetGlobal, 3),
+				code.Make(code.OpGetGlobal, 4),
 				code.Make(code.OpBox, 0),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 
 				code.Make(code.OpGetGlobal, 2),
-				code.Make(code.OpGetGlobal, 4),
+				code.Make(code.OpGetGlobal, 5),
 				code.Make(code.OpBox, 1),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 
-				code.Make(code.OpGetGlobal, 5),
 				code.Make(code.OpGetGlobal, 3),
-				code.Make(code.OpBox, 0),
 				code.Make(code.OpGetGlobal, 4),
+				code.Make(code.OpBox, 0),
+				code.Make(code.OpGetGlobal, 5),
 				code.Make(code.OpBox, 1),
 				code.Make(code.OpCall, 2),
 				code.Make(code.OpPop),
@@ -1763,19 +1763,19 @@ test(f, d);`,
 
 				code.Make(code.OpConstant, 2),
 				code.Make(code.OpStruct, 3, 1),
-				code.Make(code.OpSetImmutableGlobal, 1),
+				code.Make(code.OpSetImmutableGlobal, 2),
 
 				code.Make(code.OpConstant, 4),
 				code.Make(code.OpStruct, 5, 1),
-				code.Make(code.OpSetImmutableGlobal, 2),
-
-				code.Make(code.OpClosure, 6, 0),
 				code.Make(code.OpSetImmutableGlobal, 3),
 
+				code.Make(code.OpClosure, 6, 0),
+				code.Make(code.OpSetImmutableGlobal, 1),
+
 				code.Make(code.OpGetGlobal, 0),
-				code.Make(code.OpGetGlobal, 1),
-				code.Make(code.OpBox, 0),
 				code.Make(code.OpGetGlobal, 2),
+				code.Make(code.OpBox, 0),
+				code.Make(code.OpGetGlobal, 3),
 				code.Make(code.OpBox, 0),
 				code.Make(code.OpCall, 2),
 				code.Make(code.OpPop),
@@ -1784,7 +1784,7 @@ test(f, d);`,
 				&object.Itab{
 					InterfaceName:  "Pet",
 					ConcreteName:   "Dog",
-					MethodsIndices: []int{3},
+					MethodsIndices: []int{1},
 				},
 				[]code.Instructions{ // test
 					code.Make(code.OpGetLocal, 1),

@@ -2773,9 +2773,6 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.pushScope()
 	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
-	if okResult == "" {
-		okResult = irZeroValue(rt)
-	}
 	okTerminated := e.blockTerminated
 	e.blockTerminated = false
 	e.popScope()
@@ -2802,9 +2799,6 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.pushScope()
 	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
 	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
-	if errResult == "" {
-		errResult = irZeroValue(rt)
-	}
 	errTerminated := e.blockTerminated
 	e.blockTerminated = false
 	e.popScope()
@@ -2874,9 +2868,6 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.pushScope()
 	e.locals[expr.SomeArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	someResult, _, _ := e.emitBlock(expr.SomeArm.Body)
-	if someResult == "" {
-		someResult = irZeroValue(rt)
-	}
 	e.popScope()
 	if rt != IrUnit {
 		line = fmt.Sprintf("store %s %s, ptr %s", rt, someResult, result)
@@ -2887,9 +2878,6 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	// none branch — no binding
 	e.emitLabel(noneLab)
 	noneResult, _, _ := e.emitBlock(expr.NoneArm.Body)
-	if noneResult == "" {
-		noneResult = irZeroValue(rt)
-	}
 	if rt != IrUnit {
 		line = fmt.Sprintf("store %s %s, ptr %s", rt, noneResult, result)
 		e.emit(line)
@@ -3486,21 +3474,4 @@ func (e *Emitter) emitUnboxAny(reg string, targetType IrType) (string, IrType) {
 	e.emit(line)
 	// bitcast back to target
 	return e.fromI64(rawVal, targetType)
-}
-
-func irZeroValue(t IrType) string {
-	switch t {
-	case IrInt:
-		return "0"
-	case IrInt8:
-		return "0"
-	case IrInt32:
-		return "0"
-	case IrFloat:
-		return "0.0"
-	case IrBool:
-		return "0"
-	}
-
-	return "null"
 }
