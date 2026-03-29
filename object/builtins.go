@@ -685,6 +685,20 @@ var Builtins = []struct {
 			T: types.FunctionType{Params: []types.Type{types.Int}, Return: types.ResultType{T: types.Int}},
 		},
 	},
+	{
+		"args",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				argv := os.Args
+				res := &Array{Elements: make([]Object, len(argv))}
+				for i, a := range argv[2:] {
+					res.Elements[i] = &String{Value: a}
+				}
+				return res
+			},
+			T: types.FunctionType{Params: []types.Type{}, Return: types.ArrayType{ElemType: types.String}},
+		},
+	},
 }
 
 func GetBuiltInByName(name string) *BuiltIn {
