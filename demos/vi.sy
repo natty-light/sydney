@@ -15,6 +15,7 @@ define struct State {
   running bool,
   command string,
   buffer array<string>,
+  filename string,
 }
 
 const argv = os:args();
@@ -87,7 +88,10 @@ func executeCommand(State s) {
 
   if (strings:starts_with(s.command, "w ")) {
     const size = len(s.command);
-    const filename = s.command[2:size];
+    mut filename = s.command[2:size];
+    if (strings:trim(filename) == "") {
+      filename = s.filename;
+    }
     mut content = "";
     for (item in s.buffer) {
       content = content + item;
@@ -250,10 +254,13 @@ match is_raw {
   err(msg) -> { panic(msg); },
 }
 
-mut state = State { cx: 0, cy: 0, mode: "normal", running: true, command: "", buffer: [] };
+mut state = State { cx: 0, cy: 0, mode: "normal", running: true, command: "", buffer: [], filename: "" };
 
 if (len(argv) > 1) {
   const filename = argv[1];
+  if (filename != "") {
+    state.filename = filename;
+  }
   const r = io:open_file(filename);
   match r {
     ok(f) -> {
