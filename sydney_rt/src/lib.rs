@@ -4,10 +4,10 @@ mod file;
 mod floats;
 mod gc;
 mod map;
+mod os;
 mod panic;
 mod print;
 mod socket;
 mod string;
-mod tls;
-
 mod term;
+mod tls;

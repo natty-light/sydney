@@ -165,7 +165,7 @@ func TestStringExpressions(t *testing.T) {
 func TestArrayLiterals(t *testing.T) {
 	tests := []vmTestCase{
 		{
-			`[]`, []int{},
+			`const array<int> a = []; a;`, []int{},
 		},
 		{
 			`[1, 2, 3]`, []int{1, 2, 3},
@@ -465,7 +465,7 @@ func TestBuiltinFunctions(t *testing.T) {
 			expected: 11,
 		},
 		{
-			source:   `len([])`,
+			source:   `const array<int> a = []; len(a)`,
 			expected: 0,
 		},
 		{
@@ -473,7 +473,7 @@ func TestBuiltinFunctions(t *testing.T) {
 			expected: 3,
 		},
 		{
-			source:   `append([], 1)`,
+			source:   `const array<int> a = []; append(a, 1)`,
 			expected: []int{1},
 		},
 	}
@@ -1155,7 +1155,7 @@ func TestForInArray(t *testing.T) {
 		},
 		// Empty array
 		{
-			source:   `mut s = 0; const a = []; for (v in a) { s = s + 1; } s;`,
+			source:   `mut s = 0; const array<int> a = []; for (v in a) { s = s + 1; } s;`,
 			expected: 0,
 		},
 		// String array

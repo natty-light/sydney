@@ -175,7 +175,7 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 		pkgEnv := NewTypeEnv(nil)
 		// Populate env with struct methods from already-checked dependencies
 		// (e.g. "Socket.read") so cross-module method calls work.
-		// Bare names are accessed via scope syntax (e.g. net:read).
+		// Bare names are accessed via scope
 		for _, env := range registry {
 			for name, typ := range env.store {
 				if strings.Contains(name, ".") {
@@ -714,6 +714,9 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 			if targetedElemType != nil {
 				resolved = types.ArrayType{ElemType: targetedElemType, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 			} else {
+				if isEmpty {
+					c.appendError("empty array literal requires a type annotation", expr)
+				}
 				resolved = types.ArrayType{ElemType: types.Null, CollectionType: types.CollectionType{IsEmpty: isEmpty}}
 			}
 		} else if targetedElemType != nil {
@@ -1341,7 +1344,7 @@ func (c *Checker) checkAppendBuiltIn(expr *ast.CallExpr) types.Type {
 	}
 
 	valType := c.typeOf(expr.Arguments[1], nil)
-	if !c.typesMatch(valType, arrType.ElemType) && !arrType.IsEmpty {
+	if !c.typesMatch(valType, arrType.ElemType) {
 		c.appendError(fmt.Sprintf("type mismatch: got %s for append() value", valType.Signature()), expr)
 	}
 
