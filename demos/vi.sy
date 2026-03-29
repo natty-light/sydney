@@ -16,7 +16,7 @@ define struct State {
   buffer array<string>,
 }
 
-const render = func(State s) {
+func render(State s) {
   stdout.write("\x1b[2J");
   stdout.write("\x1b[H");
 
@@ -43,7 +43,7 @@ const render = func(State s) {
   stdout.write("H");
 };
 
-const handleArrowKeys = func(State s, string chs) {
+func handleArrowKeys(State s, string chs) {
   if (chs == "[A") {
     if (s.cy > 0) {
       s.cy = s.cy - 1;
@@ -66,6 +66,7 @@ const handleArrowKeys = func(State s, string chs) {
 };
 
 func executeCommand(State s) {
+  stdout.write("hello")
   if (s.command == "q") {
     s.running = false;
     return;
@@ -97,6 +98,14 @@ func handleCommandInput(State s, string chr) {
   if (chr == "\r") {
     return executeCommand(s);
   }
+
+  if (chr == "\x7f") {
+    if (len(s.command) > 0) {
+      s.command = s.command[0:len(s.command)-1];
+    }
+    return;
+  }
+
   s.command = s.command + chr;
 }
 
@@ -174,7 +183,7 @@ func handleInsert(State s, string chr) {
 }
 
 
-const handleInput = func(State s) {
+func handleInput(State s) {
   const r = stdin.readn(1);
   match r {
     ok(ch) -> {
