@@ -10,9 +10,11 @@ import (
 )
 
 func ExpandDerives(program *ast.Program) {
-	var generated []ast.Stmt
+	var result []ast.Stmt
 
 	for _, stmt := range program.Stmts {
+		result = append(result, stmt)
+
 		var def *ast.StructDefinitionStmt
 		isPub := false
 
@@ -37,11 +39,11 @@ func ExpandDerives(program *ast.Program) {
 						fn := generateJsonUnmarshal(def.Name.Value, def.Type)
 						marshalFn := generateJsonMarshal(def.Name.Value, def.Type)
 						if isPub {
-							generated = append(generated, &ast.PubStatement{Stmt: fn})
-							generated = append(generated, &ast.PubStatement{Stmt: marshalFn})
+							result = append(result, &ast.PubStatement{Stmt: fn})
+							result = append(result, &ast.PubStatement{Stmt: marshalFn})
 						} else {
-							generated = append(generated, fn)
-							generated = append(generated, marshalFn)
+							result = append(result, fn)
+							result = append(result, marshalFn)
 						}
 					}
 				}
@@ -49,7 +51,7 @@ func ExpandDerives(program *ast.Program) {
 		}
 	}
 
-	program.Stmts = append(program.Stmts, generated...)
+	program.Stmts = result
 }
 
 func generateJsonUnmarshal(name string, st types.StructType) *ast.FunctionDeclarationStmt {

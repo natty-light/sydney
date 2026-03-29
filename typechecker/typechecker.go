@@ -2,6 +2,7 @@ package typechecker
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -31,8 +32,10 @@ type Checker struct {
 	genericStructs   map[string]*ast.StructDefinitionStmt    // templates
 	monomorphized    map[string]bool                         // "identity__int" → done
 
-	program       *ast.Program
-	currentModule string
+	program        *ast.Program
+	stmtIndex      int
+	pendingInserts map[int]ast.Stmt
+	currentModule  string
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -56,6 +59,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		genericFunctions:       make(map[string]*ast.FunctionDeclarationStmt),
 		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
 		monomorphized:          make(map[string]bool),
+		pendingInserts:         make(map[int]ast.Stmt),
 		program:                nil,
 	}
 }
@@ -81,6 +85,7 @@ func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]ty
 		genericFunctions:       make(map[string]*ast.FunctionDeclarationStmt),
 		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
 		monomorphized:          make(map[string]bool),
+		pendingInserts:         make(map[int]ast.Stmt),
 		program:                nil,
 	}
 }
@@ -95,6 +100,18 @@ func (c *Checker) pushScope() *TypeEnv {
 func (c *Checker) popScope() {
 	env := c.env.outer
 	c.env = env
+}
+
+func (c *Checker) insertPending(program *ast.Program) {
+	if len(c.pendingInserts) == 0 {
+		return
+	}
+	indices := slices.Sorted(maps.Keys(c.pendingInserts))
+	slices.Reverse(indices)
+	for _, idx := range indices {
+		program.Stmts = slices.Insert(program.Stmts, idx, c.pendingInserts[idx])
+	}
+	c.pendingInserts = make(map[int]ast.Stmt)
 }
 
 func (c *Checker) Errors() []errors.PositionError {
@@ -450,9 +467,11 @@ func (c *Checker) check(n ast.Node) types.Type {
 			c.hoistImplementations(stmt)
 		}
 
-		for _, stmt := range node.Stmts {
+		for i, stmt := range node.Stmts {
+			c.stmtIndex = i
 			c.check(stmt)
 		}
+		c.insertPending(node)
 		return types.Unit
 	case *ast.PubStatement:
 		return c.check(node.Stmt)
@@ -2218,7 +2237,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		c.checkFunctionDeclaration(clonedFn)
 
 		if c.program != nil {
-			c.program.Stmts = append(c.program.Stmts, clonedFn)
+			c.pendingInserts[c.stmtIndex] = clonedFn
 		}
 
 		c.monomorphized[mangledName] = true
@@ -2266,9 +2285,8 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 			Type: concreteType,
 		}
 
-		// inject back in to program
 		if c.program != nil {
-			c.program.Stmts = append(c.program.Stmts, synthetic)
+			c.pendingInserts[c.stmtIndex] = synthetic
 		}
 
 		c.monomorphized[mangled] = true
@@ -2307,7 +2325,7 @@ func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
 		}
 
 		if c.program != nil {
-			c.program.Stmts = append(c.program.Stmts, synthetic)
+			c.pendingInserts[c.stmtIndex] = synthetic
 		}
 
 		c.monomorphized[mangled] = true

@@ -2,6 +2,7 @@ package typechecker
 
 import (
 	"strings"
+	"sydney/ast"
 	"sydney/lexer"
 	"sydney/parser"
 	"testing"
@@ -1754,4 +1755,48 @@ func TestTypeMatchExprErrors(t *testing.T) {
 	}
 
 	testTypeErrors(t, tt)
+}
+
+func TestMonomorphizedFunctionInsertedBeforeCall(t *testing.T) {
+	src := `func identity<T>(T x) -> T { return x; }
+	const int r = identity<int>(42);`
+
+	l := lexer.New(src)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	c := New(nil)
+	c.Check(program, nil)
+	if len(c.Errors()) != 0 {
+		t.Fatalf("expected no errors, got %v", c.Errors())
+	}
+
+	ast.FilterGenericTemplates(program)
+
+	callIdx := -1
+	fnIdx := -1
+	for i, stmt := range program.Stmts {
+		switch s := stmt.(type) {
+		case *ast.FunctionDeclarationStmt:
+			if s.Name.Value == "identity__int" {
+				fnIdx = i
+			}
+		case *ast.VarDeclarationStmt:
+			if s.Name.Value == "r" {
+				callIdx = i
+			}
+		}
+	}
+
+	if fnIdx == -1 {
+		t.Fatal("monomorphized function identity__int not found in program")
+	}
+	if callIdx == -1 {
+		t.Fatal("variable declaration r not found in program")
+	}
+	if fnIdx >= callIdx {
+		t.Errorf("monomorphized function at index %d should appear before call site at index %d", fnIdx, callIdx)
+	}
 }
