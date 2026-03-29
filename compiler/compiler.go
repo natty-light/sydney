@@ -122,6 +122,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 				c.setInterface(name, def.Type)
 			}
 
+			if decl, ok := stmt.(*ast.VarDeclarationStmt); ok {
+				if decl.Constant {
+					c.symbolTable.DefineImmutable(decl.Name.Value)
+				} else {
+					c.symbolTable.DefineMutable(decl.Name.Value)
+				}
+			}
+
 			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok && !fn.IsExtern { // hoist functions for interfaces
 				name := fn.Name.Value
 				if fn.MangledName != "" {
@@ -195,12 +203,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if c.currentModule != "" && c.scopeIndex == 0 {
 			name = c.mangleModule(c.currentModule, name)
 		}
-		sym, fromOuter, ok := c.symbolTable.Resolve(name)
-
+		// this is commented out for the forward reference problem
+		// sym, fromOuter, ok := c.symbolTable.Resolve(name)
 		// if the variable exists in this scope, cannot redeclare
-		if ok && !fromOuter && sym.Scope != FunctionScope {
-			return fmt.Errorf("variable %s already declared", name)
-		}
+		// if ok && !fromOuter && sym.Scope != FunctionScope {
+		//	 return fmt.Errorf("variable %s already declared", name)
+		// }
 
 		if node.Value == nil {
 			if node.Type != nil {
@@ -218,25 +226,36 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		if node.Constant {
-			symbol := c.symbolTable.DefineImmutable(name)
+		sym, _, ok := c.symbolTable.Resolve(name)
+		if ok && sym.Scope == GlobalScope {
 			c.symbolTable.AnnotateType(name, node.Type)
-			cde := code.OpSetImmutableLocal
-
-			if symbol.Scope == GlobalScope {
+			cde := code.OpSetMutableGlobal
+			if node.Constant {
 				cde = code.OpSetImmutableGlobal
 			}
 
-			c.emitAt(node, cde, symbol.Index)
+			c.emitAt(node, cde, sym.Index)
 		} else {
-			symbol := c.symbolTable.DefineMutable(name)
-			c.symbolTable.AnnotateType(name, node.Type)
-			cde := code.OpSetMutableLocal
-			if symbol.Scope == GlobalScope {
-				cde = code.OpSetMutableGlobal
-			}
-			c.emitAt(node, cde, symbol.Index)
+			if node.Constant {
+				symbol := c.symbolTable.DefineImmutable(name)
+				c.symbolTable.AnnotateType(name, node.Type)
+				cde := code.OpSetImmutableLocal
 
+				if symbol.Scope == GlobalScope {
+					cde = code.OpSetImmutableGlobal
+				}
+
+				c.emitAt(node, cde, symbol.Index)
+			} else {
+				symbol := c.symbolTable.DefineMutable(name)
+				c.symbolTable.AnnotateType(name, node.Type)
+				cde := code.OpSetMutableLocal
+				if symbol.Scope == GlobalScope {
+					cde = code.OpSetMutableGlobal
+				}
+				c.emitAt(node, cde, symbol.Index)
+
+			}
 		}
 	case *ast.VarAssignmentStmt:
 		err := c.Compile(node.Value)
