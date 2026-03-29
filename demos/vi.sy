@@ -19,11 +19,22 @@ define struct State {
 func render(State s) {
   stdout.write("\x1b[2J");
   stdout.write("\x1b[H");
+  mut should_write_line_no = true;
+  mut line = 1;
 
+  const gutter = len(conv:itoa(s.cy + 1)) + 2;
   for (item in s.buffer) {
     if (item == "\n") {
       stdout.write("\r\n");
+      should_write_line_no = true;
+      line = line + 1;
     } else {
+      if (should_write_line_no) {
+        const line_as_str = conv:itoa(line);
+        const padding = gutter - len(line_as_str);
+        stdout.write(line_as_str + strings:repeat(" ", padding));
+        should_write_line_no = false;
+      }
       stdout.write(item);
     }
   }
@@ -39,7 +50,7 @@ func render(State s) {
   stdout.write("\x1b[");
   stdout.write(conv:itoa(s.cy + 1));
   stdout.write(";");
-  stdout.write(conv:itoa(s.cx + 1));
+  stdout.write(conv:itoa(s.cx + 1 + gutter));
   stdout.write("H");
 };
 
@@ -66,7 +77,6 @@ func handleArrowKeys(State s, string chs) {
 };
 
 func executeCommand(State s) {
-  stdout.write("hello")
   if (s.command == "q") {
     s.running = false;
     return;
@@ -88,7 +98,6 @@ func executeCommand(State s) {
       err(msg) -> {},
     }
   }
-  
 
   s.command = "";
   s.mode = "normal";
