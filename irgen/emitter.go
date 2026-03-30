@@ -36,7 +36,7 @@ type freeVar struct {
 }
 
 type funcState struct {
-	locals    map[string]irLocal
+	scope     *irScope
 	tmpIdx    int
 	lblIdx    int
 	depth     int
@@ -50,13 +50,40 @@ type LoopLabels struct {
 	escapeLabel string
 }
 
+type irScope struct {
+	locals map[string]irLocal
+	parent *irScope
+}
+
+func newScope(parent *irScope) *irScope {
+	return &irScope{
+		locals: make(map[string]irLocal),
+		parent: parent,
+	}
+}
+
+func (s *irScope) get(name string) (irLocal, bool) {
+	if l, ok := s.locals[name]; ok {
+		return l, true
+	}
+
+	if s.parent != nil {
+		return s.parent.get(name)
+	}
+
+	return irLocal{}, false
+}
+
+func (s *irScope) set(name string, irLocal irLocal) {
+	s.locals[name] = irLocal
+}
+
 type Emitter struct {
 	buf     *bytes.Buffer
 	funcBuf *bytes.Buffer
 	tmpIdx  int
 	anonIdx int
 	lblIdx  int
-	locals  map[string]irLocal
 	globals map[string]irGlobal
 	inFunc  bool
 	depth   int
@@ -68,8 +95,9 @@ type Emitter struct {
 	stringConsts   map[string]int                 // string value → index (@.str.0, ...)
 	stringIdx      int
 
-	funcSigs   map[string]funcSig   // function name → { retType, paramTypes }
-	scopeStack []map[string]irLocal // stack of local scopes for nested functions
+	funcSigs map[string]funcSig // function name → { retType, paramTypes }
+
+	scope *irScope
 
 	allocaBuf *bytes.Buffer
 	bodyBuf   *bytes.Buffer
@@ -99,10 +127,8 @@ func New() *Emitter {
 		stringConsts:   make(map[string]int),
 		stringIdx:      0,
 		vtables:        make(map[string]map[string][]string),
-		locals:         make(map[string]irLocal),
 		globals:        make(map[string]irGlobal),
 		funcSigs:       make(map[string]funcSig),
-		scopeStack:     make([]map[string]irLocal, 0),
 
 		buf:     &bytes.Buffer{},
 		funcBuf: &bytes.Buffer{},
@@ -113,6 +139,8 @@ func New() *Emitter {
 		loopIdx:         0,
 
 		indents: generateIndents(),
+
+		scope: newScope(nil),
 	}
 }
 
@@ -715,7 +743,7 @@ func (e *Emitter) emitJmp(label string) {
 func (e *Emitter) beginFunction() funcState {
 	e.inFunc = true
 	state := funcState{
-		locals:    e.locals,
+		scope:     e.scope,
 		tmpIdx:    e.tmpIdx,
 		lblIdx:    e.lblIdx,
 		depth:     e.depth,
@@ -723,7 +751,7 @@ func (e *Emitter) beginFunction() funcState {
 		bodyBuf:   e.bodyBuf,
 	}
 
-	e.locals = make(map[string]irLocal)
+	e.scope = newScope(e.scope)
 	e.tmpIdx = 0
 	e.lblIdx = 0
 	e.currentBlock = "entry"
@@ -733,7 +761,7 @@ func (e *Emitter) beginFunction() funcState {
 }
 
 func (e *Emitter) endFunction(state funcState) {
-	e.locals = state.locals
+	e.scope = state.scope
 	e.tmpIdx = state.tmpIdx
 	e.lblIdx = state.lblIdx
 	e.depth = state.depth
@@ -882,7 +910,7 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 		return e.emitCallExpr(expr)
 	case *ast.Identifier:
 		name := expr.Value
-		irRep, ok := e.locals[name]
+		irRep, ok := e.scope.get(name)
 		var irName string
 		var irType IrType
 		if ok {
@@ -1182,7 +1210,7 @@ func (e *Emitter) emitCallExpr(expr *ast.CallExpr) (string, IrType) {
 		if exists {
 			return e.emitFunctionCall(expr, sig)
 		}
-		local, exists := e.locals[name]
+		local, exists := e.scope.get(name)
 		if exists {
 			return e.emitClosureCall(expr, local.alloca, local.typ)
 		}
@@ -1323,7 +1351,7 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 		e.emitAlloca(allocaName, valType)
 
 		e.emitStore(valType.String(), val, allocaName)
-		e.locals[name] = irLocal{alloca: allocaName, typ: valType}
+		e.scope.set(name, irLocal{alloca: allocaName, typ: valType})
 	}
 
 	return val, valType
@@ -1332,7 +1360,7 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) (string, IrType) {
 	val, valType := e.emitExpr(stmt.Value)
 	name := stmt.Identifier.Value
-	irRep, ok := e.locals[name]
+	irRep, ok := e.scope.get(name)
 	var irName string
 	if ok {
 		irName = irRep.alloca
@@ -1519,7 +1547,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 		keyAlloca := e.alloca(stmt.Key.Value)
 		e.emitAlloca(keyAlloca, IrInt)
 		e.emitStore("i64", curIdx, keyAlloca)
-		e.locals[stmt.Key.Value] = irLocal{alloca: keyAlloca, typ: IrInt}
+		e.scope.set(stmt.Key.Value, irLocal{alloca: keyAlloca, typ: IrInt})
 	}
 
 	// bind value: v = arr[idx]
@@ -1538,7 +1566,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	valAlloca := e.alloca(stmt.Value.Value)
 	e.emitAlloca(valAlloca, elemType)
 	e.emitStore(elemType.String(), elemVal, valAlloca)
-	e.locals[stmt.Value.Value] = irLocal{alloca: valAlloca, typ: elemType}
+	e.scope.set(stmt.Value.Value, irLocal{alloca: valAlloca, typ: elemType})
 
 	// compile body
 	e.emitBlock(stmt.Body)
@@ -1632,7 +1660,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	keyAlloca := e.alloca(stmt.Key.Value)
 	e.emitAlloca(keyAlloca, keyType)
 	e.emitStore(keyType.String(), keyVal, keyAlloca)
-	e.locals[stmt.Key.Value] = irLocal{alloca: keyAlloca, typ: keyType}
+	e.scope.set(stmt.Key.Value, irLocal{alloca: keyAlloca, typ: keyType})
 
 	// bind value: v = map[k]
 	valType := SydneyTypeToIrType(mt.ValueType)
@@ -1657,7 +1685,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	valAlloca := e.alloca(stmt.Value.Value)
 	e.emitAlloca(valAlloca, finalType)
 	e.emitStore(finalType.String(), finalVal, valAlloca)
-	e.locals[stmt.Value.Value] = irLocal{alloca: valAlloca, typ: finalType}
+	e.scope.set(stmt.Value.Value, irLocal{alloca: valAlloca, typ: finalType})
 
 	// compile body
 	e.emitBlock(stmt.Body)
@@ -1786,7 +1814,7 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 		e.emitAlloca(allocaName, paramIrTypes[i])
 
 		e.emitStore(paramIrTypes[i].String(), "%"+pName, allocaName)
-		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(fType.Params[i])}
+		e.scope.set(pName, irLocal{alloca: allocaName, typ: SydneyTypeToIrType(fType.Params[i])})
 	}
 
 	e.depth = 0
@@ -1870,7 +1898,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		e.emitAlloca(allocaName, fv.typ)
 
 		e.emitStore(fv.typ.String(), loaded, allocaName)
-		e.locals[fv.name] = irLocal{allocaName, fv.typ}
+		e.scope.set(fv.name, irLocal{allocaName, fv.typ})
 	}
 
 	// allocate params
@@ -1880,7 +1908,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		e.emitAlloca(allocaName, paramIrTypes[i])
 
 		e.emitStore(paramIrTypes[i].String(), "%"+pName, allocaName)
-		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(expr.Type.Params[i])}
+		e.scope.set(pName, irLocal{alloca: allocaName, typ: SydneyTypeToIrType(expr.Type.Params[i])})
 	}
 	e.depth = 0
 
@@ -1896,7 +1924,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", selfEnvSlot, selfAlloca)
 		e.emit(line)
 		e.emitStore("ptr", "%env", selfEnvSlot)
-		e.locals[expr.Name] = irLocal{selfAlloca, IrFatPtr}
+		e.scope.set(expr.Name, irLocal{selfAlloca, IrFatPtr})
 	}
 
 	e.pushScope()
@@ -1945,7 +1973,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 			e.emit(line)
 
 			fvVal := e.tmp()
-			local := state.locals[fv.name]
+			local, _ := state.scope.get(fv.name)
 			e.emitLoad(fvVal, fv.typ.String(), local.alloca)
 
 			e.emitStore(fv.typ.String(), fvVal, slot)
@@ -2175,7 +2203,7 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 		switch n := node.(type) {
 		case *ast.Identifier:
 			if !paramSet[n.Value] && !seen[n.Value] {
-				if local, ok := e.locals[n.Value]; ok {
+				if local, ok := e.scope.get(n.Value); ok {
 					seen[n.Value] = true
 					freeVars = append(freeVars, freeVar{
 						name: n.Value,
@@ -2811,7 +2839,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitAlloca(bindAlloca, innerType)
 	e.emitStore(innerType.String(), val, bindAlloca)
 	e.pushScope()
-	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
+	e.scope.set(expr.OkArm.Pattern.Binding.Value, irLocal{alloca: bindAlloca, typ: innerType})
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
 	if okResult == "" {
 		okResult = irZeroValueFromType(rt)
@@ -2837,7 +2865,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitAlloca(bindAlloca, IrPtr)
 	e.emitStore("ptr", errVal, bindAlloca)
 	e.pushScope()
-	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
+	e.scope.set(expr.ErrArm.Pattern.Binding.Value, irLocal{alloca: bindAlloca, typ: IrPtr})
 	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
 	if errResult == "" {
 		errResult = irZeroValueFromType(rt)
@@ -2904,7 +2932,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitAlloca(bindAlloca, innerType)
 	e.emitStore(innerType.String(), val, bindAlloca)
 	e.pushScope()
-	e.locals[expr.SomeArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
+	e.scope.set(expr.SomeArm.Pattern.Binding.Value, irLocal{alloca: bindAlloca, typ: innerType})
 	someResult, _, _ := e.emitBlock(expr.SomeArm.Body)
 	if someResult == "" {
 		someResult = irZeroValueFromType(rt)
@@ -2990,7 +3018,7 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 		e.emitStore("ptr", valPtr, bindAlloca)
 
 		e.pushScope()
-		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
+		e.scope.set(arm.Binding.Value, irLocal{alloca: bindAlloca, typ: IrPtr})
 		armResult, _, _ := e.emitBlock(arm.Body)
 		armTerminated := e.blockTerminated
 		e.blockTerminated = false
@@ -3071,7 +3099,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 		e.emitStore(unboxedType.String(), unboxed, bindAlloca)
 
 		e.pushScope()
-		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: unboxedType}
+		e.scope.set(arm.Binding.Value, irLocal{alloca: bindAlloca, typ: unboxedType})
 		armResult, _, _ := e.emitBlock(arm.Body)
 		armTerminated := e.blockTerminated
 		e.blockTerminated = false
@@ -3121,17 +3149,11 @@ func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType
 }
 
 func (e *Emitter) pushScope() {
-	e.scopeStack = append(e.scopeStack, e.locals)
-	newLocals := make(map[string]irLocal)
-	for k, v := range e.locals {
-		newLocals[k] = v
-	}
-	e.locals = newLocals
+	e.scope = newScope(e.scope)
 }
 
 func (e *Emitter) popScope() {
-	e.locals = e.scopeStack[len(e.scopeStack)-1]
-	e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
+	e.scope = e.scope.parent
 }
 
 func (e *Emitter) enterLoop(condLabel, postLabel, escapeLabel string) {
