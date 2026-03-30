@@ -1747,6 +1747,9 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 	indexOrKeyType := c.typeOf(node.Left.Index, nil)
 
 	valType := c.typeOf(node.Value, t)
+	if valType == nil {
+		return types.Unit
+	}
 
 	switch colType := t.(type) {
 	case types.ArrayType:
@@ -1771,10 +1774,6 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 }
 
 func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) types.Type {
-	if len(node.TypeParams) > 0 {
-		c.checkGenericFunctionBody(node)
-		return types.Unit
-	}
 	name := node.Name.Value
 	fTypeRaw := node.Type.(types.FunctionType)
 	resolved := c.resolveFunctionType(fTypeRaw)
@@ -1822,35 +1821,6 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 	}
 
 	return types.Unit
-}
-
-func (c *Checker) checkGenericFunctionBody(node *ast.FunctionDeclarationStmt) {
-	subs := make(map[string]types.Type)
-	for _, tp := range node.TypeParams {
-		subs[tp.Name] = types.Any
-	}
-	fType := types.SubstituteTypeParams(node.Type.(types.FunctionType), subs).(types.FunctionType)
-
-	oldErrors := c.errors
-	c.errors = nil
-
-	oldInLoop := c.inLoop
-	c.inLoop = false
-	oldReturnType := c.currentReturnType
-	c.currentReturnType = fType.Return
-	oldEnv := c.env
-	c.env = NewTypeEnv(oldEnv)
-
-	for i, param := range node.Params {
-		c.env.Set(param.Value, fType.Params[i])
-	}
-
-	c.check(node.Body)
-
-	c.env = oldEnv
-	c.currentReturnType = oldReturnType
-	c.inLoop = oldInLoop
-	c.errors = oldErrors
 }
 
 func allPathsReturn(block *ast.BlockStmt) bool {
