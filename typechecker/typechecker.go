@@ -238,6 +238,7 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 								}
 							}
 						}
+						continue
 					}
 
 					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
