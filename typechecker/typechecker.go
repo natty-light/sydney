@@ -36,7 +36,7 @@ type Checker struct {
 
 	program        *ast.Program
 	stmtIndex      int
-	pendingInserts map[int]ast.Stmt
+	pendingInserts map[int][]ast.Stmt
 	currentModule  string
 }
 
@@ -63,7 +63,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
 		monomorphized:          make(map[string]bool),
 		structNodes:            make(map[string]*ast.StructDefinitionStmt),
-		pendingInserts:         make(map[int]ast.Stmt),
+		pendingInserts:         make(map[int][]ast.Stmt),
 		program:                nil,
 	}
 }
@@ -101,9 +101,9 @@ func (c *Checker) insertPending(program *ast.Program) {
 	indices := slices.Sorted(maps.Keys(c.pendingInserts))
 	slices.Reverse(indices)
 	for _, idx := range indices {
-		program.Stmts = slices.Insert(program.Stmts, idx, c.pendingInserts[idx])
+		program.Stmts = slices.Insert(program.Stmts, idx, c.pendingInserts[idx]...)
 	}
-	c.pendingInserts = make(map[int]ast.Stmt)
+	c.pendingInserts = make(map[int][]ast.Stmt)
 }
 
 func (c *Checker) Errors() []errors.PositionError {
@@ -2211,7 +2211,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		c.checkFunctionDeclaration(clonedFn)
 
 		if c.program != nil {
-			c.pendingInserts[c.stmtIndex] = clonedFn
+			c.pendingInserts[c.stmtIndex] = append(c.pendingInserts[c.stmtIndex], clonedFn)
 		}
 
 		c.monomorphized[mangledName] = true
@@ -2237,6 +2237,12 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 		return types.StructType{}, false
 	}
 
+	for _, ta := range expr.TypeArgs {
+		if _, isParam := ta.(*types.TypeParamRef); isParam {
+			return template, true
+		}
+	}
+
 	subs := make(map[string]types.Type)
 	for i, tp := range template.TypeParams {
 		subs[tp.Name] = expr.TypeArgs[i]
@@ -2258,16 +2264,92 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 			Name: &ast.Identifier{Value: mangled},
 			Type: concreteType,
 		}
+		c.structNodes[mangled] = synthetic
 
 		if c.program != nil {
-			c.pendingInserts[c.stmtIndex] = synthetic
+			c.pendingInserts[c.stmtIndex] = append(c.pendingInserts[c.stmtIndex], synthetic)
 		}
 
 		c.monomorphized[mangled] = true
+
+		c.monomorphizeStructMethods(template.Name, expr.TypeArgs, subs)
 	}
 	expr.Name = mangled
 
 	return c.definedStructs[mangled], true
+}
+
+func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.Type, subs map[string]types.Type) {
+	mangledStruct := mangleName(structName, typeArgs)
+	for fname, fn := range c.genericFunctions {
+		ft, ok := fn.Type.(types.FunctionType)
+		if !ok || len(ft.Params) == 0 {
+			continue
+		}
+		firstParam, ok := ft.Params[0].(types.StructType)
+		if !ok || firstParam.Name != structName {
+			continue
+		}
+		mangledFn := mangleName(fname, typeArgs)
+		if c.monomorphized[mangledFn] {
+			continue
+		}
+
+		cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{fn}})
+		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
+
+		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
+		if cft, ok := clonedFn.Type.(types.FunctionType); ok {
+			for i, p := range cft.Params {
+				cft.Params[i] = c.resolveGenericStructType(p)
+			}
+			cft.Return = c.resolveGenericStructType(cft.Return)
+			clonedFn.Type = cft
+		}
+
+		clonedFn.Name.Value = fname
+		clonedFn.TypeParams = nil
+		ast.SubstituteTypeParams(clonedFn.Body, subs)
+
+		methodKey := fmt.Sprintf("%s.%s", mangledStruct, fname)
+		c.env.Set(methodKey, clonedFn.Type)
+		clonedFn.MangledName = methodKey
+
+		c.checkFunctionDeclaration(clonedFn)
+
+		if c.program != nil {
+			c.pendingInserts[c.stmtIndex] = append(c.pendingInserts[c.stmtIndex], clonedFn)
+		}
+
+		c.monomorphized[mangledFn] = true
+	}
+
+	mangled := mangleName(structName, typeArgs)
+	if st, ok := c.definedStructs[mangled]; ok {
+		allInterfaces := make([]types.InterfaceType, 0)
+		for _, it := range c.definedInterfaces {
+			allInterfaces = append(allInterfaces, it)
+		}
+		for modName, mt := range c.moduleTypes {
+			for _, t := range mt {
+				if it, ok := t.(types.InterfaceType); ok {
+					if it.Module == "" {
+						it.Module = modName
+					}
+					allInterfaces = append(allInterfaces, it)
+				}
+			}
+		}
+		for _, it := range allInterfaces {
+			if c.structSatisfiesInterface(st, it, nil, false) {
+				st.Interfaces = append(st.Interfaces, it)
+				c.definedStructs[mangled] = st
+				if node, ok := c.structNodes[mangled]; ok {
+					node.Type = st
+				}
+			}
+		}
+	}
 }
 
 func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
@@ -2279,6 +2361,12 @@ func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
 	template, exists := c.genericStructs[st.Name]
 	if !exists {
 		return t
+	}
+
+	for _, ta := range st.TypeArgs {
+		if _, isParam := ta.(*types.TypeParamRef); isParam {
+			return t
+		}
 	}
 
 	mangled := mangleName(st.Name, st.TypeArgs)
@@ -2299,7 +2387,7 @@ func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
 		}
 
 		if c.program != nil {
-			c.pendingInserts[c.stmtIndex] = synthetic
+			c.pendingInserts[c.stmtIndex] = append(c.pendingInserts[c.stmtIndex], synthetic)
 		}
 
 		c.monomorphized[mangled] = true

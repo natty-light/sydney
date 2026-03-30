@@ -1593,6 +1593,9 @@ func substituteInStmt(stmt Stmt, subs map[string]types.Type) {
 		if s.Type != nil {
 			s.Type = types.SubstituteTypeParams(s.Type, subs)
 		}
+		if s.Value != nil {
+			substituteInExpr(s.Value, subs)
+		}
 	case *BlockStmt:
 		SubstituteTypeParams(s, subs)
 	case *ExpressionStmt:
@@ -1628,6 +1631,20 @@ func substituteInExpr(expr Expr, subs map[string]types.Type) {
 	case *MatchTypeExpr:
 		for _, arm := range e.Arms {
 			SubstituteTypeParams(arm.Body, subs)
+		}
+	case *StructLiteral:
+		for i, ta := range e.TypeArgs {
+			e.TypeArgs[i] = types.SubstituteTypeParams(ta, subs)
+		}
+		for _, v := range e.Values {
+			substituteInExpr(v, subs)
+		}
+	case *CallExpr:
+		for i, ta := range e.TypeArgs {
+			e.TypeArgs[i] = types.SubstituteTypeParams(ta, subs)
+		}
+		for _, arg := range e.Arguments {
+			substituteInExpr(arg, subs)
 		}
 	}
 }

@@ -1362,6 +1362,9 @@ func (c *Compiler) buildItabsFromTypes() {
 			if !ok && c.currentModule != "" {
 				it, ok = c.fetchInterfaceType(c.mangleModule(c.currentModule, in))
 			}
+			if !ok && iface.Module != "" {
+				it, ok = c.fetchInterfaceType(c.mangleModule(iface.Module, in))
+			}
 			if !ok {
 				continue
 			}
@@ -1387,6 +1390,10 @@ func (c *Compiler) buildItabsFromTypes() {
 			bareName := st.Name
 			itabKey := getItabKey(bareName, in)
 			c.itabMapping[itabKey] = itabIdx
+			if iface.Module != "" {
+				moduleIfaceKey := getItabKey(bareName, c.mangleModule(iface.Module, in))
+				c.itabMapping[moduleIfaceKey] = itabIdx
+			}
 			if c.currentModule != "" {
 				mangledKey := getItabKey(bareName, c.mangleModule(c.currentModule, in))
 				c.itabMapping[mangledKey] = itabIdx
