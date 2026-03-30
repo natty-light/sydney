@@ -491,8 +491,9 @@ func TestInterfaceImplementationTypeErrorChecking(t *testing.T) {
 			input: `define interface Sized { size(int unit) -> int }
 define struct Box { w int }
 func size(Box b, string unit) -> int { b.w }
-define implementation Box -> Sized`,
-			expectedError: "struct Box does not satisfy interface Sized, wrong signature for method size. got func<(Box, string) -> int>, want func<(int) -> int>",
+func getSize(Sized s) -> int { return s.size(1); }
+getSize(Box { w: 5 })`,
+			expectedError: "struct Box does not satisfy interface Sized, wrong signature for method size",
 		},
 	}
 
@@ -1266,6 +1267,72 @@ func TestInterfaceMethodDispatch(t *testing.T) {
 			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
 		}
 	}
+}
+
+func TestImplicitInterfaceSatisfaction(t *testing.T) {
+	sources := []string{
+		`define struct Circle { r float }
+		define interface Shape { area() -> float }
+		func area(Circle c) -> float { return c.r * c.r * 3.14; }
+		func getArea(Shape s) -> float { return s.area(); }
+		const Circle c = Circle { r: 5.0 };
+		const float a = getArea(c);`,
+
+		`define struct Dog { name string }
+		define struct Cat { name string }
+		define interface Pet { speak() -> string }
+		func speak(Dog d) -> string { return d.name; }
+		func speak(Cat c) -> string { return c.name; }
+		func greet(Pet p) -> string { return p.speak(); }
+		greet(Dog { name: "Rex" });
+		greet(Cat { name: "Whiskers" });`,
+
+		`define struct Rect { w float, h float }
+		define interface Shape { area() -> float }
+		define interface Measurable { perimeter() -> float }
+		func area(Rect r) -> float { return r.w * r.h; }
+		func perimeter(Rect r) -> float { return 2.0 * (r.w + r.h); }
+		func getArea(Shape s) -> float { return s.area(); }
+		func getPerimeter(Measurable m) -> float { return m.perimeter(); }
+		const Rect r = Rect { w: 3.0, h: 4.0 };
+		getArea(r);
+		getPerimeter(r);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestImplicitSatisfactionTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define struct Box { w int }
+			define interface Sized { size(int unit) -> int }
+			func getSize(Sized s) -> int { return s.size(1); }
+			getSize(Box { w: 5 })`,
+			expectedError: "struct Box does not satisfy interface Sized, missing method size",
+		},
+		{
+			input: `define struct Box { w int }
+			define interface Sized { size(int unit) -> int }
+			func size(Box b, string unit) -> int { b.w }
+			func getSize(Sized s) -> int { return s.size(1); }
+			getSize(Box { w: 5 })`,
+			expectedError: "wrong signature for method size",
+		},
+	}
+
+	testTypeErrors(t, tests)
 }
 
 func TestClosureCapture(t *testing.T) {
