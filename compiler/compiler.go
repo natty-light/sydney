@@ -184,12 +184,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
+		c.pushBlockScope()
 		for _, s := range node.Stmts {
 			err := c.Compile(s)
 			if err != nil {
 				return err
 			}
 		}
+		c.popBlockScope()
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
 		if c.currentModule != "" && c.scopeIndex == 0 {
