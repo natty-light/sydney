@@ -1,16 +1,7 @@
 import "sort"
+import "slice"
 
 module "stats"
-
-define struct Slice<V> { values array<V> }
-
-func length<V>(Slice<V> s) -> int { len(s.values); }
-func less<V>(Slice<V> s, int i, int j) -> bool { s.values[i] < s.values[j]; }
-func swap<V>(Slice<V> s, int i, int j) {
-    const tmp = s.values[i];
-    s.values[i] = s.values[j];
-    s.values[j] = tmp;
-}
 
 pub func mean<V>(array<V> vals) -> float {
     mut V x;
@@ -22,7 +13,7 @@ pub func mean<V>(array<V> vals) -> float {
 }
 
 pub func median<V>(array<V> vals) -> float {
-    const s = Slice<V> { values: vals };
+    const s = slice:Slice<V> { values: vals };
     sort:quick_sort(s);
     const n = len(s.values);
     if (n % 2 == 1) {
