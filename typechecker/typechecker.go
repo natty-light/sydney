@@ -35,9 +35,9 @@ type Checker struct {
 	monomorphized    map[string]bool                         // "identity__int" → done
 	structNodes      map[string]*ast.StructDefinitionStmt    // for writing back Interfaces
 
-	program        *ast.Program
-	stmtIndex      int
-	pendingInserts map[int][]ast.Stmt
+	program                 *ast.Program
+	stmtIndex               int
+	pendingInserts          map[int][]ast.Stmt
 	currentModule           string
 	moduleInterfacesIndexed bool
 }
@@ -2500,6 +2500,7 @@ func (c *Checker) candidateInterfaces(structName string) []types.InterfaceType {
 }
 
 func (c *Checker) discoverImplementations() {
+	c.indexModuleInterfaces()
 	for sn, st := range c.definedStructs {
 		for _, it := range c.candidateInterfaces(sn) {
 			if c.structSatisfiesInterface(st, it, nil, false) {
