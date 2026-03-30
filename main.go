@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sydney/errors"
 
@@ -26,11 +27,13 @@ type Flag string
 const (
 	dumpAst   Flag = "dump-ast"
 	dumpTypes Flag = "dump-types"
+	profile   Flag = "profile"
 )
 
 var allowedFlags = map[Flag]bool{
 	dumpTypes: true,
 	dumpAst:   true,
+	profile:   true,
 }
 
 type CommandFunc func(args []string, flags map[Flag]bool) int
@@ -180,6 +183,16 @@ func Run(args []string, flags map[Flag]bool) int {
 }
 
 func Compile(args []string, flags map[Flag]bool) int {
+	if flags[profile] {
+		f, err := os.Create("cpu.prof")
+		if err != nil {
+			fmt.Printf("could not create profile: %s\n", err)
+			return 1
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	filename := args[0]
 	file, err := os.ReadFile(filename)
 	if err != nil {

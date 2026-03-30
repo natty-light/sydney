@@ -1,12 +1,8 @@
+import "slice"
+
 module "heap"
 
-pub define interface Heapable {
-    length() -> int,
-    less(int i, int j) -> bool,
-    swap(int i, int j),
-}
-
-pub func sift_down(Heapable h, int n, int i) {
+pub func sift_down(slice:Sortable h, int n, int i) {
     mut int largest = i;
     const int left = 2 * i + 1
     const int right = 2 * i + 2
@@ -25,7 +21,7 @@ pub func sift_down(Heapable h, int n, int i) {
     }
 }
 
-pub func sift_up(Heapable h, int i) {
+pub func sift_up(slice:Sortable h, int i) {
     for (i > 0) {
         const parent = (i - 1) / 2;
         if (h.less(i, parent)) {
@@ -38,14 +34,14 @@ pub func sift_up(Heapable h, int i) {
 }
 
 
-pub func heapify(Heapable h) {
+pub func heapify(slice:Sortable h) {
     const n = h.length();
      for (mut int i = n / 2 - 1; i >= 0; i = i - 1) {
         sift_down(h, n, i);
     }
 }
 
-pub func heap_sort(Heapable h) {
+pub func heap_sort(slice:Sortable h) {
     heapify(h);
     for (mut int i = h.length() - 1; i > 0; i = i - 1) {
         h.swap(0, i);

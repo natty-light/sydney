@@ -1,12 +1,8 @@
+import "slice"
+
 module "sort"
 
-pub define interface Sortable {
-    length() -> int,
-    less(int i, int j) -> bool,
-    swap(int i, int j),
-}
-
-func partition(Sortable s, int lo, int hi) -> int {
+func partition(slice:Sortable s, int lo, int hi) -> int {
     mut i = lo;
     for (mut j = lo; j < hi; j = j + 1) {
         if (s.less(j, hi)) {
@@ -20,7 +16,7 @@ func partition(Sortable s, int lo, int hi) -> int {
 }
 
 
-func qs(Sortable s, int lo, int hi) {
+func qs(slice:Sortable s, int lo, int hi) {
     if (lo < hi) {
         const p = partition(s, lo, hi);
         qs(s, lo, p - 1);
@@ -28,6 +24,6 @@ func qs(Sortable s, int lo, int hi) {
     }
 }
 
-pub func quick_sort(Sortable s) {
+pub func quick_sort(slice:Sortable s) {
     qs(s, 0, s.length() - 1);
 }
