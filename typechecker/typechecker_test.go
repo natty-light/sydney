@@ -1321,6 +1321,50 @@ func TestImplicitSatisfactionTypeErrors(t *testing.T) {
 	testTypeErrors(t, tests)
 }
 
+func TestInterfaceSubtyping(t *testing.T) {
+	sources := []string{
+		`define interface Reader { read() -> string }
+		define interface Writer { write(string s) }
+		define interface ReadWriter { read() -> string, write(string s) }
+		func consume(Reader r) -> string { r.read(); }
+		func produce(Writer w) { w.write("hello"); }
+		func both(ReadWriter rw) -> string { produce(rw); consume(rw); }`,
+
+		`define interface HasArea { area() -> float }
+		define interface HasPerimeter { perimeter() -> float }
+		define interface Shape { area() -> float, perimeter() -> float }
+		func printArea(HasArea h) -> float { h.area(); }
+		func measure(Shape s) -> float { printArea(s); }`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestInterfaceSubtypingErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define interface HasArea { area() -> float }
+			define interface HasColor { color() -> string }
+			func printArea(HasArea h) -> float { h.area(); }
+			func test(HasColor c) -> float { printArea(c); }`,
+			expectedError: "type mismatch",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
 func TestClosureCapture(t *testing.T) {
 	sources := []string{
 		`const int x = 10;
