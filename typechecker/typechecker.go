@@ -602,27 +602,18 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 				node.MangledName = name
 			}
 		}
+		if name != node.Name.Value {
+			c.env.Set(name, node.Type)
+			return
+		}
+
 		_, fromOuter, exists := c.env.Get(node.Name.Value)
 		if exists && !fromOuter && !node.IsExtern {
-			if existingType, ok := c.env.store[node.Name.Value].(types.FunctionType); ok {
-				if len(existingType.Params) > 0 && len(fType.Params) > 0 {
-					_, existingIsStruct := toStruct(existingType.Params[0])
-					_, newIsStruct := toStruct(fType.Params[0])
-					if existingIsStruct && newIsStruct {
-						delete(c.env.store, node.Name.Value)
-						c.env.Set(name, node.Type)
-						return
-					}
-				}
-			}
 			c.appendError(fmt.Sprintf("function %s already declared", node.Name.Value), node)
 			return
 		}
 
 		c.env.Set(name, node.Type)
-		if name != node.Name.Value {
-			c.env.Set(node.Name.Value, node.Type)
-		}
 	}
 }
 
