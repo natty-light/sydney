@@ -59,7 +59,7 @@ type Emitter struct {
 	globals map[string]irGlobal
 	inFunc  bool
 	depth   int
-
+	indents map[int]string
 	// Collected metadata
 	structTypes    map[string]types.StructType
 	interfaceTypes map[string]types.InterfaceType
@@ -82,6 +82,15 @@ type Emitter struct {
 	currentBlock    string
 }
 
+func generateIndents() map[int]string {
+	indents := make(map[int]string)
+	for i := 0; i <= 10; i++ {
+		indents[i] = strings.Repeat(" ", i)
+	}
+
+	return indents
+}
+
 func New() *Emitter {
 	return &Emitter{
 		structTypes:    make(map[string]types.StructType),
@@ -101,6 +110,8 @@ func New() *Emitter {
 		loopStack:       make([]*LoopLabels, 0),
 		blockTerminated: false,
 		loopIdx:         0,
+
+		indents: generateIndents(),
 	}
 }
 
@@ -563,11 +574,11 @@ func (e *Emitter) emit(line string) {
 	if e.blockTerminated {
 		return
 	}
-	withIndent := strings.Repeat("  ", e.depth) + line + "\n"
+
 	if e.bodyBuf != nil {
-		e.bodyBuf.WriteString(withIndent)
+		e.bodyBuf.WriteString(e.indents[e.depth] + line)
 	} else {
-		e.buf.WriteString(withIndent)
+		e.buf.WriteString(e.indents[e.depth] + line)
 	}
 }
 
