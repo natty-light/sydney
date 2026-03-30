@@ -877,7 +877,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 				ifaceName = c.mangleModule(castTo.Module, ifaceName)
 			}
 			itabKey := getItabKey(concreteName, ifaceName)
-			if itabIdx, ok := c.itabMapping[itabKey]; ok {
+			itabIdx, ok := c.itabMapping[itabKey]
+			if !ok {
+				itabKey = getItabKey(concreteName, castTo.Name)
+				itabIdx, ok = c.itabMapping[itabKey]
+			}
+			if ok {
 				c.emit(code.OpBox, itabIdx)
 			} else {
 				return fmt.Errorf("struct %s does not implement %s", concreteName, castTo.Name)
