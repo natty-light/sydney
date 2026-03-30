@@ -21,7 +21,6 @@ func TestValidTypeChecking(t *testing.T) {
 		define struct Circle { p Point, radius float }
 		
 		define interface Area { area() -> float }
-		define implementation Circle -> Area
 		func area(Circle c) -> float {
 			const pi = 3.14;
 			return c.radius * c.radius * pi;
@@ -32,9 +31,6 @@ func TestValidTypeChecking(t *testing.T) {
 		define struct Circle { p Point, r float }
 		
 		define interface Area { area() -> float }
-		
-		define implementation Circle -> Area
-		define implementation Rect -> Area
 		
 		func area(Circle c) -> float {
 			const pi = 3.14;
@@ -47,8 +43,6 @@ func TestValidTypeChecking(t *testing.T) {
 		`define struct Rect { w float, h float }
 		
 		define interface Area { area() -> float }
-		
-		define implementation Rect -> Area
 		
 		func area(Rect r) -> float {
 			return r.w * r.h;
@@ -81,8 +75,6 @@ func TestValidTypeChecking(t *testing.T) {
 			return d.name == p.name();
 		}
 		
-		define implementation Dog -> Pet
-		
 		const Dog fido = Dog { name: "Fido", bark: "Woof" };
 		const Dog rover = Dog { name: "Rover", bark: "Awoo" };
 		
@@ -92,7 +84,6 @@ func TestValidTypeChecking(t *testing.T) {
 		`,
 		`define struct Dog { name string, bark string }
 		define interface Pet { name() -> string }
-		define implementation Dog -> Pet
 		func name(Dog d) -> string { return d.name }
 		func getPet() -> Pet {
 				return Dog { name: "Fido", bark: "Woof" };
@@ -100,8 +91,6 @@ func TestValidTypeChecking(t *testing.T) {
 		`define struct Dog { name string, bark string }
 		define struct Cat { name string, purr string }
 		define interface Pet { name() -> string }
-		define implementation Dog -> Pet
-		define implementation Cat -> Pet
 		
 		func name(Cat c) -> string {
 			return c.name;
@@ -491,8 +480,9 @@ func TestInterfaceImplementationTypeErrorChecking(t *testing.T) {
 			input: `define interface Sized { size(int unit) -> int }
 define struct Box { w int }
 func size(Box b, string unit) -> int { b.w }
-define implementation Box -> Sized`,
-			expectedError: "struct Box does not satisfy interface Sized, wrong signature for method size. got func<(Box, string) -> int>, want func<(int) -> int>",
+func getSize(Sized s) -> int { return s.size(1); }
+getSize(Box { w: 5 })`,
+			expectedError: "struct Box does not satisfy interface Sized, wrong signature for method size",
 		},
 	}
 
@@ -1236,7 +1226,6 @@ func TestInterfaceMethodDispatch(t *testing.T) {
 	sources := []string{
 		`define struct Circle { r float }
 		define interface Shape { area() -> float }
-		define implementation Circle -> Shape
 		func area(Circle c) -> float { return c.r * c.r * 3.14; }
 		func getArea(Shape s) -> float { return s.area(); }
 		const Circle c = Circle { r: 5.0 };
@@ -1245,8 +1234,6 @@ func TestInterfaceMethodDispatch(t *testing.T) {
 		`define struct Dog { name string }
 		define struct Cat { name string }
 		define interface Pet { speak() -> string }
-		define implementation Dog -> Pet
-		define implementation Cat -> Pet
 		func speak(Dog d) -> string { return d.name; }
 		func speak(Cat c) -> string { return c.name; }
 		func greet(Pet p) -> string { return p.speak(); }
@@ -1266,6 +1253,116 @@ func TestInterfaceMethodDispatch(t *testing.T) {
 			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
 		}
 	}
+}
+
+func TestImplicitInterfaceSatisfaction(t *testing.T) {
+	sources := []string{
+		`define struct Circle { r float }
+		define interface Shape { area() -> float }
+		func area(Circle c) -> float { return c.r * c.r * 3.14; }
+		func getArea(Shape s) -> float { return s.area(); }
+		const Circle c = Circle { r: 5.0 };
+		const float a = getArea(c);`,
+
+		`define struct Dog { name string }
+		define struct Cat { name string }
+		define interface Pet { speak() -> string }
+		func speak(Dog d) -> string { return d.name; }
+		func speak(Cat c) -> string { return c.name; }
+		func greet(Pet p) -> string { return p.speak(); }
+		greet(Dog { name: "Rex" });
+		greet(Cat { name: "Whiskers" });`,
+
+		`define struct Rect { w float, h float }
+		define interface Shape { area() -> float }
+		define interface Measurable { perimeter() -> float }
+		func area(Rect r) -> float { return r.w * r.h; }
+		func perimeter(Rect r) -> float { return 2.0 * (r.w + r.h); }
+		func getArea(Shape s) -> float { return s.area(); }
+		func getPerimeter(Measurable m) -> float { return m.perimeter(); }
+		const Rect r = Rect { w: 3.0, h: 4.0 };
+		getArea(r);
+		getPerimeter(r);`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestImplicitSatisfactionTypeErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define struct Box { w int }
+			define interface Sized { size(int unit) -> int }
+			func getSize(Sized s) -> int { return s.size(1); }
+			getSize(Box { w: 5 })`,
+			expectedError: "struct Box does not satisfy interface Sized, missing method size",
+		},
+		{
+			input: `define struct Box { w int }
+			define interface Sized { size(int unit) -> int }
+			func size(Box b, string unit) -> int { b.w }
+			func getSize(Sized s) -> int { return s.size(1); }
+			getSize(Box { w: 5 })`,
+			expectedError: "wrong signature for method size",
+		},
+	}
+
+	testTypeErrors(t, tests)
+}
+
+func TestInterfaceSubtyping(t *testing.T) {
+	sources := []string{
+		`define interface Reader { read() -> string }
+		define interface Writer { write(string s) }
+		define interface ReadWriter { read() -> string, write(string s) }
+		func consume(Reader r) -> string { r.read(); }
+		func produce(Writer w) { w.write("hello"); }
+		func both(ReadWriter rw) -> string { produce(rw); consume(rw); }`,
+
+		`define interface HasArea { area() -> float }
+		define interface HasPerimeter { perimeter() -> float }
+		define interface Shape { area() -> float, perimeter() -> float }
+		func printArea(HasArea h) -> float { h.area(); }
+		func measure(Shape s) -> float { printArea(s); }`,
+	}
+	for _, src := range sources {
+		l := lexer.New(src)
+		p := parser.New(l)
+		program := p.ParseProgram()
+		if len(p.Errors()) != 0 {
+			t.Fatalf("parser errors: %v", p.Errors())
+		}
+		c := New(nil)
+		c.Check(program, nil)
+		if len(c.Errors()) != 0 {
+			t.Fatalf("input %q expected no errors, got %v", src, c.Errors())
+		}
+	}
+}
+
+func TestInterfaceSubtypingErrors(t *testing.T) {
+	tests := []TypeErrorTest{
+		{
+			input: `define interface HasArea { area() -> float }
+			define interface HasColor { color() -> string }
+			func printArea(HasArea h) -> float { h.area(); }
+			func test(HasColor c) -> float { printArea(c); }`,
+			expectedError: "type mismatch",
+		},
+	}
+
+	testTypeErrors(t, tests)
 }
 
 func TestClosureCapture(t *testing.T) {
@@ -1675,8 +1772,6 @@ func TestTypeMatchExpr(t *testing.T) {
 		define struct Rect { w float, h float }
 
 		define interface Shape { area() -> float }
-		define implementation Circle -> Shape
-		define implementation Rect -> Shape
 
 		func area(Circle c) -> float { c.radius * c.radius * 3.14; }
 		func area(Rect r) -> float { r.w * r.h; }
@@ -1719,7 +1814,6 @@ func TestTypeMatchExprErrors(t *testing.T) {
 			define struct Rect { w float, h float }
 
 			define interface Shape { area() -> float }
-			define implementation Circle -> Shape
 
 			func area(Circle c) -> float { c.radius * c.radius * 3.14; }
 
@@ -1737,8 +1831,6 @@ func TestTypeMatchExprErrors(t *testing.T) {
 			define struct Rect { w float, h float }
 
 			define interface Shape { area() -> float }
-			define implementation Circle -> Shape
-			define implementation Rect -> Shape
 
 			func area(Circle c) -> float { c.radius * c.radius * 3.14; }
 			func area(Rect r) -> float { r.w * r.h; }

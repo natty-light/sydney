@@ -440,8 +440,6 @@ func TestInterfaceDispatch(t *testing.T) {
 	source := `define struct Circle { radius float }
 define struct Rect { w float, h float}
 define interface Area { area() -> float }
-define implementation Circle -> Area
-define implementation Rect -> Area
 
 func area(Circle c) -> float {
     const pi = 3.14;
@@ -1393,8 +1391,6 @@ func TestE2ETypeMatch(t *testing.T) {
 			source: `define struct Circle { radius int }
 			define struct Rect { w int, h int }
 			define interface Shape { area() -> int }
-			define implementation Circle -> Shape
-			define implementation Rect -> Shape
 			func area(Circle c) -> int { 3 * c.radius * c.radius; }
 			func area(Rect r) -> int { r.w * r.h; }
 			func describe(Shape s) -> int {
@@ -1412,8 +1408,6 @@ func TestE2ETypeMatch(t *testing.T) {
 			source: `define struct Circle { radius int }
 			define struct Rect { w int, h int }
 			define interface Shape { area() -> int }
-			define implementation Circle -> Shape
-			define implementation Rect -> Shape
 			func area(Circle c) -> int { 3 * c.radius * c.radius; }
 			func area(Rect r) -> int { r.w * r.h; }
 			func describe(Shape s) -> int {
@@ -1432,9 +1426,6 @@ func TestE2ETypeMatch(t *testing.T) {
 			define struct Rect { w int, h int }
 			define struct Tri { b int }
 			define interface Shape { area() -> int }
-			define implementation Circle -> Shape
-			define implementation Rect -> Shape
-			define implementation Tri -> Shape
 			func area(Circle c) -> int { 3 * c.radius * c.radius; }
 			func area(Rect r) -> int { r.w * r.h; }
 			func area(Tri t) -> int { t.b; }

@@ -186,14 +186,6 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 		}
 
 		e.interfaceTypes[name] = t
-	case *ast.InterfaceImplementationStmt:
-		sname := node.StructName.Value
-		if e.vtables[sname] == nil {
-			e.vtables[sname] = make(map[string][]string)
-		}
-		for _, iname := range node.InterfaceNames {
-			e.vtables[sname][interfaceNameFromExpr(iname)] = nil
-		}
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
 		if e.currentModule != "" {
@@ -232,6 +224,23 @@ func (e *Emitter) collect(n ast.Node) *ast.Program {
 	}
 
 	e.collectStrings(n)
+
+	for sname, st := range e.structTypes {
+		for _, ifaceRaw := range st.Interfaces {
+			iface, ok := ifaceRaw.(types.InterfaceType)
+			if !ok {
+				continue
+			}
+			iname := iface.Name
+			if iface.Module != "" {
+				iname = e.moduleMangle(iface.Module, iname)
+			}
+			if e.vtables[sname] == nil {
+				e.vtables[sname] = make(map[string][]string)
+			}
+			e.vtables[sname][iname] = nil
+		}
+	}
 
 	for sname, ifaces := range e.vtables {
 		for iname := range ifaces {

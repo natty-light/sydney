@@ -350,8 +350,6 @@ func (p *Parser) parseStatement() ast.Stmt {
 			return p.parseStructDefinitionStmt()
 		} else if p.currTokenIs(token.Interface) {
 			return p.parseInterfaceDefinitionStmt()
-		} else if p.currTokenIs(token.Implementation) {
-			return p.parseInterfaceImplementationStmt()
 		}
 		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected interface or struct, got %s instead", p.currToken.Line, p.currToken.Column, p.currToken.Literal))
 		return nil
@@ -1412,46 +1410,6 @@ func (p *Parser) parseInterfaceDefinitionStmt() ast.Stmt {
 	p.definedInterfaces[stmt.Name.Value] = t
 
 	stmt.Type = t
-
-	return stmt
-}
-
-func (p *Parser) parseInterfaceImplementationStmt() ast.Stmt {
-	stmt := &ast.InterfaceImplementationStmt{}
-	if !p.expectPeek(token.Identifier) {
-		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-		return nil
-	}
-	stmt.StructName = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
-	if !p.expectPeek(token.Arrow) {
-		p.errors = append(p.errors, fmt.Sprintf("%d:%d expected ->, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-		return nil
-	}
-	p.nextToken() // move past ->
-
-	interfaceNames := make([]ast.Expr, 0)
-	var left ast.Expr = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
-	if p.peekTokenIs(token.Colon) {
-		p.nextToken()
-		left = p.parseScopeAccessExpr(left)
-	}
-
-	interfaceNames = append(interfaceNames, left)
-	for p.peekTokenIs(token.Comma) {
-		p.nextToken()
-		if !p.expectPeek(token.Identifier) {
-			p.errors = append(p.errors, fmt.Sprintf("%d:%d expected identifier, got %s", p.peekToken.Line, p.peekToken.Column, p.peekToken.Literal))
-			return nil
-		}
-		left = &ast.Identifier{Token: p.currToken, Value: p.currToken.Literal}
-		if p.peekTokenIs(token.Colon) {
-			p.nextToken()
-			left = p.parseScopeAccessExpr(left)
-		}
-		interfaceNames = append(interfaceNames, left)
-	}
-
-	stmt.InterfaceNames = interfaceNames
 
 	return stmt
 }
