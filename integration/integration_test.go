@@ -184,8 +184,6 @@ pub define interface Shape {
 
 pub define struct Rect { w int, h int }
 
-define implementation Rect -> Shape
-
 pub func area(Rect r) -> int {
 	r.w * r.h;
 }

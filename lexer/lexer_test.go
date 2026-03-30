@@ -34,7 +34,6 @@ func TestNextToken(t *testing.T) {
 	macro(x, y) { x + y; };
 	define struct Person { age int, name string }
 	define interface Pointer { getX() -> int, setX(int x) }
-	define implementation Point -> Pointer
 
 	import "math"
 	pub mut int x
@@ -234,12 +233,6 @@ func TestNextToken(t *testing.T) {
 		{token.Identifier, "x"},
 		{token.RightParen, ")"},
 		{token.RightCurlyBracket, "}"},
-
-		{token.Define, "define"},
-		{token.Implementation, "implementation"},
-		{token.Identifier, "Point"},
-		{token.Arrow, "->"},
-		{token.Identifier, "Pointer"},
 
 		{token.Import, "import"},
 		{token.String, "math"},

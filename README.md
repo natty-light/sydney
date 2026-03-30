@@ -473,8 +473,7 @@ define interface Area {
 ```
 
 ### Implementing an Interface
-A struct can be declared to implement an interface using the `define implementation` statement. To satisfy an interface, a struct must have functions defined where the first argument is the struct itself, matching the interface's method names and signatures.
-
+Structs define implementations implicitly, provided all functions from the interface are present
 ```sydney
 define struct Circle {
     radius float
@@ -493,9 +492,6 @@ func area(Circle c) -> float {
 func area(Rect r) -> float {
     return r.w * r.h;
 }
-
-define implementation Circle -> Area;
-define implementation Rect -> Area;
 ```
 
 ### Polymorphism and Dynamic Dispatch
