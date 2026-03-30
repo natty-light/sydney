@@ -1,6 +1,8 @@
 package typechecker
 
 import (
+	"fmt"
+	"runtime/debug"
 	"strings"
 	"sydney/types"
 )
@@ -20,7 +22,24 @@ func NewTypeEnv(parent *TypeEnv) *TypeEnv {
 }
 
 func (e *TypeEnv) Set(name string, t types.Type) {
+	if ft, ok := t.(types.FunctionType); ok {
+		for _, p := range ft.Params {
+			if containsTypeParamRef(p) {
+				panic(fmt.Sprintf("invariant violation: env.Set(%q) has TypeParamRef param %s\n%s",
+					name, p.Signature(), debug.Stack()))
+			}
+		}
+		if containsTypeParamRef(ft.Return) {
+			panic(fmt.Sprintf("invariant violation: env.Set(%q) has TypeParamRef in return type %s\n%s",
+				name, ft.Return.Signature(), debug.Stack()))
+		}
+	}
 	e.store[name] = t
+}
+
+func isTypeParamRef(t types.Type) bool {
+	_, ok := t.(*types.TypeParamRef)
+	return ok
 }
 
 func (e *TypeEnv) Get(name string) (types.Type, bool, bool) {
