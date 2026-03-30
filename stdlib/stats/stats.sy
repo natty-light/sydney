@@ -1,3 +1,4 @@
+import "sort"
 module "stats"
 
 pub func mean<T>(array<T> vals) -> float {
@@ -7,4 +8,45 @@ pub func mean<T>(array<T> vals) -> float {
     }
 
     float(x) / float(len(vals));
+}
+// struct for sorting values for median
+define struct Container{values array<int>} 
+    func length(Container c) -> int {
+        return len(c.values);
+}
+
+define implementation Container -> sort:Sortable
+
+    func less(Container c, int i, int j) -> bool {
+        return c.values[i] < c.values[j];
+}
+
+    func swap(Container c, int i, int j){
+        const tmp = c.values[i];
+        c.values[i] = c.values[j];
+        c.values[j] = tmp;
+}
+
+pub func median<T>(array<T> vals) {
+    
+    const c = Container{
+        values: vals
+    }
+
+    sort:quick_sort(c);
+
+
+    const l = len(vals);
+    if(l % 2 == 0){
+        const x = l/2 - 1;
+        const lv = float(vals[x]);
+        const uv = float(vals[x + 1]);
+        const y = (lv + uv)/2.0;
+        print(y);
+    } else {
+        const n = l - 1;
+        const m = n/2;
+        const v = vals[m];
+        print(v);
+    }
 }
