@@ -1,6 +1,7 @@
 package typechecker
 
 import (
+	"strings"
 	"sydney/types"
 )
 
@@ -34,6 +35,20 @@ func (e *TypeEnv) Get(name string) (types.Type, bool, bool) {
 
 func (e *TypeEnv) SetConst(name string) {
 	e.constants[name] = true
+}
+
+func (e *TypeEnv) MethodsOf(structName string) []string {
+	prefix := structName + "."
+	var methods []string
+	for name := range e.store {
+		if strings.HasPrefix(name, prefix) {
+			methods = append(methods, name[len(prefix):])
+		}
+	}
+	if e.outer != nil {
+		methods = append(methods, e.outer.MethodsOf(structName)...)
+	}
+	return methods
 }
 
 func (e *TypeEnv) IsConst(name string) bool {

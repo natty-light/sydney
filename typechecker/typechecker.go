@@ -21,6 +21,7 @@ type Checker struct {
 	currentMatchResultType types.Type
 	definedStructs         map[string]types.StructType
 	definedInterfaces      map[string]types.InterfaceType
+	methodToInterfaces     map[string][]types.InterfaceType
 	packages               map[string]*TypeEnv
 
 	moduleTypes map[string]map[string]types.Type
@@ -37,7 +38,8 @@ type Checker struct {
 	program        *ast.Program
 	stmtIndex      int
 	pendingInserts map[int][]ast.Stmt
-	currentModule  string
+	currentModule           string
+	moduleInterfacesIndexed bool
 }
 
 func New(globalEnv *TypeEnv) *Checker {
@@ -56,6 +58,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		currentMatchResultType: nil,
 		definedStructs:         make(map[string]types.StructType),
 		definedInterfaces:      make(map[string]types.InterfaceType),
+		methodToInterfaces:     make(map[string][]types.InterfaceType),
 		packages:               make(map[string]*TypeEnv),
 		moduleTypes:            map[string]map[string]types.Type{},
 		inLoop:                 false,
@@ -547,6 +550,7 @@ func (c *Checker) hoistBase(n ast.Node) {
 		}
 		c.env.Set(node.Name.Value, node.Type)
 		c.definedInterfaces[node.Name.Value] = node.Type
+		c.indexInterface(node.Type)
 		n = node
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
@@ -1773,7 +1777,42 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 	return types.Unit
 }
 
+func (c *Checker) checkGenericFunctionBody(node *ast.FunctionDeclarationStmt) {
+	subs := make(map[string]types.Type)
+	for _, tp := range node.TypeParams {
+		subs[tp.Name] = types.Any
+	}
+
+	cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{node}})
+	clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
+	fType := types.SubstituteTypeParams(clonedFn.Type.(types.FunctionType), subs).(types.FunctionType)
+
+	oldErrors := c.errors
+	c.errors = nil
+	oldInLoop := c.inLoop
+	c.inLoop = false
+	oldReturnType := c.currentReturnType
+	c.currentReturnType = fType.Return
+	oldEnv := c.env
+	c.env = NewTypeEnv(oldEnv)
+
+	for i, param := range clonedFn.Params {
+		c.env.Set(param.Value, fType.Params[i])
+	}
+
+	c.check(clonedFn.Body)
+
+	c.env = oldEnv
+	c.currentReturnType = oldReturnType
+	c.inLoop = oldInLoop
+	c.errors = oldErrors
+}
+
 func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) types.Type {
+	if len(node.TypeParams) > 0 {
+		c.checkGenericFunctionBody(node)
+		return types.Unit
+	}
 	name := node.Name.Value
 	fTypeRaw := node.Type.(types.FunctionType)
 	resolved := c.resolveFunctionType(fTypeRaw)
@@ -2296,21 +2335,8 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 
 	mangled := mangleName(structName, typeArgs)
 	if st, ok := c.definedStructs[mangled]; ok {
-		allInterfaces := make([]types.InterfaceType, 0)
-		for _, it := range c.definedInterfaces {
-			allInterfaces = append(allInterfaces, it)
-		}
-		for modName, mt := range c.moduleTypes {
-			for _, t := range mt {
-				if it, ok := t.(types.InterfaceType); ok {
-					if it.Module == "" {
-						it.Module = modName
-					}
-					allInterfaces = append(allInterfaces, it)
-				}
-			}
-		}
-		for _, it := range allInterfaces {
+		c.indexModuleInterfaces()
+		for _, it := range c.candidateInterfaces(mangled) {
 			if c.structSatisfiesInterface(st, it, nil, false) {
 				st.Interfaces = append(st.Interfaces, it)
 				c.definedStructs[mangled] = st
@@ -2433,9 +2459,49 @@ func (c *Checker) unifyType(p types.Type, arg types.Type, subs map[string]types.
 	}
 }
 
+func (c *Checker) indexInterface(it types.InterfaceType) {
+	for _, mn := range it.Methods {
+		c.methodToInterfaces[mn] = append(c.methodToInterfaces[mn], it)
+	}
+}
+
+func (c *Checker) indexModuleInterfaces() {
+	if c.moduleInterfacesIndexed {
+		return
+	}
+	c.moduleInterfacesIndexed = true
+	for modName, mt := range c.moduleTypes {
+		for _, t := range mt {
+			if it, ok := t.(types.InterfaceType); ok {
+				if it.Module == "" {
+					it.Module = modName
+				}
+				if _, indexed := c.definedInterfaces[it.Name]; !indexed {
+					c.definedInterfaces[it.Name] = it
+					c.indexInterface(it)
+				}
+			}
+		}
+	}
+}
+
+func (c *Checker) candidateInterfaces(structName string) []types.InterfaceType {
+	seen := make(map[string]bool)
+	var candidates []types.InterfaceType
+	for _, name := range c.env.MethodsOf(structName) {
+		for _, iface := range c.methodToInterfaces[name] {
+			if !seen[iface.Name] {
+				seen[iface.Name] = true
+				candidates = append(candidates, iface)
+			}
+		}
+	}
+	return candidates
+}
+
 func (c *Checker) discoverImplementations() {
 	for sn, st := range c.definedStructs {
-		for _, it := range c.definedInterfaces {
+		for _, it := range c.candidateInterfaces(sn) {
 			if c.structSatisfiesInterface(st, it, nil, false) {
 				st.Interfaces = append(st.Interfaces, it)
 				c.definedStructs[sn] = st
