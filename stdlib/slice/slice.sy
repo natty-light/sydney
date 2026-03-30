@@ -1,0 +1,17 @@
+module "slice"
+
+pub define interface Sortable {
+  length() -> int,
+  less(int i, int j) -> bool,
+  swap(int i, int j)
+}
+
+pub define struct Slice<V> { values array<V> }
+
+pub func length<V>(Slice<V> s) -> int { len(s.values); }
+pub func less<V>(Slice<V> s, int i, int j) -> bool { s.values[i] < s.values[j]; }
+pub func swap<V>(Slice<V> s, int i, int j) {
+    const tmp = s.values[i];
+    s.values[i] = s.values[j];
+    s.values[j] = tmp;
+}
