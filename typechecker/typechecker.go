@@ -2134,6 +2134,15 @@ func (c *Checker) checkOptionMatch(expr *ast.MatchExpr, option types.OptionType)
 }
 
 func (c *Checker) resolveType(t types.Type) types.Type {
+	result := c.doResolveType(t)
+	if _, ok := result.(types.ScopeType); ok {
+		panic(fmt.Sprintf("invariant violation: resolveType returned unresolved ScopeType %s\n%s",
+			result.Signature(), debug.Stack()))
+	}
+	return result
+}
+
+func (c *Checker) doResolveType(t types.Type) types.Type {
 	switch t := t.(type) {
 	case types.ScopeType:
 		tt, ok := c.moduleTypes[t.Module][t.Name]
