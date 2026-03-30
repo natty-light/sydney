@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"runtime/debug"
 	"slices"
 	"sort"
 
@@ -1388,7 +1389,8 @@ func (c *Compiler) buildItabsFromTypes() {
 					sym, _, ok = c.symbolTable.Resolve(c.mangleModule(c.currentModule, mangled))
 				}
 				if !ok {
-					continue
+					panic(fmt.Sprintf("invariant violation: itab method %q for %s -> %s not found in symbol table\n%s",
+						mangled, sn, in, debug.Stack()))
 				}
 				itab.MethodsIndices[idx] = sym.Index
 			}

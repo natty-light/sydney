@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -1313,7 +1314,12 @@ func (e *Emitter) emitInterfaceType(sname, iname string, methods []string) {
 	// @vtable.Circle.Shape = constant [1 x ptr] [ptr @Circle.area]
 	entries := make([]string, numMethods)
 	for i, m := range methods {
-		entries[i] = fmt.Sprintf("ptr @%s.%s", sname, m)
+		fnName := fmt.Sprintf("%s.%s", sname, m)
+		if _, ok := e.funcSigs[fnName]; !ok {
+			panic(fmt.Sprintf("invariant violation: vtable entry %q for %s -> %s not found in emitted functions\n%s",
+				fnName, sname, iname, debug.Stack()))
+		}
+		entries[i] = fmt.Sprintf("ptr @%s", fnName)
 	}
 	methodsStr := fmt.Sprintf("[%s]", strings.Join(entries, ", "))
 	line := fmt.Sprintf("@vtable.%s.%s = constant [%d x ptr] %s", sname, iname, numMethods, methodsStr)
