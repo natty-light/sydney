@@ -3,6 +3,7 @@ package typechecker
 import (
 	"fmt"
 	"maps"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -567,6 +568,9 @@ func (c *Checker) hoistBase(n ast.Node) {
 			node.Type.MethodIndices[mn] = i
 		}
 		c.env.Set(node.Name.Value, node.Type)
+		if len(node.Type.Methods) != len(node.Type.Types) {
+			panic(fmt.Sprintf("invariant violation: interface %s has %d methods and %d types", node.Name.Value, len(node.Type.Types), len(node.Type.Types)))
+		}
 		c.definedInterfaces[node.Name.Value] = node.Type
 		c.indexInterface(node.Type)
 		n = node
@@ -2208,6 +2212,12 @@ func (c *Checker) checkPanicCall(expr *ast.CallExpr) types.Type {
 }
 
 func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) types.Type {
+	resolved := false
+	defer func() {
+		if resolved {
+			c.assertMonomorphized(expr.MangledName, nil)
+		}
+	}()
 	var funcName string
 	switch fn := expr.Function.(type) {
 	case *ast.Identifier:
@@ -2230,6 +2240,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 	mangledName := mangleName(funcName, expr.TypeArgs)
 
 	if !c.monomorphized[mangledName] {
+
 		cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{template}})
 		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 
@@ -2257,6 +2268,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 	}
 
 	expr.MangledName = mangledName
+	resolved = true
 
 	concreteType := types.SubstituteTypeParams(templateType, subs)
 	// resolve parameterized struct types
@@ -2271,6 +2283,12 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 }
 
 func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template types.StructType) (types.StructType, bool) {
+	resolved := false
+	defer func() {
+		if resolved {
+			c.assertMonomorphized(expr.Name, nil)
+		}
+	}()
 	if len(expr.TypeArgs) != len(template.TypeParams) {
 		c.appendError(fmt.Sprintf("%s expects exactly %d type arguments", expr.Name, len(template.TypeParams)), expr)
 		return types.StructType{}, false
@@ -2314,12 +2332,18 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 		c.monomorphizeStructMethods(template.Name, expr.TypeArgs, subs)
 	}
 	expr.Name = mangled
+	resolved = true
 
 	return c.definedStructs[mangled], true
 }
 
 func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.Type, subs map[string]types.Type) {
 	mangledStruct := mangleName(structName, typeArgs)
+	defer func() {
+		if st, ok := c.definedStructs[mangledStruct]; ok {
+			c.assertMonomorphized(st.Name, st.TypeParams)
+		}
+	}()
 	for fname, fn := range c.genericFunctions {
 		ft, ok := fn.Type.(types.FunctionType)
 		if !ok || len(ft.Params) == 0 {
@@ -2384,19 +2408,29 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 }
 
 func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
+	var result types.Type = t
+	resolved := false
+	defer func() {
+		if resolved {
+			if st, ok := result.(types.StructType); ok {
+				c.assertMonomorphized(st.Name, st.TypeParams)
+			}
+		}
+	}()
+
 	st, ok := t.(types.StructType)
 	if !ok || st.TypeArgs == nil {
-		return t
+		return result
 	}
 
 	template, exists := c.genericStructs[st.Name]
 	if !exists {
-		return t
+		return result
 	}
 
 	for _, ta := range st.TypeArgs {
 		if _, isParam := ta.(*types.TypeParamRef); isParam {
-			return t
+			return result
 		}
 	}
 
@@ -2424,7 +2458,9 @@ func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
 		c.monomorphized[mangled] = true
 	}
 
-	return c.definedStructs[mangled]
+	result = c.definedStructs[mangled]
+	resolved = true
+	return result
 }
 
 func mangleName(base string, tt []types.Type) string {
@@ -2545,5 +2581,14 @@ func (c *Checker) discoverImplementations() {
 				}
 			}
 		}
+	}
+}
+
+func (c *Checker) assertMonomorphized(name string, typeParams []*types.TypeParam) {
+	if name != "" && !strings.Contains(name, "__") {
+		panic(fmt.Sprintf("invariant violation: monomorphized name %q is not mangled\n%s", name, debug.Stack()))
+	}
+	if typeParams != nil {
+		panic(fmt.Sprintf("invariant violation: monomorphized %q still has type params", name))
 	}
 }
