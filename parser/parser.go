@@ -1499,6 +1499,15 @@ func (p *Parser) parseScopeAccessExpr(left ast.Expr) ast.Expr {
 				TypeArgs:  typeArgs,
 			}
 		}
+
+		if p.peekTokenIs(token.LeftCurlyBracket) {
+			expr := p.parseStructLiteral(member.Token)
+			if expr != nil {
+				expr.Module = ident.Value
+				expr.TypeArgs = typeArgs
+			}
+			return expr
+		}
 	}
 
 	return &ast.ScopeAccessExpr{Member: member, Module: ident}

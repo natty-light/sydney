@@ -193,9 +193,11 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 		for k, v := range pkgChecker.genericStructs {
 			c.genericStructs[k] = v
 		}
-		if len(pkgChecker.errors) != 0 {
-			fmt.Println(pkgChecker.currentModule)
-			fmt.Println(pkgChecker.errors)
+		for _, e := range pkgChecker.errors {
+			if e.File == "" {
+				e.File = pkg.Name
+			}
+			c.errors = append(c.errors, e)
 		}
 
 		exportEnv := NewTypeEnv(nil)
@@ -218,7 +220,23 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 						continue
 					}
 					if len(fn.TypeParams) > 0 {
-						continue
+						name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
+						if ft, ok := typ.(types.FunctionType); ok {
+							subs := make(map[string]types.Type)
+							for _, param := range fn.TypeParams {
+								subs[param.Name] = types.Any
+							}
+							resolved := types.SubstituteTypeParams(ft, subs).(types.FunctionType)
+
+							if len(resolved.Params) > 0 {
+								if st, ok := toStruct(resolved.Params[0]); ok {
+									if _, _, exported := exportEnv.Get(st.Name); exported {
+										mn := st.Name + "." + name
+										exportEnv.Set(mn, resolved)
+									}
+								}
+							}
+						}
 					}
 
 					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
@@ -591,6 +609,14 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 			}
 			resolved := types.SubstituteTypeParams(fType, subs).(types.FunctionType)
 			c.env.Set(name, resolved)
+
+			if len(resolved.Params) > 0 {
+				if st, ok := toStruct(resolved.Params[0]); ok {
+					mangled := st.Name + "." + node.Name.Value
+					node.MangledName = mangled
+					c.env.Set(mangled, resolved)
+				}
+			}
 			return
 		}
 
@@ -1786,6 +1812,7 @@ func (c *Checker) checkGenericFunctionBody(node *ast.FunctionDeclarationStmt) {
 	cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{node}})
 	clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 	fType := types.SubstituteTypeParams(clonedFn.Type.(types.FunctionType), subs).(types.FunctionType)
+	ast.SubstituteTypeParams(clonedFn.Body, subs)
 
 	oldErrors := c.errors
 	c.errors = nil
@@ -2120,6 +2147,9 @@ func (c *Checker) resolveType(t types.Type) types.Type {
 
 		return types.ArrayType{ElemType: et}
 	case types.StructType:
+		if t.TypeArgs != nil {
+			return c.resolveGenericStructType(t)
+		}
 		for i, typ := range t.Types {
 			t.Types[i] = c.resolveType(typ)
 		}
@@ -2309,6 +2339,11 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 
 		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
 		if cft, ok := clonedFn.Type.(types.FunctionType); ok {
+			if st, ok := cft.Params[0].(types.StructType); ok && st.TypeParams != nil {
+				st.TypeArgs = typeArgs
+				st.TypeParams = nil
+				cft.Params[0] = st
+			}
 			for i, p := range cft.Params {
 				cft.Params[i] = c.resolveGenericStructType(p)
 			}
@@ -2316,7 +2351,7 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 			clonedFn.Type = cft
 		}
 
-		clonedFn.Name.Value = fname
+		clonedFn.Name.Value = mangledFn
 		clonedFn.TypeParams = nil
 		ast.SubstituteTypeParams(clonedFn.Body, subs)
 
@@ -2402,12 +2437,11 @@ func mangleName(base string, tt []types.Type) string {
 }
 
 func (c *Checker) appendError(msg string, node ast.Node) {
-	if node == nil {
-		c.errors = append(c.errors, errors.PositionError{Line: 0, Col: 0, Message: msg})
-		return
+	e := errors.PositionError{Message: msg, File: c.currentModule}
+	if node != nil {
+		e.Line, e.Col = node.Pos()
 	}
-	line, col := node.Pos()
-	c.errors = append(c.errors, errors.PositionError{Line: line, Col: col, Message: msg})
+	c.errors = append(c.errors, e)
 }
 
 func (c *Checker) inferTypeArgs(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) []types.Type {
