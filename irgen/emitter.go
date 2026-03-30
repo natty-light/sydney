@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"sydney/ast"
@@ -601,6 +602,21 @@ func (e *Emitter) emitLoad(result, typ, ptr string) {
 	buf.WriteByte('\n')
 }
 
+func (e *Emitter) emitStore(typ, value, destination string) {
+	if e.blockTerminated {
+		return
+	}
+	buf := e.activeBuf()
+	buf.WriteString(e.indents[e.depth])
+	buf.WriteString("store ")
+	buf.WriteString(typ)
+	buf.WriteString(" ")
+	buf.WriteString(value)
+	buf.WriteString(", ptr ")
+	buf.WriteString(destination)
+	buf.WriteByte('\n')
+}
+
 func (e *Emitter) emitBypass(line string) {
 	withIndent := e.indents[e.depth] + line + "\n"
 	e.buf.WriteString(withIndent)
@@ -777,15 +793,13 @@ func (e *Emitter) emitExpr(expr ast.Expr) (string, IrType) {
 		valSlot := e.tmp()
 		line := fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", valSlot, ifaceAlloca)
 		e.emit(line)
-		line = fmt.Sprintf("store ptr %s, ptr %s", val, valSlot)
-		e.emit(line)
+		e.emitStore("ptr", val, valSlot)
 
 		// Store vtable pointer at index 1
 		vtableSlot := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", vtableSlot, ifaceAlloca)
 		e.emit(line)
-		line = fmt.Sprintf("store ptr @vtable.%s.%s, ptr %s", concreteName, iface, vtableSlot)
-		e.emit(line)
+		e.emitStore("ptr", "@vtable."+concreteName+"."+iface, vtableSlot)
 
 		return ifaceAlloca, IrPtr
 	}
@@ -1265,23 +1279,20 @@ func (e *Emitter) emitVarDecl(stmt *ast.VarDeclarationStmt) (string, IrType) {
 	name := stmt.Name.Value
 	if isGlobal {
 		name = global.name
-		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
-		e.emit(line)
-		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
+		e.emitStore(valType.String(), val, name)
+		line := fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
 		e.emit(line)
 	} else if e.currentModule != "" && !e.inFunc {
 		name = e.global(e.moduleMangle(e.currentModule, name))
-		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, name)
-		e.emit(line)
-		line = fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
+		e.emitStore(valType.String(), val, name)
+		line := fmt.Sprintf("call void @sydney_gc_add_global_root(ptr %s)", name)
 		e.emit(line)
 	} else {
 		allocaName := e.alloca(name)
 		e.emitAlloca(allocaName, valType)
 
-		line := fmt.Sprintf("store %s %s, ptr %s", valType, val, allocaName)
+		e.emitStore(valType.String(), val, allocaName)
 		e.locals[name] = irLocal{alloca: allocaName, typ: valType}
-		e.emit(line)
 	}
 
 	return val, valType
@@ -1298,8 +1309,7 @@ func (e *Emitter) emitVariableAssignment(stmt *ast.VarAssignmentStmt) (string, I
 		global, _ := e.globals[e.global(name)]
 		irName = global.name
 	}
-	line := fmt.Sprintf("store %s %s, ptr %s", valType, val, irName)
-	e.emit(line)
+	e.emitStore(valType.String(), val, irName)
 
 	return "", IrUnit
 }
@@ -1363,8 +1373,7 @@ func (e *Emitter) emitSelectorAssignment(stmt *ast.SelectorAssignmentStmt) (stri
 
 	val, valType := e.emitExpr(stmt.Value)
 
-	line = fmt.Sprintf("store %s %s, ptr %s", valType, val, tmp)
-	e.emit(line)
+	e.emitStore(valType.String(), val, tmp)
 
 	return "", IrUnit
 }
@@ -1444,7 +1453,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	iterVal, iterType := e.emitExpr(stmt.Iterable)
 	iterAlloca := e.alloca("forin_iter")
 	e.emitAlloca(iterAlloca, iterType)
-	e.emit(fmt.Sprintf("store %s %s, ptr %s", iterType, iterVal, iterAlloca))
+	e.emitStore(iterType.String(), iterVal, iterAlloca)
 
 	// compute len(iterable) — length is first field of { i64, ptr }
 	lenPtr := e.tmp()
@@ -1453,12 +1462,12 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitLoad(lenVal, "i64", lenPtr)
 	lenAlloca := e.alloca("forin_len")
 	e.emitAlloca(lenAlloca, IrInt)
-	e.emit(fmt.Sprintf("store i64 %s, ptr %s", lenVal, lenAlloca))
+	e.emitStore("i64", lenVal, lenAlloca)
 
 	// idx = 0
 	idxAlloca := e.alloca("forin_idx")
 	e.emitAlloca(idxAlloca, IrInt)
-	e.emit(fmt.Sprintf("store i64 0, ptr %s", idxAlloca))
+	e.emitStore("i64", "0", idxAlloca)
 
 	// condition: idx < len
 	e.emitJmp(condLabel)
@@ -1478,7 +1487,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	if stmt.Key != nil {
 		keyAlloca := e.alloca(stmt.Key.Value)
 		e.emitAlloca(keyAlloca, IrInt)
-		e.emit(fmt.Sprintf("store i64 %s, ptr %s", curIdx, keyAlloca))
+		e.emitStore("i64", curIdx, keyAlloca)
 		e.locals[stmt.Key.Value] = irLocal{alloca: keyAlloca, typ: IrInt}
 	}
 
@@ -1497,7 +1506,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 
 	valAlloca := e.alloca(stmt.Value.Value)
 	e.emitAlloca(valAlloca, elemType)
-	e.emit(fmt.Sprintf("store %s %s, ptr %s", elemType, elemVal, valAlloca))
+	e.emitStore(elemType.String(), elemVal, valAlloca)
 	e.locals[stmt.Value.Value] = irLocal{alloca: valAlloca, typ: elemType}
 
 	// compile body
@@ -1510,7 +1519,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitLoad(oldIdx, "i64", idxAlloca)
 	newIdx := e.tmp()
 	e.emit(fmt.Sprintf("%s = add i64 %s, 1", newIdx, oldIdx))
-	e.emit(fmt.Sprintf("store i64 %s, ptr %s", newIdx, idxAlloca))
+	e.emitStore("i64", newIdx, idxAlloca)
 	e.emitJmp(condLabel)
 
 	// escape
@@ -1534,7 +1543,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	mapVal, mapType := e.emitExpr(stmt.Iterable)
 	mapAlloca := e.alloca("forin_map")
 	e.emitAlloca(mapAlloca, mapType)
-	e.emit(fmt.Sprintf("store %s %s, ptr %s", mapType, mapVal, mapAlloca))
+	e.emitStore(mapType.String(), mapVal, mapAlloca)
 
 	// get keys array
 	mt := stmt.Iterable.GetResolvedType().(types.MapType)
@@ -1546,7 +1555,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	}
 	keysAlloca := e.alloca("forin_keys")
 	e.emitAlloca(keysAlloca, IrPtr)
-	e.emit(fmt.Sprintf("store ptr %s, ptr %s", keysVal, keysAlloca))
+	e.emitStore("ptr", keysVal, keysAlloca)
 
 	// len(keys) — first field of { i64, ptr }
 	lenPtr := e.tmp()
@@ -1555,12 +1564,12 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitLoad(lenVal, "i64", lenPtr)
 	lenAlloca := e.alloca("forin_len")
 	e.emitAlloca(lenAlloca, IrInt)
-	e.emit(fmt.Sprintf("store i64 %s, ptr %s", lenVal, lenAlloca))
+	e.emitStore("i64", lenVal, lenAlloca)
 
 	// idx = 0
 	idxAlloca := e.alloca("forin_idx")
 	e.emitAlloca(idxAlloca, IrInt)
-	e.emit(fmt.Sprintf("store i64 0, ptr %s", idxAlloca))
+	e.emitStore("i64", "0", idxAlloca)
 
 	// condition: idx < len
 	e.emitJmp(condLabel)
@@ -1591,7 +1600,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 
 	keyAlloca := e.alloca(stmt.Key.Value)
 	e.emitAlloca(keyAlloca, keyType)
-	e.emit(fmt.Sprintf("store %s %s, ptr %s", keyType, keyVal, keyAlloca))
+	e.emitStore(keyType.String(), keyVal, keyAlloca)
 	e.locals[stmt.Key.Value] = irLocal{alloca: keyAlloca, typ: keyType}
 
 	// bind value: v = map[k]
@@ -1616,7 +1625,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 
 	valAlloca := e.alloca(stmt.Value.Value)
 	e.emitAlloca(valAlloca, finalType)
-	e.emit(fmt.Sprintf("store %s %s, ptr %s", finalType, finalVal, valAlloca))
+	e.emitStore(finalType.String(), finalVal, valAlloca)
 	e.locals[stmt.Value.Value] = irLocal{alloca: valAlloca, typ: finalType}
 
 	// compile body
@@ -1629,7 +1638,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitLoad(oldIdx, "i64", idxAlloca)
 	newIdx := e.tmp()
 	e.emit(fmt.Sprintf("%s = add i64 %s, 1", newIdx, oldIdx))
-	e.emit(fmt.Sprintf("store i64 %s, ptr %s", newIdx, idxAlloca))
+	e.emitStore("i64", newIdx, idxAlloca)
 	e.emitJmp(condLabel)
 
 	// escape
@@ -1745,8 +1754,7 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 		allocaName := e.alloca(pName)
 		e.emitAlloca(allocaName, paramIrTypes[i])
 
-		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
-		e.emit(line)
+		e.emitStore(paramIrTypes[i].String(), "%"+pName, allocaName)
 		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(fType.Params[i])}
 	}
 
@@ -1830,8 +1838,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		allocaName := e.alloca(fv.name)
 		e.emitAlloca(allocaName, fv.typ)
 
-		line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, loaded, allocaName)
-		e.emit(line)
+		e.emitStore(fv.typ.String(), loaded, allocaName)
 		e.locals[fv.name] = irLocal{allocaName, fv.typ}
 	}
 
@@ -1841,8 +1848,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		allocaName := e.alloca(pName)
 		e.emitAlloca(allocaName, paramIrTypes[i])
 
-		line = fmt.Sprintf("store %s %%%s, ptr %s", paramIrTypes[i], pName, allocaName)
-		e.emit(line)
+		e.emitStore(paramIrTypes[i].String(), "%"+pName, allocaName)
 		e.locals[pName] = irLocal{alloca: allocaName, typ: SydneyTypeToIrType(expr.Type.Params[i])}
 	}
 	e.depth = 0
@@ -1854,13 +1860,11 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		selfFnSlot := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", selfFnSlot, selfAlloca)
 		e.emit(line)
-		line = fmt.Sprintf("store ptr %s, ptr %s", anon, selfFnSlot)
-		e.emit(line)
+		e.emitStore("ptr", anon, selfFnSlot)
 		selfEnvSlot := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", selfEnvSlot, selfAlloca)
 		e.emit(line)
-		line = fmt.Sprintf("store ptr %%env, ptr %s", selfEnvSlot)
-		e.emit(line)
+		e.emitStore("ptr", "%env", selfEnvSlot)
 		e.locals[expr.Name] = irLocal{selfAlloca, IrFatPtr}
 	}
 
@@ -1894,8 +1898,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	fnSlot := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnSlot, closure)
 	e.emit(line)
-	line = fmt.Sprintf("store ptr %s, ptr %s", anon, fnSlot)
-	e.emit(line)
+	e.emitStore("ptr", anon, fnSlot)
 	envSlot := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envSlot, closure)
 	e.emit(line)
@@ -1916,15 +1919,12 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 			local := state.locals[fv.name]
 			e.emitLoad(fvVal, fv.typ.String(), local.alloca)
 
-			line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, fvVal, slot)
-			e.emit(line)
+			e.emitStore(fv.typ.String(), fvVal, slot)
 		}
 
-		line = fmt.Sprintf("store ptr %s, ptr %s", envPtr, envSlot)
-		e.emit(line)
+		e.emitStore("ptr", envPtr, envSlot)
 	} else {
-		line = fmt.Sprintf("store ptr null, ptr %s", envSlot)
-		e.emit(line) // null env for no captures
+		e.emitStore("ptr", "null", envSlot)
 	}
 
 	return closure, IrPtr
@@ -2007,8 +2007,7 @@ func (e *Emitter) emitStructLiteral(lit *ast.StructLiteral) (string, IrType) {
 		line = fmt.Sprintf("%s = getelementptr %%struct.%s, %s %s, %s %s, %s %d", fTmp, lit.Name, IrPtr, result, IrInt32, "0", IrInt32, i)
 		e.emit(line)
 		val, valType := e.emitExpr(lit.Values[litIdx])
-		line = fmt.Sprintf("store %s %s, %s %s", valType, val, IrPtr, fTmp)
-		e.emit(line)
+		e.emitStore(valType.String(), val, fTmp)
 	}
 
 	return result, IrPtr
@@ -2245,8 +2244,7 @@ func (e *Emitter) findFreeVars(stmt *ast.BlockStmt, params []*ast.Identifier) []
 func (e *Emitter) emitArrayIndexAssignment(stmt *ast.IndexAssignmentStmt) (string, IrType) {
 	elemPtr, elemType := e.emitArrayElementPtr(stmt.Left)
 	val, _ := e.emitExpr(stmt.Value)
-	line := fmt.Sprintf("store %s %s, ptr %s", elemType, val, elemPtr)
-	e.emit(line)
+	e.emitStore(elemType.String(), val, elemPtr)
 
 	return "", IrUnit
 }
@@ -2379,11 +2377,11 @@ func (e *Emitter) emitMapIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 
 	tagPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, result))
-	e.emit(fmt.Sprintf("store i1 %s, ptr %s", tag, tagPtr))
+	e.emitStore("i1", tag, tagPtr)
 
 	valPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, result))
-	e.emit(fmt.Sprintf("store %s %s, ptr %s", innerIrType, innerVal, valPtr))
+	e.emitStore(innerIrType.String(), innerVal, valPtr)
 
 	return result, IrPtr
 }
@@ -2433,8 +2431,7 @@ func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
 		elemPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 %d", elemPtr, valType, buf, i)
 		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", valType, val, elemPtr)
-		e.emit(line)
+		e.emitStore(valType.String(), val, elemPtr)
 	}
 
 	//  Allocate the header struct { len, data }
@@ -2449,13 +2446,11 @@ func (e *Emitter) emitArrayLiteral(arr *ast.ArrayLiteral) (string, IrType) {
 	lenPtr := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, headerPtr)
 	e.emit(line)
-	line = fmt.Sprintf("store i64 %d, ptr %s", len(arr.Elements), lenPtr) // store length
-	e.emit(line)
+	e.emitStore("i64", strconv.Itoa(len(arr.Elements)), lenPtr)
 	dPtr := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dPtr, headerPtr) // store data
 	e.emit(line)
-	line = fmt.Sprintf("store ptr %s, ptr %s", buf, dPtr)
-	e.emit(line)
+	e.emitStore("ptr", buf, dPtr)
 
 	//  ; result is %t4 (ptr to the header)
 	return headerPtr, IrPtr
@@ -2680,39 +2675,33 @@ func (e *Emitter) emitResultConstructorCall(isOk bool, expr *ast.CallExpr) (stri
 	e.emit(line)
 
 	if isOk {
-		line = fmt.Sprintf("store i1 %d, ptr %s", 1, okPtr)
-		e.emit(line)
+		e.emitStore("i1", "1", okPtr)
 
 		valPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, typ, result)
 		e.emit(line)
 
-		line = fmt.Sprintf("store %s %s, ptr %s", argTyp, arg, valPtr)
-		e.emit(line)
+		e.emitStore(argTyp.String(), arg, valPtr)
 
 		errPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, typ, result)
 		e.emit(line)
 
-		line = fmt.Sprintf("store ptr null, ptr %s", errPtr)
-		e.emit(line)
+		e.emitStore("ptr", "null", errPtr)
 	} else {
-		line = fmt.Sprintf("store i1 %d, ptr %s", 0, okPtr)
-		e.emit(line)
+		e.emitStore("i1", "0", okPtr)
 
 		valPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, typ, result)
 		e.emit(line)
 
-		line = fmt.Sprintf("store %s %s, ptr %s", argTyp, e.getZeroValueFromIrType(argTyp), valPtr)
-		e.emit(line)
+		e.emitStore(argTyp.String(), e.getZeroValueFromIrType(argTyp), valPtr)
 
 		errPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, typ, result)
 		e.emit(line)
 
-		line = fmt.Sprintf("store ptr %s, ptr %s", arg, errPtr)
-		e.emit(line)
+		e.emitStore("ptr", arg, errPtr)
 	}
 
 	return result, IrPtr
@@ -2743,15 +2732,11 @@ func (e *Emitter) emitOptionConstructorCall(isSome bool, expr *ast.CallExpr) (st
 	e.emit(line)
 
 	if isSome {
-		line = fmt.Sprintf("store i1 1, ptr %s", tagPtr)
-		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", innerType, arg, valPtr)
-		e.emit(line)
+		e.emitStore("i1", "1", tagPtr)
+		e.emitStore(innerType.String(), arg, valPtr)
 	} else {
-		line = fmt.Sprintf("store i1 0, ptr %s", tagPtr)
-		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", innerType, e.getZeroValueFromIrType(innerType), valPtr)
-		e.emit(line)
+		e.emitStore("i1", "0", tagPtr)
+		e.emitStore(innerType.String(), e.getZeroValueFromIrType(innerType), valPtr)
 	}
 
 	return result, IrPtr
@@ -2799,8 +2784,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitLoad(val, innerType.String(), valPtr)
 	bindAlloca := e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, innerType)
-	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
-	e.emit(line)
+	e.emitStore(innerType.String(), val, bindAlloca)
 	e.pushScope()
 	e.locals[expr.OkArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	okResult, _, _ := e.emitBlock(expr.OkArm.Body)
@@ -2812,8 +2796,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.popScope()
 	if !okTerminated {
 		if rt != IrUnit {
-			line = fmt.Sprintf("store %s %s, ptr %s", rt, okResult, result)
-			e.emit(line)
+			e.emitStore(rt.String(), okResult, result)
 		}
 		e.emitJmp(endLab)
 	}
@@ -2827,8 +2810,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitLoad(errVal, "ptr", errPtr)
 	bindAlloca = e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, IrPtr)
-	line = fmt.Sprintf("store ptr %s, ptr %s", errVal, bindAlloca)
-	e.emit(line)
+	e.emitStore("ptr", errVal, bindAlloca)
 	e.pushScope()
 	e.locals[expr.ErrArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
 	errResult, _, _ := e.emitBlock(expr.ErrArm.Body)
@@ -2840,8 +2822,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.popScope()
 	if !errTerminated {
 		if rt != IrUnit {
-			line = fmt.Sprintf("store %s %s, ptr %s", rt, errResult, result)
-			e.emit(line)
+			e.emitStore(rt.String(), errResult, result)
 		}
 		e.emitJmp(endLab)
 	}
@@ -2896,8 +2877,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	e.emitLoad(val, innerType.String(), valPtr)
 	bindAlloca := e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, innerType)
-	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
-	e.emit(line)
+	e.emitStore(innerType.String(), val, bindAlloca)
 	e.pushScope()
 	e.locals[expr.SomeArm.Pattern.Binding.Value] = irLocal{alloca: bindAlloca, typ: innerType}
 	someResult, _, _ := e.emitBlock(expr.SomeArm.Body)
@@ -2906,8 +2886,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	}
 	e.popScope()
 	if rt != IrUnit {
-		line = fmt.Sprintf("store %s %s, ptr %s", rt, someResult, result)
-		e.emit(line)
+		e.emitStore(rt.String(), someResult, result)
 	}
 	e.emitJmp(endLab)
 
@@ -2918,8 +2897,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 		noneResult = irZeroValueFromType(rt)
 	}
 	if rt != IrUnit {
-		line = fmt.Sprintf("store %s %s, ptr %s", rt, noneResult, result)
-		e.emit(line)
+		e.emitStore(rt.String(), noneResult, result)
 	}
 	e.emitJmp(endLab)
 
@@ -2984,8 +2962,7 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 		// alloca so it works like a local
 		bindAlloca := e.tmp() + ".addr"
 		e.emitAlloca(bindAlloca, IrPtr)
-		line = fmt.Sprintf("store ptr %s, ptr %s", valPtr, bindAlloca)
-		e.emit(line)
+		e.emitStore("ptr", valPtr, bindAlloca)
 
 		e.pushScope()
 		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: IrPtr}
@@ -2996,8 +2973,7 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 
 		if !armTerminated {
 			if rt != IrUnit {
-				line = fmt.Sprintf("store %s %s, ptr %s", rt, armResult, result)
-				e.emit(line)
+				e.emitStore(rt.String(), armResult, result)
 			}
 			e.emitJmp(endLab)
 		}
@@ -3011,8 +2987,7 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 		e.blockTerminated = false
 		if !defaultTerminated {
 			if rt != IrUnit {
-				line = fmt.Sprintf("store %s %s, ptr %s", rt, defaultResult, result)
-				e.emit(line)
+				e.emitStore(rt.String(), defaultResult, result)
 			}
 			e.emitJmp(endLab)
 		}
@@ -3068,8 +3043,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 		// store unboxed in alloca
 		bindAlloca := e.tmp() + ".addr"
 		e.emitAlloca(bindAlloca, unboxedType)
-		line = fmt.Sprintf("store %s %s, ptr %s", unboxedType, unboxed, bindAlloca)
-		e.emit(line)
+		e.emitStore(unboxedType.String(), unboxed, bindAlloca)
 
 		e.pushScope()
 		e.locals[arm.Binding.Value] = irLocal{alloca: bindAlloca, typ: unboxedType}
@@ -3080,8 +3054,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 
 		if !armTerminated {
 			if rt != IrUnit {
-				line = fmt.Sprintf("store %s %s, ptr %s", rt, armResult, result)
-				e.emit(line)
+				e.emitStore(rt.String(), armResult, result)
 			}
 			e.emitJmp(endLab)
 		}
@@ -3095,8 +3068,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 		e.blockTerminated = false
 		if !defaultTerminated {
 			if rt != IrUnit {
-				line = fmt.Sprintf("store %s %s, ptr %s", rt, defaultResult, result)
-				e.emit(line)
+				e.emitStore(rt.String(), defaultResult, result)
 			}
 			e.emitJmp(endLab)
 		}
@@ -3224,13 +3196,11 @@ func (e *Emitter) emitSliceExpr(expr *ast.SliceExpr) (string, IrType) {
 		lenPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, result)
 		e.emit(line)
-		line = fmt.Sprintf("store i64 %s, ptr %s", newLen, lenPtr)
-		e.emit(line)
+		e.emitStore("i64", newLen, lenPtr)
 		dPtr := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dPtr, result)
 		e.emit(line)
-		line = fmt.Sprintf("store ptr %s, ptr %s", dataPtr, dPtr)
-		e.emit(line)
+		e.emitStore("ptr", dataPtr, dPtr)
 
 	} else {
 		allocSize := e.tmp()
@@ -3253,8 +3223,7 @@ func (e *Emitter) emitSliceExpr(expr *ast.SliceExpr) (string, IrType) {
 		line = fmt.Sprintf("%s = getelementptr i8, ptr %s, i64 %s", nullptr, result, newLen)
 		e.emit(line)
 
-		line = fmt.Sprintf("store i8 0, ptr %s", nullptr)
-		e.emit(line)
+		e.emitStore("i8", "0", nullptr)
 	}
 
 	return result, IrPtr
@@ -3396,8 +3365,7 @@ func (e *Emitter) emitSpawnWithArgs(callExpr *ast.CallExpr) {
 		slot := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %s, i32 0, i32 %d", slot, envTypeStr, envPtr, i)
 		e.emit(line)
-		line = fmt.Sprintf("store %s %s, ptr %s", t, argRegs[i], slot)
-		e.emit(line)
+		e.emitStore(t.String(), argRegs[i], slot)
 	}
 
 	line = fmt.Sprintf("call void @sydney_spawn(ptr %s, ptr %s)", thunk, envPtr)
@@ -3480,9 +3448,7 @@ func (e *Emitter) emitBoxAny(reg string, srcType IrType) string {
 	tagPtr := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 0", tagPtr, alloc)
 	e.emit(line)
-	line = fmt.Sprintf("store i8 %d, ptr %s", tag, tagPtr)
-	e.emit(line)
-
+	e.emitStore("i8", strconv.Itoa(tag), tagPtr)
 	// bitcast to i64
 	valI64 := e.toI64(reg, srcType)
 	valPtr := e.tmp()
