@@ -1,10 +1,26 @@
+import "sort"
+import "slice"
+
 module "stats"
 
-pub func mean<T>(array<T> vals) -> float {
-    mut T x;
+pub func mean<V>(array<V> vals) -> float {
+    mut V x;
     for (mut i = 0; i < len(vals); i = i + 1) {
         x = x + vals[i];
     }
 
     float(x) / float(len(vals));
+}
+
+pub func median<V>(array<V> vals) -> float {
+    const s = slice:Slice<V> { values: vals };
+    sort:quick_sort(s);
+    const n = len(s.values);
+    if (n % 2 == 1) {
+        float(s.values[n / 2]);
+    } else {
+        const a = s.values[n / 2 - 1];
+        const b = s.values[n / 2];
+        (float(a) + float(b)) / 2.0;
+    }
 }

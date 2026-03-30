@@ -1,5 +1,7 @@
 package ast
 
+import "sydney/types"
+
 func Clone(n Node) *Program {
 	nn := &Program{Stmts: make([]Stmt, 0)}
 
@@ -157,6 +159,10 @@ func cloneExpr(e Expr) Expr {
 			cloned.Arguments[i] = cloneExpr(a)
 		}
 		cloned.Function = cloneExpr(expr.Function)
+		if expr.TypeArgs != nil {
+			cloned.TypeArgs = make([]types.Type, len(expr.TypeArgs))
+			copy(cloned.TypeArgs, expr.TypeArgs)
+		}
 		return &cloned
 	case *IndexExpr:
 		cloned := *expr
@@ -199,6 +205,11 @@ func cloneExpr(e Expr) Expr {
 		for i, f := range expr.Fields {
 			cloned.Fields[i] = f
 		}
+		if expr.TypeArgs != nil {
+			cloned.TypeArgs = make([]types.Type, len(expr.TypeArgs))
+			copy(cloned.TypeArgs, expr.TypeArgs)
+		}
+
 		return &cloned
 	case *ScopeAccessExpr:
 		cloned := *expr
