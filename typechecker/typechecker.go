@@ -20,6 +20,7 @@ type Checker struct {
 	currentReturnType      types.Type
 	currentMatchResultType types.Type
 	definedStructs         map[string]types.StructType
+	definedInterfaces      map[string]types.InterfaceType
 	packages               map[string]*TypeEnv
 
 	moduleTypes map[string]map[string]types.Type
@@ -53,6 +54,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		currentReturnType:      nil,
 		currentMatchResultType: nil,
 		definedStructs:         make(map[string]types.StructType),
+		definedInterfaces:      make(map[string]types.InterfaceType),
 		packages:               make(map[string]*TypeEnv),
 		moduleTypes:            map[string]map[string]types.Type{},
 		inLoop:                 false,
@@ -72,22 +74,10 @@ func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]ty
 	for _, v := range object.Builtins {
 		env.Set(v.Name, v.BuiltIn.T)
 	}
+	c := New(globalEnv)
+	c.moduleTypes = moduleTypes
 
-	return &Checker{
-		env:                    env,
-		errors:                 make([]errors.PositionError, 0),
-		currentReturnType:      nil,
-		currentMatchResultType: nil,
-		definedStructs:         make(map[string]types.StructType),
-		packages:               make(map[string]*TypeEnv),
-		moduleTypes:            moduleTypes,
-		inLoop:                 false,
-		genericFunctions:       make(map[string]*ast.FunctionDeclarationStmt),
-		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
-		monomorphized:          make(map[string]bool),
-		pendingInserts:         make(map[int]ast.Stmt),
-		program:                nil,
-	}
+	return c
 }
 
 func (c *Checker) pushScope() *TypeEnv {
@@ -456,16 +446,10 @@ func (c *Checker) check(n ast.Node) types.Type {
 		}
 
 		for _, stmt := range node.Stmts {
-			c.hoistImplementationIntent(stmt)
-		}
-
-		for _, stmt := range node.Stmts {
 			c.hoistFunctions(stmt)
 		}
 
-		for _, stmt := range node.Stmts {
-			c.hoistImplementations(stmt)
-		}
+		c.discoverImplementations()
 
 		for i, stmt := range node.Stmts {
 			c.stmtIndex = i
@@ -559,6 +543,7 @@ func (c *Checker) hoistBase(n ast.Node) {
 			node.Type.MethodIndices[mn] = i
 		}
 		c.env.Set(node.Name.Value, node.Type)
+		c.definedInterfaces[node.Name.Value] = node.Type
 		n = node
 	case *ast.VarDeclarationStmt:
 		name := node.Name.Value
@@ -616,28 +601,25 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 		}
 		_, fromOuter, exists := c.env.Get(node.Name.Value)
 		if exists && !fromOuter && !node.IsExtern {
+			if existingType, ok := c.env.store[node.Name.Value].(types.FunctionType); ok {
+				if len(existingType.Params) > 0 && len(fType.Params) > 0 {
+					_, existingIsStruct := toStruct(existingType.Params[0])
+					_, newIsStruct := toStruct(fType.Params[0])
+					if existingIsStruct && newIsStruct {
+						delete(c.env.store, node.Name.Value)
+						c.env.Set(name, node.Type)
+						return
+					}
+				}
+			}
 			c.appendError(fmt.Sprintf("function %s already declared", node.Name.Value), node)
 			return
 		}
 
 		c.env.Set(name, node.Type)
 		if name != node.Name.Value {
-			if _, ok := c.isInterfaceMethod(fType.Params[0], node.Name.Value); !ok {
-				c.env.Set(node.Name.Value, node.Type)
-			}
+			c.env.Set(node.Name.Value, node.Type)
 		}
-	}
-}
-
-func (c *Checker) hoistImplementationIntent(n ast.Node) {
-	if node, ok := n.(*ast.InterfaceImplementationStmt); ok {
-		c.registerImplementation(node)
-	}
-}
-
-func (c *Checker) hoistImplementations(n ast.Node) {
-	if node, ok := n.(*ast.InterfaceImplementationStmt); ok {
-		c.validateImplementation(node)
 	}
 }
 
@@ -1523,43 +1505,6 @@ func (c *Checker) resolveInterfaceName(expr ast.Expr) (types.InterfaceType, stri
 	return types.InterfaceType{}, "", false
 }
 
-func (c *Checker) registerImplementation(node *ast.InterfaceImplementationStmt) {
-	structName := node.StructName.Value
-	structType, ok := c.definedStructs[structName]
-	if !ok {
-		c.appendError(fmt.Sprintf("unknown struct %s", structName), node)
-	}
-
-	for _, name := range node.InterfaceNames {
-		interfaceType, ifaceName, ok := c.resolveInterfaceName(name)
-		if !ok {
-			c.appendError(fmt.Sprintf("unknown interface %s", ifaceName), node)
-			continue
-		}
-
-		structType.Interfaces = append(structType.Interfaces, interfaceType)
-	}
-
-	c.definedStructs[structName] = structType
-}
-
-func (c *Checker) validateImplementation(node *ast.InterfaceImplementationStmt) {
-	structName := node.StructName.Value
-	structType, _ := c.definedStructs[structName]
-
-	for _, name := range node.InterfaceNames {
-		interfaceType, ifaceName, ok := c.resolveInterfaceName(name)
-		if !ok {
-			continue
-		}
-
-		if !c.structSatisfiesInterface(structType, interfaceType, node) {
-			c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s", structName, ifaceName), node)
-			continue
-		}
-	}
-}
-
 func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
 	structType, ok := toStruct(t)
 	if !ok {
@@ -1616,7 +1561,7 @@ func (c *Checker) validateFunctionCall(expr *ast.CallExpr, fnTypeRaw types.Type)
 	return fnType.Return
 }
 
-func (c *Checker) structSatisfiesInterface(s types.StructType, i types.InterfaceType, node ast.Node) bool {
+func (c *Checker) structSatisfiesInterface(s types.StructType, i types.InterfaceType, node ast.Node, appendErr bool) bool {
 	satisfies := true
 	for idx, method := range i.Methods {
 		emt := i.Types[idx].(types.FunctionType)
@@ -1624,14 +1569,39 @@ func (c *Checker) structSatisfiesInterface(s types.StructType, i types.Interface
 		mangledName := fmt.Sprintf("%s.%s", s.Name, method)
 		mtr, _, ok := c.env.Get(mangledName)
 		if !ok {
-			c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, missing method %s", s.Name, i.Name, method), node)
+			if appendErr {
+				c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, missing method %s", s.Name, i.Name, method), node)
+			}
 			satisfies = false
 			continue
 		}
 
 		mt := mtr.(types.FunctionType)
 		if !c.compareMethodSignature(mt, emt) {
-			c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, wrong signature for method %s. got %s, want %s", s.Name, i.Name, method, mt.Signature(), emt.Signature()), node)
+			if appendErr {
+				c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, wrong signature for method %s. got %s, want %s", s.Name, i.Name, method, mt.Signature(), emt.Signature()), node)
+			}
+			satisfies = false
+			continue
+		}
+	}
+
+	return satisfies
+}
+
+func (c *Checker) interfaceSatisfiesInterface(i1 types.InterfaceType, i2 types.InterfaceType, node ast.Node) bool {
+	satisfies := true
+	for idx, method := range i2.Methods {
+		i1Idx := slices.Index(i1.Methods, method)
+		if i1Idx == -1 {
+			c.appendError(fmt.Sprintf("interface %s does not satisfy interface %s, missing method %s", i1.Name, i2.Name, method), node)
+			satisfies = false
+			continue
+		}
+		i1m := i1.Types[i1Idx]
+		i2m := i2.Types[idx]
+		if !c.typesMatch(i1m, i2m) {
+			c.appendError(fmt.Sprintf("interface %s does not satisfy interface %s, method %s has wrong signature. wanted %s, got %s", i1.Name, i2.Name, method, i2m.Signature(), i1m.Signature()), node)
 			satisfies = false
 			continue
 		}
@@ -1689,7 +1659,7 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 
 	if it, ok := toInterface(expected); ok {
 		if st, ok := toStruct(actual); ok {
-			return c.structSatisfiesInterface(st, it, nil)
+			return c.structSatisfiesInterface(st, it, nil, true)
 		}
 	}
 
@@ -2045,7 +2015,7 @@ func (c *Checker) checkTypeMatchExpr(expr *ast.MatchTypeExpr) types.Type {
 		resolved := c.resolveType(arm.Type)
 		if it, ok := subjType.(types.InterfaceType); ok {
 			if st, ok := resolved.(types.StructType); ok {
-				if !c.structSatisfiesInterface(st, it, expr) {
+				if !c.structSatisfiesInterface(st, it, expr, true) {
 					c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s", st.Name, it.Name), expr)
 					c.inDiscardPosition = discard
 					return types.Unit
@@ -2400,6 +2370,17 @@ func (c *Checker) unifyType(p types.Type, arg types.Type, subs map[string]types.
 	case types.ResultType:
 		if a, ok := arg.(types.ArrayType); ok {
 			c.unifyType(t.T, a.ElemType, subs)
+		}
+	}
+}
+
+func (c *Checker) discoverImplementations() {
+	for sn, st := range c.definedStructs {
+		for _, it := range c.definedInterfaces {
+			if c.structSatisfiesInterface(st, it, nil, false) {
+				st.Interfaces = append(st.Interfaces, it)
+				c.definedStructs[sn] = st
+			}
 		}
 	}
 }
