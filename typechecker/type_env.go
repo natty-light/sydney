@@ -34,6 +34,12 @@ func (e *TypeEnv) Set(name string, t types.Type) {
 				name, ft.Return.Signature(), debug.Stack()))
 		}
 	}
+	if existing, ok := e.store[name]; ok {
+		if existing.Signature() != t.Signature() {
+			panic(fmt.Sprintf("invariant violation: env.Set(%q) conflicting types: existing %s, new %s\n%s",
+				name, existing.Signature(), t.Signature(), debug.Stack()))
+		}
+	}
 	e.store[name] = t
 }
 
