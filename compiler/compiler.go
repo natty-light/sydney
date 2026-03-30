@@ -1384,11 +1384,14 @@ func (c *Compiler) buildItabsFromTypes() {
 				itab.MethodsIndices[idx] = sym.Index
 			}
 			itabIdx := c.addConstant(itab)
-			itabKey := getItabKey(sn, in)
+			bareName := st.Name
+			itabKey := getItabKey(bareName, in)
 			c.itabMapping[itabKey] = itabIdx
 			if c.currentModule != "" {
-				mangledKey := getItabKey(sn, c.mangleModule(c.currentModule, in))
+				mangledKey := getItabKey(bareName, c.mangleModule(c.currentModule, in))
 				c.itabMapping[mangledKey] = itabIdx
+				moduleKey := getItabKey(sn, in)
+				c.itabMapping[moduleKey] = itabIdx
 			}
 		}
 	}
