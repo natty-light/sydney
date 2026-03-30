@@ -189,9 +189,15 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 		}
 		pkgChecker.Check(merged, nil)
 		for k, v := range pkgChecker.genericFunctions {
+			if len(v.TypeParams) == 0 {
+				panic(fmt.Sprintf("invariant violation: genericFunction %q has no TypeParams after package check\n%s\n", v.Name, debug.Stack()))
+			}
 			c.genericFunctions[k] = v
 		}
 		for k, v := range pkgChecker.genericStructs {
+			if len(v.Type.TypeParams) == 0 {
+				panic(fmt.Sprintf("invariant violation: genericStruct %q has no TypeParams after package check\n%s\n", v.Name, debug.Stack()))
+			}
 			c.genericStructs[k] = v
 		}
 		for _, e := range pkgChecker.errors {
@@ -202,55 +208,61 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 		}
 
 		exportEnv := NewTypeEnv(nil)
+		// set non-functions
+		functions := make([]*ast.FunctionDeclarationStmt, 0)
 		for _, program := range pkg.Programs {
 			for _, stmt := range program.Stmts {
 				if pub, ok := stmt.(*ast.PubStatement); ok {
-					if _, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn {
-						continue
+					if fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn {
+						functions = append(functions, fn)
 					}
 					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
+					if containsTypeParamRef(typ) {
+						panic(fmt.Sprintf("invariant violation: exported %T %s has TypeParamRefs\n%s\n", pub.Stmt, name, debug.Stack()))
+					}
 					exportEnv.Set(name, typ)
 				}
 			}
 		}
-		for _, program := range pkg.Programs {
-			for _, stmt := range program.Stmts {
-				if pub, ok := stmt.(*ast.PubStatement); ok {
-					fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt)
-					if !isFn {
-						continue
+		// set functions
+		for _, fn := range functions {
+			name := fn.Name.Value
+			typ := fn.Type
+			if len(fn.TypeParams) > 0 {
+				if ft, ok := typ.(types.FunctionType); ok {
+					subs := make(map[string]types.Type)
+					for _, param := range fn.TypeParams {
+						subs[param.Name] = types.Any
 					}
-					if len(fn.TypeParams) > 0 {
-						name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
-						if ft, ok := typ.(types.FunctionType); ok {
-							subs := make(map[string]types.Type)
-							for _, param := range fn.TypeParams {
-								subs[param.Name] = types.Any
-							}
-							resolved := types.SubstituteTypeParams(ft, subs).(types.FunctionType)
+					resolved := types.SubstituteTypeParams(ft, subs).(types.FunctionType)
 
-							if len(resolved.Params) > 0 {
-								if st, ok := toStruct(resolved.Params[0]); ok {
-									if _, _, exported := exportEnv.Get(st.Name); exported {
-										mn := st.Name + "." + name
-										exportEnv.Set(mn, resolved)
-									}
-								}
-							}
-						}
-						continue
-					}
-
-					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
-					exportEnv.Set(name, typ)
-
-					if ft, ok := typ.(types.FunctionType); ok && len(ft.Params) > 0 {
-						if st, ok := ft.Params[0].(types.StructType); ok {
+					if len(resolved.Params) > 0 {
+						if st, ok := toStruct(resolved.Params[0]); ok {
 							if _, _, exported := exportEnv.Get(st.Name); exported {
 								mn := st.Name + "." + name
-								exportEnv.Set(mn, typ)
+								if containsTypeParamRef(st) {
+									panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
+								}
+								exportEnv.Set(mn, resolved)
 							}
 						}
+					}
+				}
+				continue
+			}
+			if containsTypeParamRef(typ) {
+				panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
+			}
+			exportEnv.Set(name, typ)
+
+			if ft, ok := typ.(types.FunctionType); ok && len(ft.Params) > 0 {
+				if st, ok := ft.Params[0].(types.StructType); ok {
+					if _, _, exported := exportEnv.Get(st.Name); exported {
+						mn := st.Name + "." + name
+						if containsTypeParamRef(ft) {
+							panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
+						}
+						exportEnv.Set(mn, typ)
 					}
 				}
 			}
