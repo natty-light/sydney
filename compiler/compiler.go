@@ -110,7 +110,7 @@ func (c *Compiler) SetFileName(fn string) {
 func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
-		for _, stmt := range node.Stmts { // set interface types and populate method indices map
+		for _, stmt := range node.Stmts { // set interface types, struct types, and hoist functions
 			if pub, ok := stmt.(*ast.PubStatement); ok {
 				stmt = pub.Stmt
 			}
@@ -122,7 +122,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 				c.setInterface(name, def.Type)
 			}
 
-			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok && !fn.IsExtern { // hoist functions for interfaces
+			if def, ok := stmt.(*ast.StructDefinitionStmt); ok {
+				name := def.Name.Value
+				if c.currentModule != "" {
+					name = c.mangleModule(c.currentModule, name)
+				}
+				c.setStruct(name, def.Type)
+			}
+
+			if fn, ok := stmt.(*ast.FunctionDeclarationStmt); ok && !fn.IsExtern {
 				name := fn.Name.Value
 				if fn.MangledName != "" {
 					name = fn.MangledName
@@ -143,11 +151,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		for _, stmt := range node.Stmts { // create itabs
-			if impl, ok := stmt.(*ast.InterfaceImplementationStmt); ok {
-				c.compileInterfaceImplementation(impl)
-			}
-		}
+		c.buildItabsFromTypes()
 
 		for _, s := range node.Stmts { // compile program
 			err := c.Compile(s)
@@ -1337,53 +1341,57 @@ func (c *Compiler) setStruct(name string, t types.StructType) {
 	c.structTypes[name] = t
 }
 
-func (c *Compiler) compileInterfaceImplementation(impl *ast.InterfaceImplementationStmt) {
-	sn := impl.StructName.Value
-	for _, ident := range impl.InterfaceNames {
-		in := interfaceNameFromExpr(ident)
-		it, ok := c.fetchInterfaceType(in)
-		if !ok && c.currentModule != "" {
-			it, ok = c.fetchInterfaceType(c.mangleModule(c.currentModule, in))
-		}
-		if !ok {
-			panic(fmt.Errorf("interface type %s not found", in))
-		}
+func (c *Compiler) buildItabsFromTypes() {
+	// sort for tests
+	structNames := make([]string, 0, len(c.structTypes))
+	for sn := range c.structTypes {
+		structNames = append(structNames, sn)
+	}
+	sort.Strings(structNames)
 
-		itab := &object.Itab{
-			InterfaceName:  in,
-			ConcreteName:   sn,
-			MethodsIndices: make([]int, len(it.Methods)),
-		}
+	for _, sn := range structNames {
+		st := c.structTypes[sn]
+		for _, ifaceRaw := range st.Interfaces {
+			iface, ok := ifaceRaw.(types.InterfaceType)
+			if !ok {
+				continue
+			}
 
-		for mn, idx := range it.MethodIndices {
-			mangled := mangle(sn, mn)
-			sym, _, ok := c.symbolTable.Resolve(mangled)
+			in := iface.Name
+			it, ok := c.fetchInterfaceType(in)
 			if !ok && c.currentModule != "" {
-				sym, _, ok = c.symbolTable.Resolve(c.mangleModule(c.currentModule, mangled))
+				it, ok = c.fetchInterfaceType(c.mangleModule(c.currentModule, in))
 			}
 			if !ok {
-				panic(fmt.Errorf("symbol %s not found", mangled))
+				continue
 			}
-			itab.MethodsIndices[idx] = sym.Index
-		}
-		itabIdx := c.addConstant(itab)
-		itabKey := getItabKey(sn, in)
-		c.itabMapping[itabKey] = itabIdx
-		if c.currentModule != "" {
-			mangledKey := getItabKey(sn, c.mangleModule(c.currentModule, in))
-			c.itabMapping[mangledKey] = itabIdx
-		}
-	}
-}
 
-func interfaceNameFromExpr(expr ast.Expr) string {
-	switch e := expr.(type) {
-	case *ast.Identifier:
-		return e.Value
-	case *ast.ScopeAccessExpr:
-		return e.Module.Value + "__" + e.Member.Value
+			itab := &object.Itab{
+				InterfaceName:  in,
+				ConcreteName:   sn,
+				MethodsIndices: make([]int, len(it.Methods)),
+			}
+
+			for mn, idx := range it.MethodIndices {
+				mangled := mangle(sn, mn)
+				sym, _, ok := c.symbolTable.Resolve(mangled)
+				if !ok && c.currentModule != "" {
+					sym, _, ok = c.symbolTable.Resolve(c.mangleModule(c.currentModule, mangled))
+				}
+				if !ok {
+					continue
+				}
+				itab.MethodsIndices[idx] = sym.Index
+			}
+			itabIdx := c.addConstant(itab)
+			itabKey := getItabKey(sn, in)
+			c.itabMapping[itabKey] = itabIdx
+			if c.currentModule != "" {
+				mangledKey := getItabKey(sn, c.mangleModule(c.currentModule, in))
+				c.itabMapping[mangledKey] = itabIdx
+			}
+		}
 	}
-	return ""
 }
 
 func (c *Compiler) setInterface(name string, t types.InterfaceType) {

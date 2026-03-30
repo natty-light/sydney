@@ -32,6 +32,7 @@ type Checker struct {
 	genericFunctions map[string]*ast.FunctionDeclarationStmt // templates
 	genericStructs   map[string]*ast.StructDefinitionStmt    // templates
 	monomorphized    map[string]bool                         // "identity__int" → done
+	structNodes      map[string]*ast.StructDefinitionStmt    // for writing back Interfaces
 
 	program        *ast.Program
 	stmtIndex      int
@@ -61,6 +62,7 @@ func New(globalEnv *TypeEnv) *Checker {
 		genericFunctions:       make(map[string]*ast.FunctionDeclarationStmt),
 		genericStructs:         make(map[string]*ast.StructDefinitionStmt),
 		monomorphized:          make(map[string]bool),
+		structNodes:            make(map[string]*ast.StructDefinitionStmt),
 		pendingInserts:         make(map[int]ast.Stmt),
 		program:                nil,
 	}
@@ -536,6 +538,7 @@ func (c *Checker) hoistBase(n ast.Node) {
 			return
 		}
 		c.definedStructs[node.Name.Value] = node.Type
+		c.structNodes[node.Name.Value] = node
 
 	case *ast.InterfaceDefinitionStmt:
 		node.Type.MethodIndices = make(map[string]int)
@@ -2380,6 +2383,9 @@ func (c *Checker) discoverImplementations() {
 			if c.structSatisfiesInterface(st, it, nil, false) {
 				st.Interfaces = append(st.Interfaces, it)
 				c.definedStructs[sn] = st
+				if node, ok := c.structNodes[sn]; ok {
+					node.Type = st
+				}
 			}
 		}
 	}

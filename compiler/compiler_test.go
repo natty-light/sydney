@@ -1628,13 +1628,13 @@ func TestInterfacesAsArguments(t *testing.T) {
 			expectedConstants: []interface{}{
 				&object.Itab{
 					InterfaceName:  "Pet",
-					ConcreteName:   "Dog",
-					MethodsIndices: []int{0},
+					ConcreteName:   "Cat",
+					MethodsIndices: []int{1},
 				},
 				&object.Itab{
 					InterfaceName:  "Pet",
-					ConcreteName:   "Cat",
-					MethodsIndices: []int{1},
+					ConcreteName:   "Dog",
+					MethodsIndices: []int{0},
 				},
 				[]code.Instructions{ // dog speak
 					code.Make(code.OpGetLocal, 0),
@@ -1709,21 +1709,21 @@ func TestInterfacesAsArguments(t *testing.T) {
 
 				code.Make(code.OpGetGlobal, 2),
 				code.Make(code.OpGetGlobal, 4),
-				code.Make(code.OpBox, 0),
+				code.Make(code.OpBox, 1),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 
 				code.Make(code.OpGetGlobal, 2),
 				code.Make(code.OpGetGlobal, 5),
-				code.Make(code.OpBox, 1),
+				code.Make(code.OpBox, 0),
 				code.Make(code.OpCall, 1),
 				code.Make(code.OpPop),
 
 				code.Make(code.OpGetGlobal, 3),
 				code.Make(code.OpGetGlobal, 4),
-				code.Make(code.OpBox, 0),
-				code.Make(code.OpGetGlobal, 5),
 				code.Make(code.OpBox, 1),
+				code.Make(code.OpGetGlobal, 5),
+				code.Make(code.OpBox, 0),
 				code.Make(code.OpCall, 2),
 				code.Make(code.OpPop),
 			},
