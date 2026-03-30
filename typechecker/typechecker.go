@@ -1588,14 +1588,18 @@ func (c *Checker) interfaceSatisfiesInterface(i1 types.InterfaceType, i2 types.I
 	for idx, method := range i2.Methods {
 		i1Idx := slices.Index(i1.Methods, method)
 		if i1Idx == -1 {
-			c.appendError(fmt.Sprintf("interface %s does not satisfy interface %s, missing method %s", i1.Name, i2.Name, method), node)
+			if node != nil {
+				c.appendError(fmt.Sprintf("interface %s does not satisfy interface %s, missing method %s", i1.Name, i2.Name, method), node)
+			}
 			satisfies = false
 			continue
 		}
 		i1m := i1.Types[i1Idx]
 		i2m := i2.Types[idx]
 		if !c.typesMatch(i1m, i2m) {
-			c.appendError(fmt.Sprintf("interface %s does not satisfy interface %s, method %s has wrong signature. wanted %s, got %s", i1.Name, i2.Name, method, i2m.Signature(), i1m.Signature()), node)
+			if node != nil {
+				c.appendError(fmt.Sprintf("interface %s does not satisfy interface %s, method %s has wrong signature. wanted %s, got %s", i1.Name, i2.Name, method, i2m.Signature(), i1m.Signature()), node)
+			}
 			satisfies = false
 			continue
 		}
@@ -1684,7 +1688,10 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 
 	if ei, ok := toInterface(expected); ok {
 		if ai, ok := toInterface(actual); ok {
-			return ei.Name == ai.Name
+			if ei.Name == ai.Name {
+				return true
+			}
+			return c.interfaceSatisfiesInterface(ai, ei, nil)
 		}
 	}
 
