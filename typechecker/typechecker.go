@@ -1604,6 +1604,12 @@ func (c *Checker) structSatisfiesInterface(s types.StructType, i types.Interface
 		}
 
 		mt := mtr.(types.FunctionType)
+		if len(mt.Params) > 0 {
+			if _, ok := mt.Params[0].(types.StructType); !ok {
+				panic(fmt.Sprintf("invariant violation: method %q first param is %s, expected struct type\n%s",
+					mangledName, mt.Params[0].Signature(), debug.Stack()))
+			}
+		}
 		if !c.compareMethodSignature(mt, emt) {
 			if appendErr {
 				c.appendError(fmt.Sprintf("struct %s does not satisfy interface %s, wrong signature for method %s. got %s, want %s", s.Name, i.Name, method, mt.Signature(), emt.Signature()), node)
