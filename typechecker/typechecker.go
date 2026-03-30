@@ -2212,6 +2212,7 @@ func (c *Checker) checkPanicCall(expr *ast.CallExpr) types.Type {
 }
 
 func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDeclarationStmt) types.Type {
+	c.assertGenericTemplate(template.Name.Value, template.TypeParams, expr.TypeArgs)
 	resolved := false
 	defer func() {
 		if resolved {
@@ -2283,6 +2284,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 }
 
 func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template types.StructType) (types.StructType, bool) {
+	c.assertGenericTemplate(template.Name, template.TypeParams, expr.TypeArgs)
 	resolved := false
 	defer func() {
 		if resolved {
@@ -2312,6 +2314,7 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 		concreteType := types.SubstituteTypeParams(template, subs).(types.StructType)
 		concreteType.Name = mangled
 		concreteType.TypeParams = nil
+		c.assertConcreteStruct(concreteType)
 
 		// register non-generic struct
 		c.definedStructs[mangled] = concreteType
@@ -2358,6 +2361,7 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 			continue
 		}
 
+		c.assertGenericTemplate(fn.Name.Value, fn.TypeParams, typeArgs)
 		cloned := ast.Clone(&ast.Program{Stmts: []ast.Stmt{fn}})
 		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 
@@ -2444,6 +2448,7 @@ func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
 		concreteType := types.SubstituteTypeParams(template.Type, subs).(types.StructType)
 		concreteType.Name = mangled
 		concreteType.TypeParams = nil
+		c.assertConcreteStruct(concreteType)
 		c.definedStructs[mangled] = concreteType
 
 		synthetic := &ast.StructDefinitionStmt{
@@ -2590,5 +2595,53 @@ func (c *Checker) assertMonomorphized(name string, typeParams []*types.TypeParam
 	}
 	if typeParams != nil {
 		panic(fmt.Sprintf("invariant violation: monomorphized %q still has type params", name))
+	}
+}
+
+func containsTypeParamRef(t types.Type) bool {
+	switch tt := t.(type) {
+	case *types.TypeParamRef:
+		return true
+	case types.ArrayType:
+		return containsTypeParamRef(tt.ElemType)
+	case types.MapType:
+		return containsTypeParamRef(tt.KeyType) || containsTypeParamRef(tt.ValueType)
+	case types.FunctionType:
+		for _, p := range tt.Params {
+			if containsTypeParamRef(p) {
+				return true
+			}
+		}
+		return containsTypeParamRef(tt.Return)
+	case types.StructType:
+		for _, ft := range tt.Types {
+			if containsTypeParamRef(ft) {
+				return true
+			}
+		}
+	case types.ResultType:
+		return containsTypeParamRef(tt.T)
+	case types.OptionType:
+		return containsTypeParamRef(tt.T)
+	}
+	return false
+}
+
+func (c *Checker) assertConcreteStruct(st types.StructType) {
+	for i, t := range st.Types {
+		if containsTypeParamRef(t) {
+			panic(fmt.Sprintf("invariant violation: concrete struct %q has TypeParamRef in field %q (type %s)\n%s",
+				st.Name, st.Fields[i], t.Signature(), debug.Stack()))
+		}
+	}
+}
+
+func (c *Checker) assertGenericTemplate(name string, typeParams []*types.TypeParam, typeArgs []types.Type) {
+	if len(typeParams) == 0 {
+		panic(fmt.Sprintf("invariant violation: generic template %q does not have type parameters", name))
+	}
+
+	if len(typeArgs) == 0 {
+		panic(fmt.Sprintf("invariant violation: call for template %q does not have type arguments", name))
 	}
 }
