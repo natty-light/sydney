@@ -110,6 +110,7 @@ func (c *Compiler) SetFileName(fn string) {
 func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
+		ast.AssertPostMonomorphization(node)
 		for _, stmt := range node.Stmts { // set interface types, struct types, and hoist functions
 			if pub, ok := stmt.(*ast.PubStatement); ok {
 				stmt = pub.Stmt
