@@ -574,27 +574,36 @@ func (e *Emitter) emit(line string) {
 	if e.blockTerminated {
 		return
 	}
+	buf := e.activeBuf()
+	buf.WriteString(e.indents[e.depth])
+	buf.WriteString(line)
+	buf.WriteByte('\n')
+}
 
+func (e *Emitter) activeBuf() *bytes.Buffer {
 	if e.bodyBuf != nil {
-		e.bodyBuf.WriteString(e.indents[e.depth] + line)
-	} else {
-		e.buf.WriteString(e.indents[e.depth] + line)
+		return e.bodyBuf
 	}
+	return e.buf
+}
+
+func (e *Emitter) emitLoad(result, typ, ptr string) {
+	if e.blockTerminated {
+		return
+	}
+	buf := e.activeBuf()
+	buf.WriteString(e.indents[e.depth])
+	buf.WriteString(result)
+	buf.WriteString(" = load ")
+	buf.WriteString(typ)
+	buf.WriteString(", ptr ")
+	buf.WriteString(ptr)
+	buf.WriteByte('\n')
 }
 
 func (e *Emitter) emitBypass(line string) {
-	withIndent := strings.Repeat("  ", e.depth) + line + "\n"
+	withIndent := e.indents[e.depth] + line + "\n"
 	e.buf.WriteString(withIndent)
-}
-
-func interfaceNameFromExpr(expr ast.Expr) string {
-	switch e := expr.(type) {
-	case *ast.Identifier:
-		return e.Value
-	case *ast.ScopeAccessExpr:
-		return e.Module.Value + "__" + e.Member.Value
-	}
-	return ""
 }
 
 func (e *Emitter) label(prefix string) string {
@@ -610,27 +619,44 @@ func (e *Emitter) global(name string) string {
 func (e *Emitter) emitLabel(name string) {
 	e.blockTerminated = false
 	e.currentBlock = name
-	line := name + ":\n"
-	if e.bodyBuf != nil {
-		e.bodyBuf.WriteString(line)
-	} else {
-		e.buf.WriteString(line)
-	}
+	buf := e.activeBuf()
+	buf.WriteString(name)
+	buf.WriteString(":\n")
 }
 
 func (e *Emitter) emitAlloca(name string, typ IrType) {
-	line := fmt.Sprintf("  %s = alloca %s\n", name, typ)
-	e.allocaBuf.WriteString(line)
+	allocaBuf := e.allocaBuf
+	allocaBuf.WriteString(e.indents[e.depth])
+	allocaBuf.WriteString(name)
+	allocaBuf.WriteString(" = alloca ")
+	allocaBuf.WriteString(typ.String())
+	allocaBuf.WriteByte('\n')
 }
 
 func (e *Emitter) emitBranch(cond, l1, l2 string) {
-	line := fmt.Sprintf("br i1 %s, label %%%s, label %%%s", cond, l1, l2)
-	e.emit(line)
+	if e.blockTerminated {
+		return
+	}
+	buf := e.activeBuf()
+	buf.WriteString(e.indents[e.depth])
+	buf.WriteString("br i1 ")
+	buf.WriteString(cond)
+	buf.WriteString(", label %")
+	buf.WriteString(l1)
+	buf.WriteString(", label %")
+	buf.WriteString(l2)
+	buf.WriteByte('\n')
 }
 
 func (e *Emitter) emitJmp(label string) {
-	line := fmt.Sprintf("br label %%%s", label)
-	e.emit(line)
+	if e.blockTerminated {
+		return
+	}
+	buf := e.activeBuf()
+	buf.WriteString(e.indents[e.depth])
+	buf.WriteString("br label %")
+	buf.WriteString(label)
+	buf.WriteByte('\n')
 }
 
 func (e *Emitter) beginFunction() funcState {
@@ -817,8 +843,7 @@ func (e *Emitter) emitExprInner(expr ast.Expr) (string, IrType) {
 			irType = global.typ
 		}
 		result := e.tmp()
-		line := fmt.Sprintf("%s = load %s, %s %s", result, irType, IrPtr, irName)
-		e.emit(line)
+		e.emitLoad(result, irType.String(), irName)
 		return result, irType
 	case *ast.IfExpr:
 		return e.emitIfExpr(expr)
@@ -1425,7 +1450,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	lenPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, iterVal))
 	lenVal := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", lenVal, lenPtr))
+	e.emitLoad(lenVal, "i64", lenPtr)
 	lenAlloca := e.alloca("forin_len")
 	e.emitAlloca(lenAlloca, IrInt)
 	e.emit(fmt.Sprintf("store i64 %s, ptr %s", lenVal, lenAlloca))
@@ -1439,9 +1464,9 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitJmp(condLabel)
 	e.emitLabel(condLabel)
 	curIdx := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curIdx, idxAlloca))
+	e.emitLoad(curIdx, "i64", idxAlloca)
 	curLen := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curLen, lenAlloca))
+	e.emitLoad(curLen, "i64", lenAlloca)
 	cond := e.tmp()
 	e.emit(fmt.Sprintf("%s = icmp slt i64 %s, %s", cond, curIdx, curLen))
 	e.emitBranch(cond, loopLabel, escapeLabel)
@@ -1460,15 +1485,15 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	// bind value: v = arr[idx]
 	elemType := SydneyTypeToIrType(stmt.Value.GetResolvedType())
 	iter2 := e.tmp()
-	e.emit(fmt.Sprintf("%s = load %s, ptr %s", iter2, iterType, iterAlloca))
+	e.emitLoad(iter2, iterType.String(), iterAlloca)
 	dataPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", dataPtr, iter2))
 	data := e.tmp()
-	e.emit(fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr))
+	e.emitLoad(data, "ptr", dataPtr)
 	elemPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", elemPtr, elemType, data, curIdx))
 	elemVal := e.tmp()
-	e.emit(fmt.Sprintf("%s = load %s, ptr %s", elemVal, elemType, elemPtr))
+	e.emitLoad(elemVal, elemType.String(), elemPtr)
 
 	valAlloca := e.alloca(stmt.Value.Value)
 	e.emitAlloca(valAlloca, elemType)
@@ -1482,7 +1507,7 @@ func (e *Emitter) emitForInStmtArr(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitJmp(postLabel)
 	e.emitLabel(postLabel)
 	oldIdx := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", oldIdx, idxAlloca))
+	e.emitLoad(oldIdx, "i64", idxAlloca)
 	newIdx := e.tmp()
 	e.emit(fmt.Sprintf("%s = add i64 %s, 1", newIdx, oldIdx))
 	e.emit(fmt.Sprintf("store i64 %s, ptr %s", newIdx, idxAlloca))
@@ -1527,7 +1552,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	lenPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, keysVal))
 	lenVal := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", lenVal, lenPtr))
+	e.emitLoad(lenVal, "i64", lenPtr)
 	lenAlloca := e.alloca("forin_len")
 	e.emitAlloca(lenAlloca, IrInt)
 	e.emit(fmt.Sprintf("store i64 %s, ptr %s", lenVal, lenAlloca))
@@ -1541,9 +1566,9 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitJmp(condLabel)
 	e.emitLabel(condLabel)
 	curIdx := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curIdx, idxAlloca))
+	e.emitLoad(curIdx, "i64", idxAlloca)
 	curLen := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", curLen, lenAlloca))
+	e.emitLoad(curLen, "i64", lenAlloca)
 	cond := e.tmp()
 	e.emit(fmt.Sprintf("%s = icmp slt i64 %s, %s", cond, curIdx, curLen))
 	e.emitBranch(cond, loopLabel, escapeLabel)
@@ -1554,15 +1579,15 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	// bind key: k = keys[idx]
 	keyType := SydneyTypeToIrType(mt.KeyType)
 	keys2 := e.tmp()
-	e.emit(fmt.Sprintf("%s = load ptr, ptr %s", keys2, keysAlloca))
+	e.emitLoad(keys2, "ptr", keysAlloca)
 	keysDataPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", keysDataPtr, keys2))
 	keysData := e.tmp()
-	e.emit(fmt.Sprintf("%s = load ptr, ptr %s", keysData, keysDataPtr))
+	e.emitLoad(keysData, "ptr", keysDataPtr)
 	keyElemPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr %s, ptr %s, i64 %s", keyElemPtr, keyType, keysData, curIdx))
 	keyVal := e.tmp()
-	e.emit(fmt.Sprintf("%s = load %s, ptr %s", keyVal, keyType, keyElemPtr))
+	e.emitLoad(keyVal, keyType.String(), keyElemPtr)
 
 	keyAlloca := e.alloca(stmt.Key.Value)
 	e.emitAlloca(keyAlloca, keyType)
@@ -1572,7 +1597,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	// bind value: v = map[k]
 	valType := SydneyTypeToIrType(mt.ValueType)
 	map2 := e.tmp()
-	e.emit(fmt.Sprintf("%s = load %s, ptr %s", map2, mapType, mapAlloca))
+	e.emitLoad(map2, mapType.String(), mapAlloca)
 	rawVal := e.tmp()
 	if mt.KeyType == types.String {
 		e.emit(fmt.Sprintf("%s = call i64 @sydney_map_get_str(ptr %s, ptr %s)", rawVal, map2, keyVal))
@@ -1601,7 +1626,7 @@ func (e *Emitter) emitForInStmtMap(stmt *ast.ForInStmt) (string, IrType) {
 	e.emitJmp(postLabel)
 	e.emitLabel(postLabel)
 	oldIdx := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", oldIdx, idxAlloca))
+	e.emitLoad(oldIdx, "i64", idxAlloca)
 	newIdx := e.tmp()
 	e.emit(fmt.Sprintf("%s = add i64 %s, 1", newIdx, oldIdx))
 	e.emit(fmt.Sprintf("store i64 %s, ptr %s", newIdx, idxAlloca))
@@ -1800,8 +1825,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 		e.emit(line)
 
 		loaded := e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, fv.typ, gepPtr)
-		e.emit(line)
+		e.emitLoad(loaded, fv.typ.String(), gepPtr)
 
 		allocaName := e.alloca(fv.name)
 		e.emitAlloca(allocaName, fv.typ)
@@ -1890,8 +1914,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 
 			fvVal := e.tmp()
 			local := state.locals[fv.name]
-			line = fmt.Sprintf("%s = load %s, ptr %s", fvVal, fv.typ, local.alloca)
-			e.emit(line)
+			e.emitLoad(fvVal, fv.typ.String(), local.alloca)
 
 			line = fmt.Sprintf("store %s %s, ptr %s", fv.typ, fvVal, slot)
 			e.emit(line)
@@ -1938,8 +1961,7 @@ func (e *Emitter) emitSelectorExpr(expr *ast.SelectorExpr) (string, IrType) {
 	e.emit(line)
 
 	result := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", result, retType, gepTmp)
-	e.emit(line)
+	e.emitLoad(result, retType.String(), gepTmp)
 
 	return result, retType
 }
@@ -1998,23 +2020,20 @@ func (e *Emitter) emitClosureCall(expr *ast.CallExpr, name string, typ IrType) (
 		closurePtr = name
 	} else {
 		closurePtr = e.tmp()
-		line := fmt.Sprintf("%s = load ptr, ptr %s", closurePtr, name)
-		e.emit(line)
+		e.emitLoad(closurePtr, "ptr", name)
 	}
 
 	fnAddr := e.tmp()
 	line := fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnAddr, closurePtr)
 	e.emit(line)
 	fnPtr := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnAddr)
-	e.emit(line)
+	e.emitLoad(fnPtr, "ptr", fnAddr)
 
 	envAddr := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envAddr, closurePtr)
 	e.emit(line)
 	envPtr := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", envPtr, envAddr)
-	e.emit(line)
+	e.emitLoad(envPtr, "ptr", envAddr)
 
 	args := []string{fmt.Sprintf("ptr %s", envPtr)}
 	for _, arg := range expr.Arguments {
@@ -2066,13 +2085,12 @@ func (e *Emitter) emitInterfaceMethodCall(expr *ast.CallExpr, sel *ast.SelectorE
 
 	// load fat pointer
 	ifaceVal := e.tmp()
-	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, ifacePtr)
-	e.emit(line)
+	e.emitLoad(ifaceVal, "{ ptr, ptr} ", ifacePtr)
 
 	// Extract value pointer (index 0)
 	//%val.ptr = extractvalue { ptr, ptr } %iface, 0
 	valPtr := e.tmp()
-	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
+	line := fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
 	e.emit(line)
 
 	//; Extract vtable pointer (index 1)
@@ -2095,8 +2113,7 @@ func (e *Emitter) emitInterfaceMethodCall(expr *ast.CallExpr, sel *ast.SelectorE
 	// load function pointer
 	//%fn.ptr = load ptr, ptr %fn.ptr.addr
 	fnPtr := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnPtrAddr)
-	e.emit(line)
+	e.emitLoad(fnPtr, "ptr", fnPtrAddr)
 
 	args := make([]string, len(expr.Arguments)+1)
 	args[0] = fmt.Sprintf("ptr %s", valPtr)
@@ -2270,9 +2287,7 @@ func (e *Emitter) emitArrayElementPtr(expr *ast.IndexExpr) (string, IrType) {
 	e.emit(line)
 
 	data := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", data, dataPtr)
-	e.emit(line)
-
+	e.emitLoad(data, "ptr", dataPtr)
 	elemType := SydneyTypeToIrType(expr.ResolvedType)
 
 	elemPtr := e.tmp()
@@ -2287,7 +2302,7 @@ func (e *Emitter) emitArrayBoundsCheck(headPtr, idx string) {
 	lenPtr := e.tmp()
 	e.emit(fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, headPtr))
 	length := e.tmp()
-	e.emit(fmt.Sprintf("%s = load i64, ptr %s", length, lenPtr))
+	e.emitLoad(length, "i64", lenPtr)
 
 	// Check idx >= 0
 	geZero := e.tmp()
@@ -2304,7 +2319,7 @@ func (e *Emitter) emitArrayBoundsCheck(headPtr, idx string) {
 	okLabel := e.label("bounds.ok")
 	failLabel := e.label("bounds.fail")
 
-	e.emit(fmt.Sprintf("br i1 %s, label %%%s, label %%%s", inBounds, okLabel, failLabel))
+	e.emitBranch(inBounds, okLabel, failLabel)
 
 	// Fail block
 	e.emitLabel(failLabel)
@@ -2320,8 +2335,7 @@ func (e *Emitter) emitArrayIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	elemPtr, elemType := e.emitArrayElementPtr(expr)
 
 	result := e.tmp()
-	line := fmt.Sprintf("%s = load %s, ptr %s", result, elemType, elemPtr)
-	e.emit(line)
+	e.emitLoad(result, elemType.String(), elemPtr)
 
 	return result, elemType
 }
@@ -2383,8 +2397,7 @@ func (e *Emitter) emitStringIndexExpr(expr *ast.IndexExpr) (string, IrType) {
 	e.emit(line)
 
 	b := e.tmp()
-	line = fmt.Sprintf("%s = load i8, ptr %s", b, elemPtr)
-	e.emit(line)
+	e.emitLoad(b, "i8", elemPtr)
 	return b, IrInt8
 }
 
@@ -2593,8 +2606,7 @@ func (e *Emitter) emitScopeAccessExpr(expr *ast.ScopeAccessExpr) (string, IrType
 
 	if g, ok := e.globals[e.global(mangled)]; ok {
 		val := e.tmp()
-		line := fmt.Sprintf("%s = load %s, ptr %s", val, g.typ, g.name)
-		e.emit(line)
+		e.emitLoad(val, g.typ.String(), g.name)
 		return val, g.typ
 	}
 
@@ -2763,8 +2775,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line := fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, subj)
 	e.emit(line)
 	tag := e.tmp()
-	line = fmt.Sprintf("%s = load i1, ptr %s", tag, tagPtr)
-	e.emit(line)
+	e.emitLoad(tag, "i1", tagPtr)
 
 	// set up labels
 	okLab := e.label("match.ok")
@@ -2785,8 +2796,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, subj)
 	e.emit(line)
 	val := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", val, innerType, valPtr)
-	e.emit(line)
+	e.emitLoad(val, innerType.String(), valPtr)
 	bindAlloca := e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, innerType)
 	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
@@ -2814,8 +2824,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 2", errPtr, ut, subj)
 	e.emit(line)
 	errVal := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", errVal, IrPtr, errPtr)
-	e.emit(line)
+	e.emitLoad(errVal, "ptr", errPtr)
 	bindAlloca = e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, IrPtr)
 	line = fmt.Sprintf("store ptr %s, ptr %s", errVal, bindAlloca)
@@ -2846,8 +2855,7 @@ func (e *Emitter) emitResultMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	finalVal := ""
 	if rt != IrUnit {
 		finalVal = e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
-		e.emit(line)
+		e.emitLoad(finalVal, rt.String(), result)
 	}
 
 	return finalVal, rt
@@ -2864,8 +2872,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line := fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 0", tagPtr, ut, subj)
 	e.emit(line)
 	tag := e.tmp()
-	line = fmt.Sprintf("%s = load i1, ptr %s", tag, tagPtr)
-	e.emit(line)
+	e.emitLoad(tag, "i1", tagPtr)
 
 	// set up labels
 	someLab := e.label("match.some")
@@ -2886,8 +2893,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	line = fmt.Sprintf("%s = getelementptr %s, ptr %s, i32 0, i32 1", valPtr, ut, subj)
 	e.emit(line)
 	val := e.tmp()
-	line = fmt.Sprintf("%s = load %s, ptr %s", val, innerType, valPtr)
-	e.emit(line)
+	e.emitLoad(val, innerType.String(), valPtr)
 	bindAlloca := e.tmp() + ".addr"
 	e.emitAlloca(bindAlloca, innerType)
 	line = fmt.Sprintf("store %s %s, ptr %s", innerType, val, bindAlloca)
@@ -2921,8 +2927,7 @@ func (e *Emitter) emitOptionMatchExpr(expr *ast.MatchExpr) (string, IrType) {
 	finalVal := ""
 	if rt != IrUnit {
 		finalVal = e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
-		e.emit(line)
+		e.emitLoad(finalVal, rt.String(), result)
 	}
 
 	return finalVal, rt
@@ -2945,11 +2950,10 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 	ifaceName := ifaceType.Name
 
 	ifaceVal := e.tmp()
-	line := fmt.Sprintf("%s = load { ptr, ptr }, ptr %s", ifaceVal, subjPtr)
-	e.emit(line)
+	e.emitLoad(ifaceVal, "{ ptr, ptr }", subjPtr)
 
 	vtablePtr := e.tmp()
-	line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
+	line := fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 1", vtablePtr, ifaceVal)
 	e.emit(line)
 
 	result := ""
@@ -3020,8 +3024,7 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 	finalVal := ""
 	if rt != IrUnit {
 		finalVal = e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
-		e.emit(line)
+		e.emitLoad(finalVal, rt.String(), result)
 	}
 
 	return finalVal, rt
@@ -3036,8 +3039,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 	line := fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 0", tagPtr, subjPtr)
 	e.emit(line)
 	tag := e.tmp()
-	line = fmt.Sprintf("%s = load i8, ptr %s", tag, tagPtr)
-	e.emit(line)
+	e.emitLoad(tag, "i8", tagPtr)
 
 	// so it works like a local
 	result := ""
@@ -3106,8 +3108,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 	finalVal := ""
 	if rt != IrUnit {
 		finalVal = e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", finalVal, rt, result)
-		e.emit(line)
+		e.emitLoad(finalVal, rt.String(), result)
 	}
 
 	return finalVal, rt
@@ -3184,11 +3185,11 @@ func (e *Emitter) emitSliceExpr(expr *ast.SliceExpr) (string, IrType) {
 			lenPtr := e.tmp()
 			line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 0", lenPtr, left)
 			e.emit(line)
-			line = fmt.Sprintf("%s = load i64, ptr %s", end, lenPtr)
+			e.emitLoad(end, "i64", lenPtr)
 		} else if sydneyType == types.String {
 			line = fmt.Sprintf("%s = call i64 @sydney_strlen(ptr %s)", end, left)
+			e.emit(line)
 		}
-		e.emit(line)
 	}
 
 	var result string
@@ -3210,8 +3211,7 @@ func (e *Emitter) emitSliceExpr(expr *ast.SliceExpr) (string, IrType) {
 		line = fmt.Sprintf("%s = getelementptr { i64, ptr }, ptr %s, i32 0, i32 1", srcDataPtr, left)
 		e.emit(line)
 		srcData := e.tmp()
-		line = fmt.Sprintf("%s = load ptr, ptr %s", srcData, srcDataPtr)
-		e.emit(line)
+		e.emitLoad(srcData, "ptr", srcDataPtr)
 		srcOffset := e.tmp()
 		line = fmt.Sprintf("%s = getelementptr i64, ptr %s, i64 %s", srcOffset, srcData, start)
 		e.emit(line)
@@ -3334,16 +3334,13 @@ func (e *Emitter) emitSpawn(stmt *ast.SpawnStmt) {
 	line := fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 0", fnPtrSlot, closureReg)
 	e.emit(line)
 	fnPtr := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", fnPtr, fnPtrSlot)
-	e.emit(line)
-
+	e.emitLoad(fnPtr, "ptr", fnPtrSlot)
 	// extract env ptr from slot 1
 	envPtrSlot := e.tmp()
 	line = fmt.Sprintf("%s = getelementptr { ptr, ptr }, ptr %s, i32 0, i32 1", envPtrSlot, closureReg)
 	e.emit(line)
 	envPtr := e.tmp()
-	line = fmt.Sprintf("%s = load ptr, ptr %s", envPtr, envPtrSlot)
-	e.emit(line)
+	e.emitLoad(envPtr, "ptr", envPtrSlot)
 
 	line = fmt.Sprintf("call void @sydney_spawn(ptr %s, ptr %s)", fnPtr, envPtr)
 	e.emit(line)
@@ -3376,8 +3373,7 @@ func (e *Emitter) emitSpawnWithArgs(callExpr *ast.CallExpr) {
 		line = fmt.Sprintf("%s = getelementptr { %s }, ptr %%env, i32 0, i32 %d", gep, envTypeStr, i)
 		e.emit(line)
 		loaded := e.tmp()
-		line = fmt.Sprintf("%s = load %s, ptr %s", loaded, t, gep)
-		e.emit(line)
+		e.emitLoad(loaded, t.String(), gep)
 		callArgs[i] = fmt.Sprintf("%s %s", t, loaded)
 	}
 	if sig.retType == IrUnit {
@@ -3503,8 +3499,7 @@ func (e *Emitter) emitUnboxAny(reg string, targetType IrType) (string, IrType) {
 	line := fmt.Sprintf("%s = getelementptr { i8, i64 }, ptr %s, i32 0, i32 1", valPtr, reg)
 	e.emit(line)
 	rawVal := e.tmp()
-	line = fmt.Sprintf("%s = load i64, ptr %s", rawVal, valPtr)
-	e.emit(line)
+	e.emitLoad(rawVal, "i64", valPtr)
 	// bitcast back to target
 	return e.fromI64(rawVal, targetType)
 }
