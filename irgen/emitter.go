@@ -145,6 +145,9 @@ func New() *Emitter {
 }
 
 func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
+	if prog, ok := n.(*ast.Program); ok {
+		ast.AssertPostMonomorphization(prog)
+	}
 	for _, pkg := range packages {
 		e.currentModule = pkg.Name
 		merged := &ast.Program{}
