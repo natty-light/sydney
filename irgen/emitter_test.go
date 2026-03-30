@@ -16,560 +16,121 @@ import (
 	"sydney/typechecker"
 )
 
-var declarations = `declare void @sydney_print_int(i64)
-declare void @sydney_print_float(double)
-declare void @sydney_print_string(ptr)
-declare void @sydney_print_byte(i8)
-declare ptr @sydney_strcat(ptr, ptr)
-declare void @sydney_print_newline()
-declare void @sydney_gc_init()
-declare void @sydney_print_bool(i8)
-declare ptr @sydney_gc_alloc(i64)
-declare void @sydney_gc_collect()
-declare void @sydney_gc_add_global_root(ptr)
-declare void @sydney_gc_shutdown()
-declare i64 @sydney_strlen(ptr)
-declare ptr @sydney_map_create_int()
-declare ptr @sydney_map_create_string()
-declare void @sydney_map_set_str(ptr, ptr, i64)
-declare i64 @sydney_map_get_str(ptr, ptr)
-declare i8 @sydney_map_contains_str(ptr, ptr)
-declare void @sydney_map_set_int(ptr, i64, i64)
-declare i64 @sydney_map_get_int(ptr, i64)
-declare i8 @sydney_map_contains_int(ptr, i64)
-declare i64 @sydney_file_open(ptr)
-declare ptr @sydney_file_read(i64)
-declare i64 @sydney_file_write(i64, ptr)
-declare i64 @sydney_file_close(i64)
-declare ptr @sydney_get_last_error()
-declare ptr @sydney_byte_to_string(i8)
-declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
-declare i1 @sydney_str_equals(ptr, ptr)
-declare ptr @sydney_map_keys_str(ptr)
-declare ptr @sydney_map_values_str(ptr)
-declare ptr @sydney_map_keys_int(ptr)
-declare ptr @sydney_map_values_int(ptr)
-declare ptr @sydney_atof(ptr)
-declare void @sydney_panic(ptr)
-declare i64 @sydney_channel_create(i64)
-declare void @sydney_channel_send(i64, i64)
-declare i64 @sydney_channel_recv(i64)
-declare void @sydney_spawn(ptr, ptr)
-declare void @sydney_join_all()
-declare void @sydney_panic_index_oob(i64, i64)
-declare void @sydney_panic_div_zero()
-declare i64 @sydney_tcp_connect(ptr, i64)
-declare i64 @sydney_tcp_listen(ptr, i64)
-declare i64 @sydney_tcp_accept(i64)
-declare ptr @sydney_tcp_read(i64, i64)
-declare i64 @sydney_tcp_write(i64, ptr, i64)
-declare i64 @sydney_tcp_close_stream(i64)
-declare i64 @sydney_tcp_close_listener(i64)
-declare i64 @sydney_tls_connect(ptr, i64)
-declare ptr @sydney_tls_read(i64, i64)
-declare i64 @sydney_tls_write(i64, ptr, i64)
-declare ptr @sydney_tls_close(i64)
-declare ptr @sydney_ftoa(double)
-declare i64 @sydney_file_create(ptr)
-declare i64 @sydney_term_enable_raw(i64)
-declare i64 @sydney_restore_state(i64)
-declare ptr @sydney_file_readn(i64, i64)
-declare ptr @sydney_non_blocking_readn(i64, i64)
-declare ptr @sydney_get_args()`
-
 func TestIntInfixExpr(t *testing.T) {
-	source := "print(1 + 2);"
-	expected := `define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = add i64 1, 2
-  call void @sydney_print_int(i64 %t0)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, []e2eTestCase{
+		{source: "print(1 + 2);", expected: "3"},
+	})
 }
 
 func TestVarDeclarations(t *testing.T) {
-	source := `mut float pi = 3.0 + 0.14; print(pi);`
-	expected := `@pi = global double 0.0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = fadd double 3.000000, 0.140000
-  store double %t0, ptr @pi
-  call void @sydney_gc_add_global_root(ptr @pi)
-  %t1 = load double, ptr @pi
-  call void @sydney_print_float(double %t1)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, []e2eTestCase{
+		{source: `mut float pi = 3.0 + 0.14; print(pi);`, expected: "3.14"},
+	})
 }
 
 func TestVarAssignment(t *testing.T) {
-	source := `mut float pi = 3.0 + 0.14;
-pi = 2.0;
-print(pi);`
-	expected := `@pi = global double 0.0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = fadd double 3.000000, 0.140000
-  store double %t0, ptr @pi
-  call void @sydney_gc_add_global_root(ptr @pi)
-  store double 2.000000, ptr @pi
-  %t1 = load double, ptr @pi
-  call void @sydney_print_float(double %t1)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, []e2eTestCase{
+		{source: `mut float pi = 3.0 + 0.14; pi = 2.0; print(pi);`, expected: "2"},
+	})
 }
 
 func TestIfExpr(t *testing.T) {
-	source := `mut int x = 0;
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `mut int x = 0;
 mut int y = 0;
 if (x == y) {
     print("true");
 } else {
     print("false");
 }
-
 mut z = if (x == y) { 1; } else { 0; };
-print(z);`
-
-	expected := `@.str.0 = private unnamed_addr constant [5 x i8] c"true\00"
-@.str.1 = private unnamed_addr constant [6 x i8] c"false\00"
-@x = global i64 0
-@y = global i64 0
-@z = global i64 0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  store i64 0, ptr @x
-  call void @sydney_gc_add_global_root(ptr @x)
-  store i64 0, ptr @y
-  call void @sydney_gc_add_global_root(ptr @y)
-  %t0 = load i64, ptr @x
-  %t1 = load i64, ptr @y
-  %t2 = icmp eq i64 %t0, %t1
-  br i1 %t2, label %then.0, label %else.1
-then.0:
-    call void @sydney_print_string(ptr @.str.0)
-  br label %merge.2
-else.1:
-    call void @sydney_print_string(ptr @.str.1)
-  br label %merge.2
-merge.2:
-  %t3 = load i64, ptr @x
-  %t4 = load i64, ptr @y
-  %t5 = icmp eq i64 %t3, %t4
-  br i1 %t5, label %then.3, label %else.4
-then.3:
-  br label %merge.5
-else.4:
-  br label %merge.5
-merge.5:
-  %t6 = phi i64 [ 1, %then.3 ], [ 0, %else.4 ]
-  store i64 %t6, ptr @z
-  call void @sydney_gc_add_global_root(ptr @z)
-  %t7 = load i64, ptr @z
-  call void @sydney_print_int(i64 %t7)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-	runEmitterTest(t, source, expected)
+print(z);`,
+			expected: "true1",
+		},
+	})
 }
 
 func TestForLoop(t *testing.T) {
-	source := `mut int i = 0;
-for (i < 5) {
-    print(i);
-    i = i + 1;
-}`
-	expected := `@i = global i64 0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  store i64 0, ptr @i
-  call void @sydney_gc_add_global_root(ptr @i)
-  br label %cond.0
-cond.0:
-  %t0 = load i64, ptr @i
-  %t1 = icmp slt i64 %t0, 5
-  br i1 %t1, label %loop.1, label %escape.2
-loop.1:
-    %t2 = load i64, ptr @i
-    call void @sydney_print_int(i64 %t2)
-    %t3 = load i64, ptr @i
-    %t4 = add i64 %t3, 1
-    store i64 %t4, ptr @i
-  br label %cond.0
-escape.2:
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, []e2eTestCase{
+		{
+			source:   `mut int i = 0; for (i < 5) { print(i); i = i + 1; }`,
+			expected: "01234",
+		},
+	})
 }
 
 func TestNestedBlocks(t *testing.T) {
-	source := `mut int i = 0;
-for (i < 10) {
-   if (i % 2 == 0) {
-        print(i);
-   }
-   i = i + 1;
-}`
-
-	expected := `@i = global i64 0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  store i64 0, ptr @i
-  call void @sydney_gc_add_global_root(ptr @i)
-  br label %cond.0
-cond.0:
-  %t0 = load i64, ptr @i
-  %t1 = icmp slt i64 %t0, 10
-  br i1 %t1, label %loop.1, label %escape.2
-loop.1:
-    %t2 = load i64, ptr @i
-    %t3 = srem i64 %t2, 2
-    %t4 = icmp eq i64 %t3, 0
-    br i1 %t4, label %then.3, label %merge.4
-then.3:
-      %t5 = load i64, ptr @i
-      call void @sydney_print_int(i64 %t5)
-    br label %merge.4
-merge.4:
-    %t6 = load i64, ptr @i
-    %t7 = add i64 %t6, 1
-    store i64 %t7, ptr @i
-  br label %cond.0
-escape.2:
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, []e2eTestCase{
+		{
+			source:   `mut int i = 0; for (i < 10) { if (i % 2 == 0) { print(i); } i = i + 1; }`,
+			expected: "02468",
+		},
+	})
 }
 
 func TestFunctions(t *testing.T) {
-	source := `func addFive(int i) -> int {
-    const int r = i + 5;
-    r;
-}
-
-func addSix(int i) -> int {
-    const int r = i + 6;
-    return r;
-}
-
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `func addFive(int i) -> int { const int r = i + 5; r; }
+func addSix(int i) -> int { const int r = i + 6; return r; }
 const int x = 0;
 const xPlusSix = addSix(x);
 const xPlusFive = addFive(x);
-
 print("x = ", x);
 print("x + 5 = ", xPlusFive);
-print("x + 6 = ", xPlusSix);`
-
-	expected := `@.str.0 = private unnamed_addr constant [5 x i8] c"x = \00"
-@.str.1 = private unnamed_addr constant [9 x i8] c"x + 5 = \00"
-@.str.2 = private unnamed_addr constant [9 x i8] c"x + 6 = \00"
-@x = global i64 0
-@xPlusFive = global i64 0
-@xPlusSix = global i64 0
-define i64 @addFive(i64 %i) {
-entry:
-  %i.0.addr = alloca i64
-  %r.3.addr = alloca i64
-  store i64 %i, ptr %i.0.addr
-  %t1 = load i64, ptr %i.0.addr
-  %t2 = add i64 %t1, 5
-  store i64 %t2, ptr %r.3.addr
-  %t4 = load i64, ptr %r.3.addr
-  ret i64 %t4
-  }
-
-
-define i64 @addSix(i64 %i) {
-entry:
-  %i.0.addr = alloca i64
-  %r.3.addr = alloca i64
-  store i64 %i, ptr %i.0.addr
-  %t1 = load i64, ptr %i.0.addr
-  %t2 = add i64 %t1, 6
-  store i64 %t2, ptr %r.3.addr
-  %t4 = load i64, ptr %r.3.addr
-  ret i64 %t4
-  }
-
-
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  store i64 0, ptr @x
-  call void @sydney_gc_add_global_root(ptr @x)
-  %t0 = load i64, ptr @x
-  %t1 = call i64 @addSix(i64 %t0)
-  store i64 %t1, ptr @xPlusSix
-  call void @sydney_gc_add_global_root(ptr @xPlusSix)
-  %t2 = load i64, ptr @x
-  %t3 = call i64 @addFive(i64 %t2)
-  store i64 %t3, ptr @xPlusFive
-  call void @sydney_gc_add_global_root(ptr @xPlusFive)
-  call void @sydney_print_string(ptr @.str.0)
-  %t4 = load i64, ptr @x
-  call void @sydney_print_int(i64 %t4)
-  call void @sydney_print_string(ptr @.str.1)
-  %t5 = load i64, ptr @xPlusFive
-  call void @sydney_print_int(i64 %t5)
-  call void @sydney_print_string(ptr @.str.2)
-  %t6 = load i64, ptr @xPlusSix
-  call void @sydney_print_int(i64 %t6)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-	runEmitterTest(t, source, expected)
+print("x + 6 = ", xPlusSix);`,
+			expected: "x = 0x + 5 = 5x + 6 = 6",
+		},
+	})
 }
 
 func TestStructs(t *testing.T) {
-	source := `define struct Point { x int, y int }
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `define struct Point { x int, y int }
 const Point p = Point { x: 0, y: 0 };
 print(p.x);
-print(p.y);`
-	expected := `%struct.Point = type { i64, i64 }
-@p = global ptr null
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
-  store i64 0, ptr %t1
-  %t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
-  store i64 0, ptr %t2
-  store ptr %t0, ptr @p
-  call void @sydney_gc_add_global_root(ptr @p)
-  %t3 = load ptr, ptr @p
-  %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
-  %t5 = load i64, ptr %t4
-  call void @sydney_print_int(i64 %t5)
-  %t6 = load ptr, ptr @p
-  %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
-  %t8 = load i64, ptr %t7
-  call void @sydney_print_int(i64 %t8)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-	runEmitterTest(t, source, expected)
+print(p.y);`,
+			expected: "00",
+		},
+	})
 }
 
 func TestSelectorAssignment(t *testing.T) {
-	source := `define struct Point { x int, y int }
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `define struct Point { x int, y int }
 const Point p = Point { x: 0, y: 0 };
 print(p.x);
 print(p.y);
 p.x = 1;
 p.y = 2;
 print(p.x);
-print(p.y);`
-
-	expected := `%struct.Point = type { i64, i64 }
-@p = global ptr null
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr %struct.Point, ptr %t0, i32 0, i32 0
-  store i64 0, ptr %t1
-  %t2 = getelementptr %struct.Point, ptr %t0, i32 0, i32 1
-  store i64 0, ptr %t2
-  store ptr %t0, ptr @p
-  call void @sydney_gc_add_global_root(ptr @p)
-  %t3 = load ptr, ptr @p
-  %t4 = getelementptr %struct.Point, ptr %t3, i32 0, i32 0
-  %t5 = load i64, ptr %t4
-  call void @sydney_print_int(i64 %t5)
-  %t6 = load ptr, ptr @p
-  %t7 = getelementptr %struct.Point, ptr %t6, i32 0, i32 1
-  %t8 = load i64, ptr %t7
-  call void @sydney_print_int(i64 %t8)
-  %t9 = load ptr, ptr @p
-  %t10 = getelementptr %struct.Point, ptr %t9, i32 0, i32 0
-  store i64 1, ptr %t10
-  %t11 = load ptr, ptr @p
-  %t12 = getelementptr %struct.Point, ptr %t11, i32 0, i32 1
-  store i64 2, ptr %t12
-  %t13 = load ptr, ptr @p
-  %t14 = getelementptr %struct.Point, ptr %t13, i32 0, i32 0
-  %t15 = load i64, ptr %t14
-  call void @sydney_print_int(i64 %t15)
-  %t16 = load ptr, ptr @p
-  %t17 = getelementptr %struct.Point, ptr %t16, i32 0, i32 1
-  %t18 = load i64, ptr %t17
-  call void @sydney_print_int(i64 %t18)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-	runEmitterTest(t, source, expected)
+print(p.y);`,
+			expected: "0012",
+		},
+	})
 }
 
 func TestInterfaceDispatch(t *testing.T) {
-	source := `define struct Circle { radius float }
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `define struct Circle { radius float }
 define struct Rect { w float, h float}
 define interface Area { area() -> float }
-
-func area(Circle c) -> float {
-    const pi = 3.14;
-    return c.radius * c.radius * pi;
-}
-
-func area(Rect r) -> float {
-    return r.w * r.h;
-}
-
+func area(Circle c) -> float { const pi = 3.14; return c.radius * c.radius * pi; }
+func area(Rect r) -> float { return r.w * r.h; }
 const Circle c = Circle { radius: 2.0 };
 const Rect r = Rect { w: 2.0, h: 2.0 };
-
-func getArea(Area a) -> float {
-    return a.area();
-}
-
+func getArea(Area a) -> float { return a.area(); }
 const rectA = getArea(r);
 print("rect area: ", rectA);
-
 const circA = getArea(c);
-print("circle area: ", circA);`
-
-	expected := `%struct.Circle = type { double }
-%struct.Rect = type { double, double }
-@.str.0 = private unnamed_addr constant [12 x i8] c"rect area: \00"
-@.str.1 = private unnamed_addr constant [14 x i8] c"circle area: \00"
-@vtable.Circle. = constant [0 x ptr] []
-@vtable.Circle.Area = constant [1 x ptr] [ptr @Circle.area]
-@vtable.Rect. = constant [0 x ptr] []
-@vtable.Rect.Area = constant [1 x ptr] [ptr @Rect.area]
-@c = global ptr null
-@circA = global double 0.0
-@r = global ptr null
-@rectA = global double 0.0
-define double @Circle.area(ptr %c) {
-entry:
-  %c.0.addr = alloca ptr
-  %pi.1.addr = alloca double
-  store ptr %c, ptr %c.0.addr
-  store double 3.140000, ptr %pi.1.addr
-  %t2 = load ptr, ptr %c.0.addr
-  %t3 = getelementptr %struct.Circle, ptr %t2, i32 0, i32 0
-  %t4 = load double, ptr %t3
-  %t5 = load ptr, ptr %c.0.addr
-  %t6 = getelementptr %struct.Circle, ptr %t5, i32 0, i32 0
-  %t7 = load double, ptr %t6
-  %t8 = fmul double %t4, %t7
-  %t9 = load double, ptr %pi.1.addr
-  %t10 = fmul double %t8, %t9
-  ret double %t10
-  }
-
-
-define double @Rect.area(ptr %r) {
-entry:
-  %r.0.addr = alloca ptr
-  store ptr %r, ptr %r.0.addr
-  %t1 = load ptr, ptr %r.0.addr
-  %t2 = getelementptr %struct.Rect, ptr %t1, i32 0, i32 0
-  %t3 = load double, ptr %t2
-  %t4 = load ptr, ptr %r.0.addr
-  %t5 = getelementptr %struct.Rect, ptr %t4, i32 0, i32 1
-  %t6 = load double, ptr %t5
-  %t7 = fmul double %t3, %t6
-  ret double %t7
-  }
-
-
-define double @getArea(ptr %a) {
-entry:
-  %a.0.addr = alloca ptr
-  store ptr %a, ptr %a.0.addr
-  %t1 = load ptr, ptr %a.0.addr
-  %t2 = load { ptr, ptr }, ptr %t1
-  %t3 = extractvalue { ptr, ptr } %t2, 0
-  %t4 = extractvalue { ptr, ptr } %t2, 1
-  %t5 = getelementptr [1 x ptr], ptr %t4, i32 0, i32 0
-  %t6 = load ptr, ptr %t5
-  %t7 = call double %t6(ptr %t3)
-  ret double %t7
-  }
-
-
-define i32 @main() {
-entry:
-  %t6 = alloca { ptr, ptr }
-  %t12 = alloca { ptr, ptr }
-  call void @sydney_gc_init()
-  %t0 = call ptr @sydney_gc_alloc(i64 8)
-  %t1 = getelementptr %struct.Circle, ptr %t0, i32 0, i32 0
-  store double 2.000000, ptr %t1
-  store ptr %t0, ptr @c
-  call void @sydney_gc_add_global_root(ptr @c)
-  %t2 = call ptr @sydney_gc_alloc(i64 16)
-  %t3 = getelementptr %struct.Rect, ptr %t2, i32 0, i32 0
-  store double 2.000000, ptr %t3
-  %t4 = getelementptr %struct.Rect, ptr %t2, i32 0, i32 1
-  store double 2.000000, ptr %t4
-  store ptr %t2, ptr @r
-  call void @sydney_gc_add_global_root(ptr @r)
-  %t5 = load ptr, ptr @r
-  %t7 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 0
-  store ptr %t5, ptr %t7
-  %t8 = getelementptr { ptr, ptr }, ptr %t6, i32 0, i32 1
-  store ptr @vtable.Rect.Area, ptr %t8
-  %t9 = call double @getArea(ptr %t6)
-  store double %t9, ptr @rectA
-  call void @sydney_gc_add_global_root(ptr @rectA)
-  call void @sydney_print_string(ptr @.str.0)
-  %t10 = load double, ptr @rectA
-  call void @sydney_print_float(double %t10)
-  %t11 = load ptr, ptr @c
-  %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
-  store ptr %t11, ptr %t13
-  %t14 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 1
-  store ptr @vtable.Circle.Area, ptr %t14
-  %t15 = call double @getArea(ptr %t12)
-  store double %t15, ptr @circA
-  call void @sydney_gc_add_global_root(ptr @circA)
-  call void @sydney_print_string(ptr @.str.1)
-  %t16 = load double, ptr @circA
-  call void @sydney_print_float(double %t16)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+print("circle area: ", circA);`,
+			expected: "rect area: 4circle area: 12.56",
+		},
+	})
 }
 
 func TestArrays(t *testing.T) {
@@ -585,243 +146,50 @@ print(a[1]);`,
 }
 
 func TestAnonymousFunction(t *testing.T) {
-	source := `const anon = func() -> int { return 1; };
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `const anon = func() -> int { return 1; };
 print(anon());
-
 const adder = func(int a, int b) -> int { return a + b };
 const sum = adder(1, 2);
-print(sum);`
-
-	expected := `@adder = global ptr null
-@anon = global ptr null
-@sum = global i64 0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
-  store ptr @anon.0, ptr %t1
-  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
-  store ptr null, ptr %t2
-  store ptr %t0, ptr @anon
-  call void @sydney_gc_add_global_root(ptr @anon)
-  %t3 = load ptr, ptr @anon
-  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
-  %t7 = load ptr, ptr %t6
-  %t8 = call i64 %t5(ptr %t7)
-  call void @sydney_print_int(i64 %t8)
-  %t9 = call ptr @sydney_gc_alloc(i64 16)
-  %t10 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 0
-  store ptr @anon.1, ptr %t10
-  %t11 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 1
-  store ptr null, ptr %t11
-  store ptr %t9, ptr @adder
-  call void @sydney_gc_add_global_root(ptr @adder)
-  %t12 = load ptr, ptr @adder
-  %t13 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 0
-  %t14 = load ptr, ptr %t13
-  %t15 = getelementptr { ptr, ptr }, ptr %t12, i32 0, i32 1
-  %t16 = load ptr, ptr %t15
-  %t17 = call i64 %t14(ptr %t16, i64 1, i64 2)
-  store i64 %t17, ptr @sum
-  call void @sydney_gc_add_global_root(ptr @sum)
-  %t18 = load i64, ptr @sum
-  call void @sydney_print_int(i64 %t18)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-define i64 @anon.0(ptr %env) {
-entry:
-  ret i64 1
-}
-
-define i64 @anon.1(ptr %env, i64 %a, i64 %b) {
-entry:
-  %a.0.addr = alloca i64
-  %b.1.addr = alloca i64
-  store i64 %a, ptr %a.0.addr
-  store i64 %b, ptr %b.1.addr
-  %t2 = load i64, ptr %a.0.addr
-  %t3 = load i64, ptr %b.1.addr
-  %t4 = add i64 %t2, %t3
-  ret i64 %t4
-}
-
-`
-
-	runEmitterTest(t, source, expected)
+print(sum);`,
+			expected: "13",
+		},
+	})
 }
 
 func TestCaptures(t *testing.T) {
-	source := `const int x = 10;
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `const int x = 10;
 const f = func(int y) -> int { return x + y };
-print(f(5));`
-
-	expected := `@f = global ptr null
-@x = global i64 0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  store i64 10, ptr @x
-  call void @sydney_gc_add_global_root(ptr @x)
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
-  store ptr @anon.0, ptr %t1
-  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
-  store ptr null, ptr %t2
-  store ptr %t0, ptr @f
-  call void @sydney_gc_add_global_root(ptr @f)
-  %t3 = load ptr, ptr @f
-  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
-  %t7 = load ptr, ptr %t6
-  %t8 = call i64 %t5(ptr %t7, i64 5)
-  call void @sydney_print_int(i64 %t8)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-define i64 @anon.0(ptr %env, i64 %y) {
-entry:
-  %y.0.addr = alloca i64
-  store i64 %y, ptr %y.0.addr
-  %t1 = load i64, ptr @x
-  %t2 = load i64, ptr %y.0.addr
-  %t3 = add i64 %t1, %t2
-  ret i64 %t3
-}
-
-`
-
-	runEmitterTest(t, source, expected)
+print(f(5));`,
+			expected: "15",
+		},
+	})
 }
 
 func TestNestedClosures(t *testing.T) {
-	source := `const x = 10;
-
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `const x = 10;
 const getAdder = func(int y) -> fn<(int) -> int> { return func(int z) -> int { return x + y + z }; };
 const fiveAdder = getAdder(5);
 const sixAdder = getAdder(6);
 print(fiveAdder(5));
-print(sixAdder(5));`
-
-	expected := `@fiveAdder = global ptr null
-@getAdder = global ptr null
-@sixAdder = global ptr null
-@x = global i64 0
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  store i64 10, ptr @x
-  call void @sydney_gc_add_global_root(ptr @x)
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
-  store ptr @anon.0, ptr %t1
-  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
-  store ptr null, ptr %t2
-  store ptr %t0, ptr @getAdder
-  call void @sydney_gc_add_global_root(ptr @getAdder)
-  %t3 = load ptr, ptr @getAdder
-  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
-  %t7 = load ptr, ptr %t6
-  %t8 = call ptr %t5(ptr %t7, i64 5)
-  store ptr %t8, ptr @fiveAdder
-  call void @sydney_gc_add_global_root(ptr @fiveAdder)
-  %t9 = load ptr, ptr @getAdder
-  %t10 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 0
-  %t11 = load ptr, ptr %t10
-  %t12 = getelementptr { ptr, ptr }, ptr %t9, i32 0, i32 1
-  %t13 = load ptr, ptr %t12
-  %t14 = call ptr %t11(ptr %t13, i64 6)
-  store ptr %t14, ptr @sixAdder
-  call void @sydney_gc_add_global_root(ptr @sixAdder)
-  %t15 = load ptr, ptr @fiveAdder
-  %t16 = getelementptr { ptr, ptr }, ptr %t15, i32 0, i32 0
-  %t17 = load ptr, ptr %t16
-  %t18 = getelementptr { ptr, ptr }, ptr %t15, i32 0, i32 1
-  %t19 = load ptr, ptr %t18
-  %t20 = call i64 %t17(ptr %t19, i64 5)
-  call void @sydney_print_int(i64 %t20)
-  %t21 = load ptr, ptr @sixAdder
-  %t22 = getelementptr { ptr, ptr }, ptr %t21, i32 0, i32 0
-  %t23 = load ptr, ptr %t22
-  %t24 = getelementptr { ptr, ptr }, ptr %t21, i32 0, i32 1
-  %t25 = load ptr, ptr %t24
-  %t26 = call i64 %t23(ptr %t25, i64 5)
-  call void @sydney_print_int(i64 %t26)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-define i64 @anon.1(ptr %env, i64 %z) {
-entry:
-  %y.2.addr = alloca i64
-  %z.3.addr = alloca i64
-  %t0 = getelementptr { i64 }, ptr %env, i32 0, i32 0
-  %t1 = load i64, ptr %t0
-  store i64 %t1, ptr %y.2.addr
-  store i64 %z, ptr %z.3.addr
-  %t4 = load i64, ptr @x
-  %t5 = load i64, ptr %y.2.addr
-  %t6 = add i64 %t4, %t5
-  %t7 = load i64, ptr %z.3.addr
-  %t8 = add i64 %t6, %t7
-  ret i64 %t8
-}
-
-define ptr @anon.0(ptr %env, i64 %y) {
-entry:
-  %y.0.addr = alloca i64
-  store i64 %y, ptr %y.0.addr
-  %t1 = call ptr @sydney_gc_alloc(i64 16)
-  %t2 = getelementptr { ptr, ptr }, ptr %t1, i32 0, i32 0
-  store ptr @anon.1, ptr %t2
-  %t3 = getelementptr { ptr, ptr }, ptr %t1, i32 0, i32 1
-  %t4 = call ptr @sydney_gc_alloc(i64 8)
-  %t5 = getelementptr { i64 }, ptr %t4, i32 0, i32 0
-  %t6 = load i64, ptr %y.0.addr
-  store i64 %t6, ptr %t5
-  store ptr %t4, ptr %t3
-  ret ptr %t1
-}
-
-`
-
-	runEmitterTest(t, source, expected)
+print(sixAdder(5));`,
+			expected: "2021",
+		},
+	})
 }
 
 func TestLocalVariables(t *testing.T) {
-	source := `func addTwo(int x) -> int { return x + 2 };
-print(addTwo(3));`
-
-	expected := `define i64 @addTwo(i64 %x) {
-entry:
-  %x.0.addr = alloca i64
-  store i64 %x, ptr %x.0.addr
-  %t1 = load i64, ptr %x.0.addr
-  %t2 = add i64 %t1, 2
-  ret i64 %t2
-  }
-
-
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call i64 @addTwo(i64 3)
-  call void @sydney_print_int(i64 %t0)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-`
-
-	runEmitterTest(t, source, expected)
+	runE2ETests(t, []e2eTestCase{
+		{
+			source:   `func addTwo(int x) -> int { return x + 2 }; print(addTwo(3));`,
+			expected: "5",
+		},
+	})
 }
 
 func TestMapAllocationAndAssignment(t *testing.T) {
@@ -866,66 +234,22 @@ func TestNestedCollections(t *testing.T) {
 }
 
 func TestRecursiveClosure(t *testing.T) {
-	source := `const countDown = func(int x) -> int {
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `const countDown = func(int x) -> int {
     if (x == 0) { return 0; }
     return countDown(x - 1);
 };
-print(countDown(5));`
-
-	expected := `@countDown = global ptr null
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
-  store ptr @anon.0, ptr %t1
-  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
-  store ptr null, ptr %t2
-  store ptr %t0, ptr @countDown
-  call void @sydney_gc_add_global_root(ptr @countDown)
-  %t3 = load ptr, ptr @countDown
-  %t4 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 0
-  %t5 = load ptr, ptr %t4
-  %t6 = getelementptr { ptr, ptr }, ptr %t3, i32 0, i32 1
-  %t7 = load ptr, ptr %t6
-  %t8 = call i64 %t5(ptr %t7, i64 5)
-  call void @sydney_print_int(i64 %t8)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-define i64 @anon.0(ptr %env, i64 %x) {
-entry:
-  %x.0.addr = alloca i64
-  %self = alloca { ptr, ptr }
-  store i64 %x, ptr %x.0.addr
-%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-store ptr @anon.0, ptr %t1
-%t2 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-store ptr %env, ptr %t2
-  %t3 = load i64, ptr %x.0.addr
-  %t4 = icmp eq i64 %t3, 0
-  br i1 %t4, label %then.0, label %merge.1
-then.0:
-    ret i64 0
-merge.1:
-  %t5 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-  %t6 = load ptr, ptr %t5
-  %t7 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-  %t8 = load ptr, ptr %t7
-  %t9 = load i64, ptr %x.0.addr
-  %t10 = sub i64 %t9, 1
-  %t11 = call i64 %t6(ptr %t8, i64 %t10)
-  ret i64 %t11
-}
-
-`
-
-	runEmitterTest(t, source, expected)
+print(countDown(5));`,
+			expected: "0",
+		},
+	})
 }
 
 func TestLocalRecursiveClosure(t *testing.T) {
-	source := `func callCountDown() -> int {
+	runE2ETests(t, []e2eTestCase{
+		{
+			source: `func callCountDown() -> int {
     const countDown = func(int x) -> int {
         print(x);
         if (x == 0) { return 0; }
@@ -933,95 +257,10 @@ func TestLocalRecursiveClosure(t *testing.T) {
     };
     return countDown(5);
 }
-print(callCountDown());`
-
-	expected := `define i64 @callCountDown() {
-entry:
-  %countDown.3.addr = alloca ptr
-  %t0 = call ptr @sydney_gc_alloc(i64 16)
-  %t1 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 0
-  store ptr @anon.0, ptr %t1
-  %t2 = getelementptr { ptr, ptr }, ptr %t0, i32 0, i32 1
-  store ptr null, ptr %t2
-  store ptr %t0, ptr %countDown.3.addr
-  %t4 = load ptr, ptr %countDown.3.addr
-  %t5 = getelementptr { ptr, ptr }, ptr %t4, i32 0, i32 0
-  %t6 = load ptr, ptr %t5
-  %t7 = getelementptr { ptr, ptr }, ptr %t4, i32 0, i32 1
-  %t8 = load ptr, ptr %t7
-  %t9 = call i64 %t6(ptr %t8, i64 5)
-  ret i64 %t9
-  }
-
-
-define i32 @main() {
-entry:
-  call void @sydney_gc_init()
-  %t0 = call i64 @callCountDown()
-  call void @sydney_print_int(i64 %t0)
-  call void @sydney_join_all()
-  call void @sydney_gc_shutdown()
-  ret i32 0
-}
-define i64 @anon.0(ptr %env, i64 %x) {
-entry:
-  %x.0.addr = alloca i64
-  %self = alloca { ptr, ptr }
-  store i64 %x, ptr %x.0.addr
-%t1 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-store ptr @anon.0, ptr %t1
-%t2 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-store ptr %env, ptr %t2
-  %t3 = load i64, ptr %x.0.addr
-  call void @sydney_print_int(i64 %t3)
-  %t4 = load i64, ptr %x.0.addr
-  %t5 = icmp eq i64 %t4, 0
-  br i1 %t5, label %then.0, label %merge.1
-then.0:
-    ret i64 0
-merge.1:
-  %t6 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 0
-  %t7 = load ptr, ptr %t6
-  %t8 = getelementptr { ptr, ptr }, ptr %self, i32 0, i32 1
-  %t9 = load ptr, ptr %t8
-  %t10 = load i64, ptr %x.0.addr
-  %t11 = sub i64 %t10, 1
-  %t12 = call i64 %t7(ptr %t9, i64 %t11)
-  ret i64 %t12
-}
-
-`
-
-	runEmitterTest(t, source, expected)
-}
-
-func buildExpected(expected string) string {
-	return declarations + "\n\n" + expected
-}
-
-func runEmitterTest(t *testing.T, source string, expected string) {
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) != 0 {
-		t.Fatalf("parser errors not empty: %v", p.Errors())
-	}
-	c := typechecker.New(nil)
-	c.Check(program, nil)
-	if len(c.Errors()) != 0 {
-		t.Fatalf("typechecker errors not empty: %v", c.Errors())
-	}
-	e := New()
-	err := e.Emit(program, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	actual := e.buf.String()
-
-	expected = buildExpected(expected)
-	if actual != expected {
-		t.Fatalf("expected:\n%s\ngot:\n%s", expected, actual)
-	}
+print(callCountDown());`,
+			expected: "5432100",
+		},
+	})
 }
 
 // e2e tests: emit IR → llc → clang → run binary → check stdout
