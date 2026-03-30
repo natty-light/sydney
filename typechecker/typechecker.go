@@ -569,9 +569,7 @@ func (c *Checker) hoistBase(n ast.Node) {
 			node.Type.MethodIndices[mn] = i
 		}
 		c.env.Set(node.Name.Value, node.Type)
-		if len(node.Type.Methods) != len(node.Type.Types) {
-			panic(fmt.Sprintf("invariant violation: interface %s has %d methods and %d types", node.Name.Value, len(node.Type.Types), len(node.Type.Types)))
-		}
+		c.assertInterfaceConsistent(node.Type)
 		c.definedInterfaces[node.Name.Value] = node.Type
 		c.indexInterface(node.Type)
 		n = node
@@ -2562,6 +2560,7 @@ func (c *Checker) indexModuleInterfaces() {
 					it.Module = modName
 				}
 				if _, indexed := c.definedInterfaces[it.Name]; !indexed {
+					c.assertInterfaceConsistent(it)
 					c.definedInterfaces[it.Name] = it
 					c.indexInterface(it)
 				}
@@ -2596,6 +2595,13 @@ func (c *Checker) discoverImplementations() {
 				}
 			}
 		}
+	}
+}
+
+func (c *Checker) assertInterfaceConsistent(it types.InterfaceType) {
+	if len(it.Methods) != len(it.Types) {
+		panic(fmt.Sprintf("invariant violation: interface %s has %d methods and %d types\n%s",
+			it.Name, len(it.Methods), len(it.Types), debug.Stack()))
 	}
 }
 
