@@ -21,7 +21,6 @@ func TestValidTypeChecking(t *testing.T) {
 		define struct Circle { p Point, radius float }
 		
 		define interface Area { area() -> float }
-		define implementation Circle -> Area
 		func area(Circle c) -> float {
 			const pi = 3.14;
 			return c.radius * c.radius * pi;
@@ -32,9 +31,6 @@ func TestValidTypeChecking(t *testing.T) {
 		define struct Circle { p Point, r float }
 		
 		define interface Area { area() -> float }
-		
-		define implementation Circle -> Area
-		define implementation Rect -> Area
 		
 		func area(Circle c) -> float {
 			const pi = 3.14;
@@ -47,8 +43,6 @@ func TestValidTypeChecking(t *testing.T) {
 		`define struct Rect { w float, h float }
 		
 		define interface Area { area() -> float }
-		
-		define implementation Rect -> Area
 		
 		func area(Rect r) -> float {
 			return r.w * r.h;
@@ -81,8 +75,6 @@ func TestValidTypeChecking(t *testing.T) {
 			return d.name == p.name();
 		}
 		
-		define implementation Dog -> Pet
-		
 		const Dog fido = Dog { name: "Fido", bark: "Woof" };
 		const Dog rover = Dog { name: "Rover", bark: "Awoo" };
 		
@@ -92,7 +84,6 @@ func TestValidTypeChecking(t *testing.T) {
 		`,
 		`define struct Dog { name string, bark string }
 		define interface Pet { name() -> string }
-		define implementation Dog -> Pet
 		func name(Dog d) -> string { return d.name }
 		func getPet() -> Pet {
 				return Dog { name: "Fido", bark: "Woof" };
@@ -100,8 +91,6 @@ func TestValidTypeChecking(t *testing.T) {
 		`define struct Dog { name string, bark string }
 		define struct Cat { name string, purr string }
 		define interface Pet { name() -> string }
-		define implementation Dog -> Pet
-		define implementation Cat -> Pet
 		
 		func name(Cat c) -> string {
 			return c.name;
@@ -1237,7 +1226,6 @@ func TestInterfaceMethodDispatch(t *testing.T) {
 	sources := []string{
 		`define struct Circle { r float }
 		define interface Shape { area() -> float }
-		define implementation Circle -> Shape
 		func area(Circle c) -> float { return c.r * c.r * 3.14; }
 		func getArea(Shape s) -> float { return s.area(); }
 		const Circle c = Circle { r: 5.0 };
@@ -1246,8 +1234,6 @@ func TestInterfaceMethodDispatch(t *testing.T) {
 		`define struct Dog { name string }
 		define struct Cat { name string }
 		define interface Pet { speak() -> string }
-		define implementation Dog -> Pet
-		define implementation Cat -> Pet
 		func speak(Dog d) -> string { return d.name; }
 		func speak(Cat c) -> string { return c.name; }
 		func greet(Pet p) -> string { return p.speak(); }
@@ -1742,8 +1728,6 @@ func TestTypeMatchExpr(t *testing.T) {
 		define struct Rect { w float, h float }
 
 		define interface Shape { area() -> float }
-		define implementation Circle -> Shape
-		define implementation Rect -> Shape
 
 		func area(Circle c) -> float { c.radius * c.radius * 3.14; }
 		func area(Rect r) -> float { r.w * r.h; }
@@ -1786,7 +1770,6 @@ func TestTypeMatchExprErrors(t *testing.T) {
 			define struct Rect { w float, h float }
 
 			define interface Shape { area() -> float }
-			define implementation Circle -> Shape
 
 			func area(Circle c) -> float { c.radius * c.radius * 3.14; }
 
@@ -1804,8 +1787,6 @@ func TestTypeMatchExprErrors(t *testing.T) {
 			define struct Rect { w float, h float }
 
 			define interface Shape { area() -> float }
-			define implementation Circle -> Shape
-			define implementation Rect -> Shape
 
 			func area(Circle c) -> float { c.radius * c.radius * 3.14; }
 			func area(Rect r) -> float { r.w * r.h; }

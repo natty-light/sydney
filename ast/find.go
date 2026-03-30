@@ -112,16 +112,6 @@ func FindAt(node Node, line, col int) (*Identifier, Scope) {
 		return FindAt(node.Name, line, col)
 	case *StructDefinitionStmt:
 		return FindAt(node.Name, line, col)
-	case *InterfaceImplementationStmt:
-		if found, scope := FindAt(node.StructName, line, col); found != nil {
-			return found, scope
-		}
-
-		for _, iface := range node.InterfaceNames {
-			if found, scope := FindAt(iface, line, col); found != nil {
-				return found, scope
-			}
-		}
 	case *MatchExpr:
 		if found, scope := FindAt(node.Subject, line, col); found != nil {
 			return found, scope

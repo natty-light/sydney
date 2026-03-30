@@ -1471,7 +1471,6 @@ func TestInterfaces(t *testing.T) {
 		{
 			source: `define struct Circle { radius float }
 					define interface Area { area() -> float }
-					define implementation Circle -> Area
 					const Circle c = Circle { radius: 2.0 };
 
 					func area(Circle c) -> float {
@@ -1531,7 +1530,6 @@ func TestInterfacesAsArguments(t *testing.T) {
 		{
 			source: `define struct Rect { w float, h float }
 			define interface Area { area() -> float }
-			define implementation Rect -> Area
 		
 			func area(Rect r) -> float {
 				return r.w * r.h;
@@ -1607,8 +1605,6 @@ func TestInterfacesAsArguments(t *testing.T) {
 						return c.purr;
 					}
 					
-					define implementation Dog -> Pet
-					define implementation Cat -> Pet
 					
 					func makePetSpeak(Pet p) {
 						print(p.speak());
@@ -1742,8 +1738,6 @@ define interface Pet {
 }
 
 define struct Dog { name string }
-
-define implementation Dog -> Pet
 
 func test(Pet a, Pet b) -> bool {
     return a.isSame(b);

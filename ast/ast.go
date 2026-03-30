@@ -193,13 +193,6 @@ type (
 		annotatable
 	}
 
-	InterfaceImplementationStmt struct {
-		Token          token.Token
-		StructName     *Identifier
-		InterfaceNames []Expr
-		annotatable
-	}
-
 	ImportStatement struct {
 		Token token.Token
 		Name  *StringLiteral
@@ -575,10 +568,6 @@ func (i *InterfaceDefinitionStmt) TokenLiteral() string {
 	return i.Token.Literal
 }
 
-func (i *InterfaceImplementationStmt) TokenLiteral() string {
-	return i.Token.Literal
-}
-
 func (i *ImportStatement) TokenLiteral() string {
 	return i.Token.Literal
 }
@@ -769,29 +758,6 @@ func (i *InterfaceDefinitionStmt) String() string {
 	var out bytes.Buffer
 	out.WriteString("define interface")
 	out.WriteString(i.Type.Signature())
-
-	return out.String()
-}
-
-func (i *InterfaceImplementationStmt) String() string {
-	var out bytes.Buffer
-	out.WriteString("define implementation ")
-	out.WriteString(i.StructName.String())
-	out.WriteString(" -> ")
-	if len(i.InterfaceNames) > 1 {
-		out.WriteString("(")
-	}
-
-	for idx, n := range i.InterfaceNames {
-		out.WriteString(n.String())
-		if idx < len(i.InterfaceNames)-1 {
-			out.WriteString(", ")
-		}
-	}
-
-	if len(i.InterfaceNames) > 1 {
-		out.WriteString(")")
-	}
 
 	return out.String()
 }
@@ -1195,10 +1161,6 @@ func (i *InterfaceDefinitionStmt) Pos() (int, int) {
 	return i.Token.Line, i.Token.Column
 }
 
-func (i *InterfaceImplementationStmt) Pos() (int, int) {
-	return i.Token.Line, i.Token.Column
-}
-
 func (m *ModuleDeclarationStmt) Pos() (int, int) {
 	return m.Token.Line, m.Token.Column
 }
@@ -1328,26 +1290,25 @@ func (m *MatchTypeExpr) Pos() (int, int) {
 }
 
 // Statements
-func (v *VarDeclarationStmt) statementNode()          {}
-func (r *ReturnStmt) statementNode()                  {}
-func (e *ExpressionStmt) statementNode()              {}
-func (b *BlockStmt) statementNode()                   {}
-func (v *VarAssignmentStmt) statementNode()           {}
-func (f *ForStmt) statementNode()                     {}
-func (i *IndexAssignmentStmt) statementNode()         {}
-func (f *FunctionDeclarationStmt) statementNode()     {}
-func (s *StructDefinitionStmt) statementNode()        {}
-func (s *SelectorAssignmentStmt) statementNode()      {}
-func (i *InterfaceDefinitionStmt) statementNode()     {}
-func (i *InterfaceImplementationStmt) statementNode() {}
-func (m *ModuleDeclarationStmt) statementNode()       {}
-func (i *ImportStatement) statementNode()             {}
-func (p *PubStatement) statementNode()                {}
-func (c *ContinueStmt) statementNode()                {}
-func (b *BreakStmt) statementNode()                   {}
-func (f *ForInStmt) statementNode()                   {}
-func (s *SpawnStmt) statementNode()                   {}
-func (s *SendStmt) statementNode()                    {}
+func (v *VarDeclarationStmt) statementNode()      {}
+func (r *ReturnStmt) statementNode()              {}
+func (e *ExpressionStmt) statementNode()          {}
+func (b *BlockStmt) statementNode()               {}
+func (v *VarAssignmentStmt) statementNode()       {}
+func (f *ForStmt) statementNode()                 {}
+func (i *IndexAssignmentStmt) statementNode()     {}
+func (f *FunctionDeclarationStmt) statementNode() {}
+func (s *StructDefinitionStmt) statementNode()    {}
+func (s *SelectorAssignmentStmt) statementNode()  {}
+func (i *InterfaceDefinitionStmt) statementNode() {}
+func (m *ModuleDeclarationStmt) statementNode()   {}
+func (i *ImportStatement) statementNode()         {}
+func (p *PubStatement) statementNode()            {}
+func (c *ContinueStmt) statementNode()            {}
+func (b *BreakStmt) statementNode()               {}
+func (f *ForInStmt) statementNode()               {}
+func (s *SpawnStmt) statementNode()               {}
+func (s *SendStmt) statementNode()                {}
 
 // Expressions
 func (i *Identifier) expressionNode()             {}
@@ -1461,12 +1422,6 @@ func Dump(node Node, indent int) {
 		field("Name:", node.Name.Value)
 		for i, m := range node.Type.Methods {
 			field("Method:", m+" "+node.Type.Types[i].Signature())
-		}
-	case *InterfaceImplementationStmt:
-		prefix("InterfaceImplementationStmt")
-		field("Struct:", node.StructName.Value)
-		for _, n := range node.InterfaceNames {
-			Dump(n, indent+2)
 		}
 	case *ImportStatement:
 		prefix("ImportStatement")

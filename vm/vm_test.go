@@ -618,8 +618,6 @@ func TestInterfaces(t *testing.T) {
 
 		define interface Area { area() -> int }
 
-		define implementation Circle -> Area
-		define implementation Rect -> Area
 
 		func area(Circle c) -> int {
 			const pi = 3;
@@ -645,7 +643,6 @@ func TestInterfacesAsParams(t *testing.T) {
 		{
 			source: `define struct Rect { w float, h float }
 		define interface Area { area() -> float }
-		define implementation Rect -> Area
 
 		func area(Rect r) -> float {
 			return r.w * r.h;
@@ -1344,8 +1341,6 @@ func TestTypeMatch(t *testing.T) {
 		define struct Rect { w int, h int }
 
 		define interface Shape { area() -> int }
-		define implementation Circle -> Shape
-		define implementation Rect -> Shape
 
 		func area(Circle c) -> int { c.r * c.r * 3; }
 		func area(Rect r) -> int { r.w * r.h; }
@@ -1369,8 +1364,6 @@ func TestTypeMatch(t *testing.T) {
 		define struct Rect { w int, h int }
 
 		define interface Shape { area() -> int }
-		define implementation Circle -> Shape
-		define implementation Rect -> Shape
 
 		func area(Circle c) -> int { c.r * c.r * 3; }
 		func area(Rect r) -> int { r.w * r.h; }
@@ -1395,9 +1388,6 @@ func TestTypeMatch(t *testing.T) {
 		define struct Tri { b int }
 
 		define interface Shape { area() -> int }
-		define implementation Circle -> Shape
-		define implementation Rect -> Shape
-		define implementation Tri -> Shape
 
 		func area(Circle c) -> int { c.r * c.r * 3; }
 		func area(Rect r) -> int { r.w * r.h; }
@@ -1422,8 +1412,6 @@ func TestTypeMatch(t *testing.T) {
 		define struct Rect { w int, h int }
 
 		define interface Shape { area() -> int }
-		define implementation Circle -> Shape
-		define implementation Rect -> Shape
 
 		func area(Circle c) -> int { c.r * c.r * 3; }
 		func area(Rect r) -> int { r.w * r.h; }
