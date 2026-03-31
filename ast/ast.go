@@ -169,6 +169,7 @@ type (
 		TypeParams  []*types.TypeParam
 		MangledName string
 		IsExtern    bool
+		Module      string
 		annotatable
 	}
 
