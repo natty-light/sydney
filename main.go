@@ -5,8 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+
 	"sydney/errors"
 
 	"sydney/ast"
@@ -137,6 +139,7 @@ func Run(args []string, flags map[Flag]bool) int {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("typechecker panic:", r)
+			debug.PrintStack()
 			for _, e := range c.Errors() {
 				fmt.Println("  error:", e)
 			}
