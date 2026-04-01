@@ -1660,31 +1660,6 @@ func (c *Checker) typesMatch(actual, expected types.Type) bool {
 		}
 	}
 
-	if es, ok := toStruct(expected); ok {
-		if as, ok := toStruct(actual); ok {
-			et := c.definedStructs[es.Name].Interfaces
-			at := c.definedStructs[as.Name].Interfaces
-			if len(et) != len(at) {
-				return false
-			}
-
-			for i, aiRaw := range at {
-				ai, ok := aiRaw.(types.InterfaceType)
-				if !ok {
-					return false
-				}
-
-				eiRaw := et[i]
-				ei, ok := eiRaw.(types.InterfaceType)
-				if !ok {
-					return false
-				}
-
-				return ei.Name == ai.Name
-			}
-		}
-	}
-
 	if ei, ok := toInterface(expected); ok {
 		if ai, ok := toInterface(actual); ok {
 			if ei.Name == ai.Name {
