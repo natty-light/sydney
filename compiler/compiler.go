@@ -33,7 +33,6 @@ type Compiler struct {
 	fileName      string
 
 	loopContexts []*LoopContext
-	loopIndex    int
 
 	shouldEmitDebug bool
 }
@@ -89,7 +88,6 @@ func New() *Compiler {
 		itabMapping: make(map[ItabKey]int),
 
 		loopContexts: make([]*LoopContext, 0),
-		loopIndex:    0,
 	}
 }
 
@@ -212,10 +210,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if node.Value == nil {
 			if node.Type != nil {
-				err := c.emitZeroValue(node, node.Type)
-				if err != nil {
-					return err
-				}
+				c.emitZeroValue(node, node.Type)
 			} else {
 				c.emit(code.OpNull)
 			}
@@ -791,10 +786,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 				return err
 			}
 		} else {
-			err := c.emitZeroValue(node, types.Int)
-			if err != nil {
-				return err
-			}
+			c.emitZeroValue(node, types.Int)
 		}
 
 		if node.End != nil {
@@ -1067,7 +1059,7 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	notTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
 
 	// ok arm
-	c.enterBlockScope()
+	c.pushBlockScope()
 	err = c.Compile(node.Subject)
 	if err != nil {
 		return err
@@ -1092,14 +1084,14 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	if node.GetResolvedType() == types.Unit {
 		c.emit(code.OpNull)
 	}
-	c.leaveBlockScope()
+	c.popBlockScope()
 
 	jumpPos := c.emit(code.OpJump, 9999)
 	afterOkPos := len(c.currentInstructions())
 	c.changeOperand(notTruthyPos, afterOkPos)
 
 	// err arm
-	c.enterBlockScope()
+	c.pushBlockScope()
 	err = c.Compile(node.Subject)
 	if err != nil {
 		return err
@@ -1123,7 +1115,7 @@ func (c *Compiler) compileResultMatch(node *ast.MatchExpr) error {
 	if node.GetResolvedType() == types.Unit {
 		c.emit(code.OpNull)
 	}
-	c.leaveBlockScope()
+	c.popBlockScope()
 
 	afterErrPos := len(c.currentInstructions())
 	c.changeOperand(jumpPos, afterErrPos)
@@ -1139,7 +1131,7 @@ func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
 	notTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
 
 	// some arm
-	c.enterBlockScope()
+	c.pushBlockScope()
 	err = c.Compile(node.Subject)
 	if err != nil {
 		return err
@@ -1164,7 +1156,7 @@ func (c *Compiler) compileOptionMatch(node *ast.MatchExpr) error {
 	if node.GetResolvedType() == types.Unit {
 		c.emit(code.OpNull)
 	}
-	c.leaveBlockScope()
+	c.popBlockScope()
 
 	jumpPos := c.emit(code.OpJump, 9999)
 	afterSomePos := len(c.currentInstructions())
@@ -1215,7 +1207,7 @@ func (c *Compiler) compileTypeMatch(expr *ast.MatchTypeExpr) error {
 			return err
 		}
 		c.emit(code.OpUnboxInterface)
-		c.enterBlockScope()
+		c.pushBlockScope()
 		sym := c.symbolTable.DefineImmutable(arm.Binding.Value)
 		c.symbolTable.AnnotateType(arm.Binding.Value, arm.Type)
 		if sym.Scope == GlobalScope {
@@ -1235,7 +1227,7 @@ func (c *Compiler) compileTypeMatch(expr *ast.MatchTypeExpr) error {
 		}
 		jmpPos := c.emit(code.OpJump, 9999)
 		jmpEndPos = append(jmpEndPos, jmpPos)
-		c.leaveBlockScope()
+		c.popBlockScope()
 	}
 
 	if prevJmp != -1 {
@@ -1263,14 +1255,6 @@ func (c *Compiler) compileTypeMatch(expr *ast.MatchTypeExpr) error {
 	return nil
 }
 
-func (c *Compiler) enterBlockScope() {
-	c.symbolTable = NewBlockScopedSymbolTable(c.symbolTable)
-}
-
-func (c *Compiler) leaveBlockScope() {
-	c.symbolTable = c.symbolTable.Outer
-}
-
 func (c *Compiler) enterLoop(conditionPos int, hasPost bool) *LoopContext {
 	loop := &LoopContext{
 		conditionPos:      conditionPos,
@@ -1279,20 +1263,18 @@ func (c *Compiler) enterLoop(conditionPos int, hasPost bool) *LoopContext {
 		continuePositions: make([]int, 0),
 	}
 	c.loopContexts = append(c.loopContexts, loop)
-	c.loopIndex++
 	return loop
 }
 
 func (c *Compiler) leaveLoop() {
-	c.loopIndex--
-	c.loopContexts = c.loopContexts[:c.loopIndex]
+	c.loopContexts = c.loopContexts[:len(c.loopContexts)-1]
 }
 
 func (c *Compiler) getLoop() *LoopContext {
 	if len(c.loopContexts) == 0 {
 		return nil
 	}
-	return c.loopContexts[c.loopIndex-1]
+	return c.loopContexts[len(c.loopContexts)-1]
 }
 
 func (c *Compiler) replaceLastPopWithReturn() {
@@ -1317,7 +1299,7 @@ func (c *Compiler) loadSymbol(s Symbol) {
 	}
 }
 
-func (c *Compiler) emitZeroValue(node ast.Node, t types.Type) error {
+func (c *Compiler) emitZeroValue(node ast.Node, t types.Type) {
 	switch t {
 	case types.Bool:
 		c.emitAt(node, code.OpFalse)
@@ -1336,14 +1318,6 @@ func (c *Compiler) emitZeroValue(node ast.Node, t types.Type) error {
 	default:
 		c.emitAt(node, code.OpNull)
 	}
-
-	return nil
-}
-
-func (c *Compiler) lookUpStruct(name string) (types.StructType, bool) {
-	t, ok := c.structTypes[name]
-
-	return t, ok
 }
 
 func (c *Compiler) setStruct(name string, t types.StructType) {
@@ -1387,9 +1361,6 @@ func (c *Compiler) buildItabsFromTypes() {
 			for mn, idx := range it.MethodIndices {
 				mangled := mangle(sn, mn)
 				sym, _, ok := c.symbolTable.Resolve(mangled)
-				if !ok && c.currentModule != "" {
-					sym, _, ok = c.symbolTable.Resolve(c.mangleModule(c.currentModule, mangled))
-				}
 				if !ok {
 					panic(fmt.Sprintf("invariant violation: itab method %q for %s -> %s not found in symbol table\n%s",
 						mangled, sn, in, debug.Stack()))
@@ -1435,6 +1406,8 @@ func getConcreteType(expr ast.Expr) (string, error) {
 	case *ast.Identifier:
 		return node.ResolvedType.Signature(), nil
 	case *ast.CallExpr:
+		return node.ResolvedType.Signature(), nil
+	case *ast.ScopeAccessExpr:
 		return node.ResolvedType.Signature(), nil
 	}
 
@@ -1536,7 +1509,7 @@ func (c *Compiler) compileForInStmt(node *ast.ForInStmt) error {
 }
 
 func (c *Compiler) getLoopHiddenVar(str string) string {
-	return fmt.Sprintf("__%s__%d__", str, c.loopIndex)
+	return fmt.Sprintf("__%s__%d__", str, len(c.loopContexts)-1)
 }
 
 func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {

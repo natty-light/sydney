@@ -107,7 +107,6 @@ type Emitter struct {
 	emittedModules []string
 
 	loopStack       []*LoopLabels
-	loopIdx         int
 	blockTerminated bool
 	currentBlock    string
 }
@@ -137,7 +136,6 @@ func New() *Emitter {
 		emittedModules:  make([]string, 0),
 		loopStack:       make([]*LoopLabels, 0),
 		blockTerminated: false,
-		loopIdx:         0,
 
 		indents: generateIndents(),
 
@@ -174,11 +172,8 @@ func (e *Emitter) Emit(n ast.Node, packages []*loader.Package) error {
 
 	e.functions(program)
 
-	err := e.mainWrapper(n)
-	if err != nil {
-		return err
-	}
-	_, err = e.funcBuf.WriteTo(e.buf)
+	e.mainWrapper(n)
+	_, err := e.funcBuf.WriteTo(e.buf)
 	if err != nil {
 		return err
 	}
@@ -348,7 +343,7 @@ func (e *Emitter) collectStrings(n ast.Node) {
 		e.collectStrings(node.Index)
 
 	case *ast.CallExpr:
-		e.collect(node.Function)
+		e.collectStrings(node.Function)
 		for _, arg := range node.Arguments {
 			e.collectStrings(arg)
 		}
@@ -411,9 +406,6 @@ func (e *Emitter) collectStrings(n ast.Node) {
 			e.collectStrings(node.Capacity)
 		}
 	}
-}
-
-func (e *Emitter) CollectPackage() {
 }
 
 func (e *Emitter) preamble() {
@@ -498,7 +490,7 @@ declare ptr @sydney_get_args()`)
 		e.emitStringConst(s, i)
 	}
 
-	vtableStructs := make([]string, len(e.interfaceTypes))
+	vtableStructs := make([]string, 0, len(e.vtables))
 	for sname := range e.vtables {
 		vtableStructs = append(vtableStructs, sname)
 	}
@@ -506,7 +498,7 @@ declare ptr @sydney_get_args()`)
 
 	for _, sname := range vtableStructs {
 		imap := e.vtables[sname]
-		ifaceNames := make([]string, len(imap))
+		ifaceNames := make([]string, 0, len(imap))
 		for iname := range imap {
 			ifaceNames = append(ifaceNames, iname)
 		}
@@ -541,7 +533,7 @@ func (e *Emitter) functions(node *ast.Program) {
 	}
 }
 
-func (e *Emitter) mainWrapper(node ast.Node) error {
+func (e *Emitter) mainWrapper(node ast.Node) {
 	e.emit("define i32 @main() {")
 
 	e.allocaBuf = &bytes.Buffer{}
@@ -562,7 +554,6 @@ func (e *Emitter) mainWrapper(node ast.Node) error {
 	e.bodyBuf = nil
 	e.emit("}")
 
-	return nil
 }
 
 func (e *Emitter) main(node ast.Node) (string, IrType) {
@@ -1796,15 +1787,6 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 
 	ret := SydneyTypeToIrType(fType.Return)
 
-	e.funcSigs[name] = funcSig{name: "@" + name, paramTypes: paramIrTypes, retType: ret, sydneyParamTypes: fType.Params}
-	if decl.MangledName != "" {
-		e.funcSigs[decl.Name.Value] = e.funcSigs[name]
-		e.funcSigs[decl.MangledName] = e.funcSigs[name]
-		if e.currentModule != "" {
-			e.funcSigs[e.moduleMangle(e.currentModule, decl.Name.Value)] = e.funcSigs[name]
-		}
-	}
-
 	if decl.IsExtern {
 		return "", IrUnit
 	}
@@ -1831,7 +1813,7 @@ func (e *Emitter) emitFunction(decl *ast.FunctionDeclarationStmt) (string, IrTyp
 	val, valType, hasReturn := e.emitBlock(decl.Body)
 	e.depth = 1
 	e.popScope()
-	if !hasReturn {
+	if !hasReturn && !e.blockTerminated {
 		if ret == IrUnit {
 			e.emit("ret void")
 		} else {
@@ -1941,7 +1923,7 @@ func (e *Emitter) emitClosure(expr *ast.FunctionLiteral) (string, IrType) {
 	e.popScope()
 
 	e.depth = 1
-	if !hasReturn {
+	if !hasReturn && !e.blockTerminated {
 		if retType == IrUnit {
 			e.emit("ret void")
 		} else {
@@ -2682,6 +2664,7 @@ func (e *Emitter) moduleMangle(module, name string) string {
 }
 
 func (e *Emitter) emitPackageInit(pkg *loader.Package) {
+	e.emittedModules = append(e.emittedModules, e.currentModule)
 	line := fmt.Sprintf("define void @%s__init() {", e.currentModule)
 	e.emit(line)
 	e.depth = 1
@@ -2715,7 +2698,7 @@ func (e *Emitter) emitPackageInitInner(node ast.Node) {
 
 func (e *Emitter) emitPackageInits() {
 	for _, m := range e.emittedModules {
-		e.emitCall("", "", "@"+m+"__init()", []string{})
+		e.emitCall("", "", "@"+m+"__init", []string{})
 	}
 }
 
@@ -3004,12 +2987,12 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 
 	endLab := e.label("typematch.end")
 
+	allTerminated := true
 	for i, arm := range expr.Arms {
 		structName := arm.Type.(types.StructType).Name
 		matchLab := e.label(fmt.Sprintf("typematch.%s", structName))
 		nextLab := e.label(fmt.Sprintf("typematch.next.%d", i))
 
-		// cmp vtable ptr to resolve branch
 		cmp := e.tmp()
 		line = fmt.Sprintf("%s = icmp eq ptr %s, @vtable.%s.%s", cmp, vtablePtr, structName, ifaceName)
 		e.emit(line)
@@ -3021,7 +3004,6 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 		line = fmt.Sprintf("%s = extractvalue { ptr, ptr } %s, 0", valPtr, ifaceVal)
 		e.emit(line)
 
-		// alloca so it works like a local
 		bindAlloca := e.tmp() + ".addr"
 		e.emitAlloca(bindAlloca, IrPtr)
 		e.emitStore("ptr", valPtr, bindAlloca)
@@ -3034,6 +3016,7 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 		e.popScope()
 
 		if !armTerminated {
+			allTerminated = false
 			if rt != IrUnit {
 				e.emitStore(rt.String(), armResult, result)
 			}
@@ -3048,13 +3031,20 @@ func (e *Emitter) emitInterfaceTypeMatch(expr *ast.MatchTypeExpr) (string, IrTyp
 		defaultTerminated := e.blockTerminated
 		e.blockTerminated = false
 		if !defaultTerminated {
+			allTerminated = false
 			if rt != IrUnit {
 				e.emitStore(rt.String(), defaultResult, result)
 			}
 			e.emitJmp(endLab)
 		}
 	} else {
+		allTerminated = false
 		e.emitJmp(endLab)
+	}
+
+	if allTerminated {
+		e.blockTerminated = true
+		return "", rt
 	}
 
 	e.emitLabel(endLab)
@@ -3087,6 +3077,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 
 	endLab := e.label("typematch.end")
 
+	allTerminated := true
 	for i, arm := range expr.Arms {
 		armIrType := SydneyTypeToIrType(arm.Type)
 		armTag := AnyTagForType(armIrType)
@@ -3102,7 +3093,6 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 		e.emitLabel(matchLab)
 		unboxed, unboxedType := e.emitUnboxAny(subjPtr, armIrType)
 
-		// store unboxed in alloca
 		bindAlloca := e.tmp() + ".addr"
 		e.emitAlloca(bindAlloca, unboxedType)
 		e.emitStore(unboxedType.String(), unboxed, bindAlloca)
@@ -3115,6 +3105,7 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 		e.popScope()
 
 		if !armTerminated {
+			allTerminated = false
 			if rt != IrUnit {
 				e.emitStore(rt.String(), armResult, result)
 			}
@@ -3129,13 +3120,20 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 		defaultTerminated := e.blockTerminated
 		e.blockTerminated = false
 		if !defaultTerminated {
+			allTerminated = false
 			if rt != IrUnit {
 				e.emitStore(rt.String(), defaultResult, result)
 			}
 			e.emitJmp(endLab)
 		}
 	} else {
+		allTerminated = false
 		e.emitJmp(endLab)
+	}
+
+	if allTerminated {
+		e.blockTerminated = true
+		return "", rt
 	}
 
 	e.emitLabel(endLab)
@@ -3146,15 +3144,6 @@ func (e *Emitter) emitAnyTypeMatch(expr *ast.MatchTypeExpr) (string, IrType) {
 	}
 
 	return finalVal, rt
-}
-
-func (e *Emitter) emitRuntimeCall(fn string, expr *ast.CallExpr) (string, IrType) {
-	for _, builtin := range runtimeBuiltins {
-		if builtin.RuntimeName == fn {
-			return e.emitRuntimeBuiltinCall(builtin, expr)
-		}
-	}
-	return "", IrUnit
 }
 
 func (e *Emitter) pushScope() {
@@ -3172,19 +3161,17 @@ func (e *Emitter) enterLoop(condLabel, postLabel, escapeLabel string) {
 		escapeLabel: escapeLabel,
 	}
 	e.loopStack = append(e.loopStack, loop)
-	e.loopIdx++
 }
 
 func (e *Emitter) leaveLoop() {
 	e.loopStack = e.loopStack[:len(e.loopStack)-1]
-	e.loopIdx--
 }
 
 func (e *Emitter) getLoop() *LoopLabels {
 	if len(e.loopStack) == 0 {
 		return nil
 	}
-	return e.loopStack[e.loopIdx-1]
+	return e.loopStack[len(e.loopStack)-1]
 }
 
 func (e *Emitter) emitSliceExpr(expr *ast.SliceExpr) (string, IrType) {
@@ -3522,10 +3509,7 @@ func (e *Emitter) emitUnboxAny(reg string, targetType IrType) (string, IrType) {
 
 func irZeroValueFromType(t IrType) string {
 	switch t {
-	case IrBool:
-	case IrInt8:
-	case IrInt32:
-	case IrInt:
+	case IrBool, IrInt8, IrInt32, IrInt:
 		return "0"
 	case IrFloat:
 		return "0.0"
