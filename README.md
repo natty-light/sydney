@@ -62,7 +62,7 @@ go test ./...
 ## Values, literals, and types
 
 ### Primitive types
-Sydney supports the following primitive types: `int`, `float`, `string`, `bool`, `byte`, and `null`.
+Sydney supports the following primitive types: `int`, `float`, `string`, `bool`, `byte`, `null`, and `any`.
 
 ```
 mut int i = 10;
@@ -71,7 +71,10 @@ mut string s = "hello";
 mut bool b = true;
 mut byte c = 'a';
 mut null n = null;
+const any x = 42;
 ```
+
+The `any` type can hold a value of any type and is used with type match expressions for dynamic dispatch.
 
 Strings support escape sequences: `\n`, `\t`, `\r`, `\\`, `\"`, `\'`, and `\0`. Byte literals support the same escapes:
 ```
@@ -80,11 +83,12 @@ const newline = '\n';
 ```
 
 ### Type conversions
-Convert between primitive types using the `int()`, `byte()`, and `char()` builtins:
+Convert between primitive types using the `int()`, `float()`, `byte()`, and `char()` builtins:
 ```
 const code = int('a');       // 97
 const b = byte(65);          // byte with value 65
 const ch = char(byte(72));   // "H"
+const f = float(42);         // 42.0
 ```
 
 ### Variables
@@ -130,6 +134,14 @@ const f = func(int x) -> fn<() -> int> {
 const store5 = f(5);
 store5(); // returns 5;
 ```
+
+### Extern functions
+Functions implemented in the runtime can be declared with `extern`:
+```
+pub extern func args() -> array<string>;
+```
+
+Extern functions have no body — they are resolved at link time against the runtime library or built-in function table.
 
 ### Maps
 Maps are dictionaries with strict typings. The keys of a map must all be of the same type, as with the values.
@@ -311,6 +323,22 @@ const val = match m["key"] {
 };
 ```
 
+### Type match expressions
+`match` can also dispatch on the runtime type of an `any` value. Each arm binds the unwrapped value to a variable:
+```
+const any val = 42;
+const desc = match val {
+    int(i) -> { "an integer"; },
+    float(f) -> { "a float"; },
+    string(s) -> { "a string"; },
+    bool(b) -> { "a bool"; },
+    byte(b) -> { "a byte"; },
+    _ -> { "something else"; },
+};
+```
+
+Arms can match on primitive types (`int`, `float`, `string`, `bool`, `byte`) as well as interfaces. The `_` arm is a catch-all default.
+
 ### Result type
 The `result<T>` type represents a value that may be an error. Construct with `ok(val)` or `err(msg)`, deconstruct with `match`:
 ```
@@ -411,13 +439,20 @@ Sydney provides several built-in functions:
 - `len(iterable)`: Returns the length of an array, string, or map.
 - `print(args...)`: Prints the provided arguments to the console.
 - `append(array, element)`: Returns a new array with the element appended.
+- `keys(map)`: Returns an array of the map's keys.
+- `values(map)`: Returns an array of the map's values.
+- `panic(msg)`: Terminates execution with an error message.
 - `int(byte)`: Converts a byte to an integer.
+- `float(int)`: Converts an integer to a float.
 - `byte(int)`: Converts an integer to a byte.
 - `char(byte)`: Converts a byte to a single-character string.
 
 ### File I/O
 - `fopen(path)`: Opens a file and returns a file descriptor.
-- `fread(fd)`: Reads the contents of a file.
+- `fcreate(path)`: Creates a new file and returns a file descriptor.
+- `fread(fd)`: Reads the entire contents of a file.
+- `freadn(fd, n)`: Reads up to `n` bytes from a file.
+- `nb_freadn(fd, n)`: Non-blocking read of up to `n` bytes.
 - `fwrite(fd, data)`: Writes data to a file.
 - `fclose(fd)`: Closes a file descriptor.
 
@@ -450,15 +485,20 @@ Module functions are accessed with the `:` scope operator.
 Sydney ships with standard library modules in `stdlib/`:
 - `strings` — string manipulation (repeat, contains, split, join, index_of, trim, etc.)
 - `conv` — type conversions (itoa, atoi, atof, ftoa, bool_to_str, parse_bool)
-- `math` — mathematical functions
-- `stats` — statistical functions
-- `sort` — sorting algorithms (heapsort)
-- `io` — file I/O wrappers with result types
+- `math` — mathematical functions (abs, sqrt, pow_int, exp, ln, factorial, min, max)
+- `stats` — statistical functions (mean, median)
+- `sort` — sorting algorithms (quicksort via Sortable interface)
 - `heap` — min-heap data structure
-- `testing` — test assertion utilities
+- `slice` — generic sortable collection interface and `Slice<V>` wrapper
+- `io` — file I/O wrappers with result types
 - `net` — TCP networking (connect, listen, accept, read, write, TLS support)
 - `http` — HTTP client and server with a simple router
 - `json` — JSON parsing and marshaling utilities
+- `fmt` — string formatting (sprintf, printf, println with format specifiers)
+- `os` — operating system utilities (args)
+- `vec` — 2D and 3D vector math (dot product, cross product, magnitude)
+- `term` — terminal control (raw mode, reset)
+- `testing` — test assertion utilities (assert, assert_eq)
 
 ## Interfaces and Implementations
 Sydney supports interfaces, which allow for polymorphism and dynamic dispatch. An interface defines a set of method signatures that a struct can implement.
