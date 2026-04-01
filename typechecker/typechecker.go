@@ -628,19 +628,17 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 	}
 
 	if node, ok := n.(*ast.FunctionDeclarationStmt); ok {
-		fType := node.Type.(types.FunctionType)
-		resolved := c.resolveFunctionType(fType)
+		resolved := c.resolveFunctionType(node.Type.(types.FunctionType))
 		node.Type = resolved
-		fType = resolved
 		name := node.Name.Value
 
 		if len(node.TypeParams) > 0 {
-			c.hoistGenericFunction(name, node, fType)
+			c.hoistGenericFunction(name, node, resolved)
 			return
 		}
 
-		if len(fType.Params) > 0 {
-			receiverType := fType.Params[0]
+		if len(resolved.Params) > 0 {
+			receiverType := resolved.Params[0]
 			if st, ok := toStruct(receiverType); ok {
 				name = mangleMethod(st.Name, name)
 				node.MangledName = name
@@ -650,10 +648,6 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 				name = mangleMethod(sn, name)
 				node.MangledName = name
 			}
-		}
-		if name != node.Name.Value {
-			c.env.Set(name, node.Type)
-			return
 		}
 
 		_, fromOuter, exists := c.env.Get(node.Name.Value)
