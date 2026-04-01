@@ -298,7 +298,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		conditionPos := len(c.currentInstructions())
-		c.enterLoop(conditionPos, node.Post != nil)
+		loop := c.enterLoop(conditionPos, node.Post != nil)
 
 		err := c.Compile(node.Condition)
 		if err != nil {
@@ -314,7 +314,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if node.Post != nil {
 			postPos := len(c.currentInstructions())
-			loop := c.getLoop()
 			if loop != nil {
 				for _, pos := range loop.continuePositions {
 					c.changeOperand(pos, postPos)
@@ -331,7 +330,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		escapePos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, escapePos)
-		loop := c.getLoop()
 		if loop != nil {
 			for _, pos := range c.getLoop().breakPositions {
 				c.changeOperand(pos, escapePos)
@@ -1270,7 +1268,7 @@ func (c *Compiler) leaveBlockScope() {
 	c.symbolTable = c.symbolTable.Outer
 }
 
-func (c *Compiler) enterLoop(conditionPos int, hasPost bool) {
+func (c *Compiler) enterLoop(conditionPos int, hasPost bool) *LoopContext {
 	loop := &LoopContext{
 		conditionPos:      conditionPos,
 		hasPost:           hasPost,
@@ -1279,6 +1277,7 @@ func (c *Compiler) enterLoop(conditionPos int, hasPost bool) {
 	}
 	c.loopContexts = append(c.loopContexts, loop)
 	c.loopIndex++
+	return loop
 }
 
 func (c *Compiler) leaveLoop() {
@@ -1578,7 +1577,7 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	c.emitSet(idxSym)
 
 	conditionPos := len(c.currentInstructions())
-	c.enterLoop(conditionPos, true)
+	loop := c.enterLoop(conditionPos, true)
 	c.emitGet(lenSym)
 	c.emitGet(idxSym)
 	c.emit(code.OpGt)
@@ -1605,7 +1604,6 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	}
 
 	postPos := len(c.currentInstructions())
-	loop := c.getLoop()
 	if loop != nil {
 		for _, pos := range loop.continuePositions {
 			c.changeOperand(pos, postPos)
@@ -1622,7 +1620,6 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	// 9. Escape
 	escapePos := len(c.currentInstructions())
 	c.changeOperand(jumpNotTruthyPos, escapePos)
-	loop = c.getLoop()
 	if loop != nil {
 		for _, pos := range loop.breakPositions {
 			c.changeOperand(pos, escapePos)
@@ -1675,7 +1672,7 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 
 	// condition: len > idx
 	conditionPos := len(c.currentInstructions())
-	c.enterLoop(conditionPos, true)
+	loop := c.enterLoop(conditionPos, true)
 	c.emitGet(lenSym)
 	c.emitGet(idxSym)
 	c.emit(code.OpGt)
@@ -1705,7 +1702,6 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	}
 
 	postPos := len(c.currentInstructions())
-	loop := c.getLoop()
 	if loop != nil {
 		for _, pos := range loop.continuePositions {
 			c.changeOperand(pos, postPos)
@@ -1722,7 +1718,6 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	// Escape
 	escapePos := len(c.currentInstructions())
 	c.changeOperand(jumpNotTruthyPos, escapePos)
-	loop = c.getLoop()
 	if loop != nil {
 		for _, pos := range loop.breakPositions {
 			c.changeOperand(pos, escapePos)
