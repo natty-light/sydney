@@ -870,7 +870,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	if expr, ok := node.(ast.Expr); ok {
 		if castTo := expr.GetCastTo(); castTo != nil {
-			concreteName := getConcreteType(expr)
+			concreteName, err := getConcreteType(expr)
+			if err != nil {
+				return err
+			}
 
 			ifaceName := castTo.Name
 			if castTo.Module != "" {
@@ -1436,17 +1439,17 @@ func getItabKey(sn string, in string) ItabKey {
 	return ItabKey(asStr)
 }
 
-func getConcreteType(expr ast.Expr) string {
+func getConcreteType(expr ast.Expr) (string, error) {
 	switch node := expr.(type) {
 	case *ast.StructLiteral:
-		return node.ResolvedType.Signature()
+		return node.ResolvedType.Signature(), nil
 	case *ast.Identifier:
-		return node.ResolvedType.Signature()
+		return node.ResolvedType.Signature(), nil
 	case *ast.CallExpr:
-		return node.ResolvedType.Signature()
+		return node.ResolvedType.Signature(), nil
 	}
 
-	return ""
+	return "", fmt.Errorf("expression of type %T has no concrete type", expr)
 }
 
 func (c *Compiler) isInterfaceType(expr ast.Expr) (*types.InterfaceType, bool) {
@@ -1496,7 +1499,7 @@ func (c *Compiler) compileInterfaceMethodCall(node *ast.CallExpr) error {
 
 		methodIdx, ok := it.MethodIndices[s.Value.String()]
 		if !ok {
-			return nil
+			return fmt.Errorf("method %s not found in interface type %s", s.Value.String(), it.Name)
 		}
 
 		c.emit(code.OpCallInterface, methodIdx, len(node.Arguments))
@@ -1540,7 +1543,7 @@ func (c *Compiler) compileForInStmt(node *ast.ForInStmt) error {
 		return c.compileForInStmtArr(node)
 	}
 
-	return nil
+	return fmt.Errorf("for-in statement iterable is neither array nor map")
 }
 
 func (c *Compiler) getLoopHiddenVar(str string) string {
