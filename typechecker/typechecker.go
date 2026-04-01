@@ -164,109 +164,124 @@ func (c *Checker) Check(node ast.Node, packages []*loader.Package) []errors.Posi
 	return c.errors
 }
 
+func (c *Checker) checkPackage(pkg *loader.Package, registry map[string]*TypeEnv) *Checker {
+	pkgEnv := NewTypeEnv(nil)
+	// Populate env with struct methods from already-checked dependencies
+	// (e.g. "Socket.read") so cross-module method calls work.
+	// Bare names are accessed via scope
+	for _, env := range registry {
+		for name, typ := range env.store {
+			if strings.Contains(name, ".") {
+				pkgEnv.Set(name, typ)
+			}
+		}
+	}
+	pkgChecker := NewWithModuleTypes(pkgEnv, c.moduleTypes)
+	pkgChecker.packages = registry
+	pkgChecker.currentModule = pkg.Name
+
+	merged := &ast.Program{}
+	for _, program := range pkg.Programs {
+		merged.Stmts = append(merged.Stmts, program.Stmts...)
+	}
+	pkgChecker.Check(merged, nil)
+	for k, v := range pkgChecker.genericFunctions {
+		if len(v.TypeParams) == 0 {
+			panic(fmt.Sprintf("invariant violation: genericFunction %q has no TypeParams after package check\n%s\n", v.Name, debug.Stack()))
+		}
+		c.genericFunctions[k] = v
+	}
+	for k, v := range pkgChecker.genericStructs {
+		if len(v.Type.TypeParams) == 0 {
+			panic(fmt.Sprintf("invariant violation: genericStruct %q has no TypeParams after package check\n%s\n", v.Name, debug.Stack()))
+		}
+		c.genericStructs[k] = v
+	}
+	for _, e := range pkgChecker.errors {
+		if e.File == "" {
+			e.File = pkg.Name
+		}
+		c.errors = append(c.errors, e)
+	}
+
+	return pkgChecker
+}
+
+func (c *Checker) exportNonFunctions(pkg *loader.Package, exportEnv *TypeEnv) []*ast.FunctionDeclarationStmt {
+	functions := make([]*ast.FunctionDeclarationStmt, 0)
+	for _, program := range pkg.Programs {
+		for _, stmt := range program.Stmts {
+			if pub, ok := stmt.(*ast.PubStatement); ok {
+				if fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn {
+					functions = append(functions, fn)
+				}
+				name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
+				if containsTypeParamRef(typ) {
+					panic(fmt.Sprintf("invariant violation: exported %T %s has TypeParamRefs\n%s\n", pub.Stmt, name, debug.Stack()))
+				}
+				exportEnv.Set(name, typ)
+			}
+		}
+	}
+
+	return functions
+}
+
+func (c *Checker) exportFunctions(functions []*ast.FunctionDeclarationStmt, exportEnv *TypeEnv) {
+	for _, fn := range functions {
+		name := fn.Name.Value
+		typ := fn.Type
+		if len(fn.TypeParams) > 0 {
+			if ft, ok := typ.(types.FunctionType); ok {
+				subs := make(map[string]types.Type)
+				for _, param := range fn.TypeParams {
+					subs[param.Name] = types.Any
+				}
+				resolved := types.SubstituteTypeParams(ft, subs).(types.FunctionType)
+
+				if len(resolved.Params) > 0 {
+					if st, ok := toStruct(resolved.Params[0]); ok {
+						if _, _, exported := exportEnv.Get(st.Name); exported {
+							mn := st.Name + "." + name
+							if containsTypeParamRef(st) {
+								panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
+							}
+							exportEnv.Set(mn, resolved)
+						}
+					}
+				}
+			}
+			continue
+		}
+		if containsTypeParamRef(typ) {
+			panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
+		}
+		exportEnv.Set(name, typ)
+
+		if ft, ok := typ.(types.FunctionType); ok && len(ft.Params) > 0 {
+			if st, ok := ft.Params[0].(types.StructType); ok {
+				if _, _, exported := exportEnv.Get(st.Name); exported {
+					mn := st.Name + "." + name
+					if containsTypeParamRef(ft) {
+						panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
+					}
+					exportEnv.Set(mn, typ)
+				}
+			}
+		}
+	}
+}
+
 func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionError {
 	registry := make(map[string]*TypeEnv)
 
 	for _, pkg := range packages {
-		pkgEnv := NewTypeEnv(nil)
-		// Populate env with struct methods from already-checked dependencies
-		// (e.g. "Socket.read") so cross-module method calls work.
-		// Bare names are accessed via scope
-		for _, env := range registry {
-			for name, typ := range env.store {
-				if strings.Contains(name, ".") {
-					pkgEnv.Set(name, typ)
-				}
-			}
-		}
-		pkgChecker := NewWithModuleTypes(pkgEnv, c.moduleTypes)
-		pkgChecker.packages = registry
-		pkgChecker.currentModule = pkg.Name
-
-		merged := &ast.Program{}
-		for _, program := range pkg.Programs {
-			merged.Stmts = append(merged.Stmts, program.Stmts...)
-		}
-		pkgChecker.Check(merged, nil)
-		for k, v := range pkgChecker.genericFunctions {
-			if len(v.TypeParams) == 0 {
-				panic(fmt.Sprintf("invariant violation: genericFunction %q has no TypeParams after package check\n%s\n", v.Name, debug.Stack()))
-			}
-			c.genericFunctions[k] = v
-		}
-		for k, v := range pkgChecker.genericStructs {
-			if len(v.Type.TypeParams) == 0 {
-				panic(fmt.Sprintf("invariant violation: genericStruct %q has no TypeParams after package check\n%s\n", v.Name, debug.Stack()))
-			}
-			c.genericStructs[k] = v
-		}
-		for _, e := range pkgChecker.errors {
-			if e.File == "" {
-				e.File = pkg.Name
-			}
-			c.errors = append(c.errors, e)
-		}
-
+		c.checkPackage(pkg, registry)
 		exportEnv := NewTypeEnv(nil)
 		// set non-functions
-		functions := make([]*ast.FunctionDeclarationStmt, 0)
-		for _, program := range pkg.Programs {
-			for _, stmt := range program.Stmts {
-				if pub, ok := stmt.(*ast.PubStatement); ok {
-					if fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn {
-						functions = append(functions, fn)
-					}
-					name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
-					if containsTypeParamRef(typ) {
-						panic(fmt.Sprintf("invariant violation: exported %T %s has TypeParamRefs\n%s\n", pub.Stmt, name, debug.Stack()))
-					}
-					exportEnv.Set(name, typ)
-				}
-			}
-		}
+		functions := c.exportNonFunctions(pkg, exportEnv)
+		c.exportFunctions(functions, exportEnv)
 		// set functions
-		for _, fn := range functions {
-			name := fn.Name.Value
-			typ := fn.Type
-			if len(fn.TypeParams) > 0 {
-				if ft, ok := typ.(types.FunctionType); ok {
-					subs := make(map[string]types.Type)
-					for _, param := range fn.TypeParams {
-						subs[param.Name] = types.Any
-					}
-					resolved := types.SubstituteTypeParams(ft, subs).(types.FunctionType)
-
-					if len(resolved.Params) > 0 {
-						if st, ok := toStruct(resolved.Params[0]); ok {
-							if _, _, exported := exportEnv.Get(st.Name); exported {
-								mn := st.Name + "." + name
-								if containsTypeParamRef(st) {
-									panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
-								}
-								exportEnv.Set(mn, resolved)
-							}
-						}
-					}
-				}
-				continue
-			}
-			if containsTypeParamRef(typ) {
-				panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
-			}
-			exportEnv.Set(name, typ)
-
-			if ft, ok := typ.(types.FunctionType); ok && len(ft.Params) > 0 {
-				if st, ok := ft.Params[0].(types.StructType); ok {
-					if _, _, exported := exportEnv.Get(st.Name); exported {
-						mn := st.Name + "." + name
-						if containsTypeParamRef(ft) {
-							panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
-						}
-						exportEnv.Set(mn, typ)
-					}
-				}
-			}
-		}
 
 		registry[pkg.Name] = exportEnv
 	}
