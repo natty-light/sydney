@@ -212,9 +212,15 @@ func (c *Checker) exportNonFunctions(pkg *loader.Package, exportEnv *TypeEnv) []
 	for _, program := range pkg.Programs {
 		for _, stmt := range program.Stmts {
 			if pub, ok := stmt.(*ast.PubStatement); ok {
-				if fn, isFn := pub.Stmt.(*ast.FunctionDeclarationStmt); isFn {
+				if fn, ok := pub.Stmt.(*ast.FunctionDeclarationStmt); ok {
 					functions = append(functions, fn)
+					continue
 				}
+
+				if sd, ok := pub.Stmt.(*ast.StructDefinitionStmt); ok && len(sd.Type.TypeParams) > 0 {
+					continue
+				}
+
 				name, typ := c.extractDeclNameAndType(pub.Stmt, pkg.Name)
 				if containsTypeParamRef(typ) {
 					panic(fmt.Sprintf("invariant violation: exported %T %s has TypeParamRefs\n%s\n", pub.Stmt, name, debug.Stack()))
