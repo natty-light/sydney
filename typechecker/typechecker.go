@@ -73,14 +73,10 @@ func New(globalEnv *TypeEnv) *Checker {
 }
 
 func NewWithModuleTypes(globalEnv *TypeEnv, moduleTypes map[string]map[string]types.Type) *Checker {
-	env := globalEnv
-	if env == nil {
-		env = NewTypeEnv(nil)
-	}
-	for _, v := range object.Builtins {
-		env.Set(v.Name, v.BuiltIn.T)
-	}
 	c := New(globalEnv)
+	for _, v := range object.Builtins {
+		c.env.Set(v.Name, v.BuiltIn.T)
+	}
 	c.moduleTypes = moduleTypes
 
 	return c
@@ -661,11 +657,11 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 		if len(resolved.Params) > 0 {
 			receiverType := resolved.Params[0]
 			if st, ok := toStruct(receiverType); ok {
-				name = mangleMethod(st.Name, name)
+				name = mangleMethod(st.Name, node.Name.Value)
 				node.MangledName = name
 			}
 
-			if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
+			if sn, ok := c.isInterfaceMethod(receiverType, node.Name.Value); ok {
 				name = mangleMethod(sn, name)
 				node.MangledName = name
 			}
@@ -1044,23 +1040,13 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 
 func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type, expr ast.Node) types.Type {
 	switch operator {
-	case "==":
+	case "==", "!=":
 		if !c.typesMatch(lt, rt) {
 			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
 
 		return types.Bool
-	case ">":
-		if !c.typesMatch(lt, rt) {
-			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
-		}
-
-		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
-		}
-
-		return types.Bool
-	case ">=":
+	case ">", ">=", "<", "<=":
 		if !c.typesMatch(lt, rt) {
 			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
 		}
@@ -1070,41 +1056,7 @@ func (c *Checker) checkInfixExpr(operator string, lt types.Type, rt types.Type, 
 		}
 
 		return types.Bool
-	case "<":
-		if !c.typesMatch(lt, rt) {
-			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
-		}
-
-		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
-		}
-
-		return types.Bool
-	case "<=":
-		if !c.typesMatch(lt, rt) {
-			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
-		}
-
-		if lt != types.Float && lt != types.Int && lt != types.Byte {
-			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
-		}
-
-		return types.Bool
-	case "!=":
-		if !c.typesMatch(lt, rt) {
-			c.appendError(fmt.Sprintf("type mismatch: cannot compare types %s to %s", lt.Signature(), rt.Signature()), expr)
-		}
-
-		return types.Bool
-	case "&&":
-		if !c.typesMatch(lt, rt) {
-			c.appendError(fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()), expr)
-		}
-		if lt != types.Bool {
-			c.appendError(fmt.Sprintf("invalid operation: %s is not defined for type %s", operator, lt.Signature()), expr)
-		}
-		return types.Bool
-	case "||":
+	case "&&", "||":
 		if !c.typesMatch(lt, rt) {
 			c.appendError(fmt.Sprintf("type mismatch: cannot perform boolean operation on types %s and %s", lt.Signature(), rt.Signature()), expr)
 		}
@@ -1540,29 +1492,6 @@ func (c *Checker) checkChanBuiltIn(expr *ast.CallExpr) types.Type {
 	return types.ChannelType{ElemType: expr.TypeArgs[0]}
 }
 
-func (c *Checker) resolveInterfaceName(expr ast.Expr) (types.InterfaceType, string, bool) {
-	switch e := expr.(type) {
-	case *ast.Identifier:
-		t, _, ok := c.env.Get(e.Value)
-		if !ok {
-			return types.InterfaceType{}, e.Value, false
-		}
-		it, ok := t.(types.InterfaceType)
-		return it, e.Value, ok
-	case *ast.ScopeAccessExpr:
-		mod := e.Module.Value
-		name := e.Member.Value
-		if mt, ok := c.moduleTypes[mod]; ok {
-			if t, ok := mt[name]; ok {
-				it, ok := t.(types.InterfaceType)
-				return it, name, ok
-			}
-		}
-		return types.InterfaceType{}, name, false
-	}
-	return types.InterfaceType{}, "", false
-}
-
 func (c *Checker) isInterfaceMethod(t types.Type, name string) (string, bool) {
 	structType, ok := toStruct(t)
 	if !ok {
@@ -1881,27 +1810,18 @@ func (c *Checker) checkFunctionDeclaration(node *ast.FunctionDeclarationStmt) ty
 		return types.Unit
 	}
 	name := node.Name.Value
-	fTypeRaw := node.Type.(types.FunctionType)
-	resolved := c.resolveFunctionType(fTypeRaw)
-	node.Type = resolved
-	fTypeRaw = resolved
-	if len(fTypeRaw.Params) > 0 {
-		receiverType := fTypeRaw.Params[0]
+	fType := node.Type.(types.FunctionType)
+	if len(fType.Params) > 0 {
+		receiverType := fType.Params[0]
 		if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
 			name = mangleMethod(sn, name)
 			node.MangledName = name
 		}
 	}
 
-	fTypeRetrieved, _, ok := c.env.Get(node.Name.Value)
+	_, _, ok := c.env.Get(node.Name.Value)
 	if !ok {
 		c.env.Set(name, node.Type)
-		fTypeRetrieved = node.Type
-	}
-
-	fType, ok := fTypeRetrieved.(types.FunctionType)
-	if !ok {
-		c.appendError(fmt.Sprintf("cannot use function declaration of %s", node.Name.Value), node)
 	}
 
 	if !node.IsExtern {
@@ -2185,6 +2105,18 @@ func (c *Checker) doResolveType(t types.Type) types.Type {
 			c.appendError(fmt.Sprintf("module %s type %s is not declared", t.Module, t.Name), nil)
 			return nil
 		}
+		switch resolved := tt.(type) {
+		case types.InterfaceType:
+			if resolved.Module == "" {
+				resolved.Module = t.Module
+			}
+			return resolved
+		case types.StructType:
+			if resolved.Module == "" {
+				resolved.Module = t.Module
+			}
+			return resolved
+		}
 		return tt
 	case types.MapType:
 		kt := c.resolveType(t.KeyType)
@@ -2213,8 +2145,10 @@ func (c *Checker) doResolveType(t types.Type) types.Type {
 		return t
 	case types.ResultType:
 		rt := c.resolveType(t.T)
-
 		return types.ResultType{T: rt}
+	case types.OptionType:
+		rt := c.resolveType(t.T)
+		return types.OptionType{T: rt}
 	case types.FunctionType:
 		return c.resolveFunctionType(t)
 	}
@@ -2577,8 +2511,8 @@ func (c *Checker) unifyType(p types.Type, arg types.Type, subs map[string]types.
 			c.unifyType(t.ValueType, a.ValueType, subs)
 		}
 	case types.ResultType:
-		if a, ok := arg.(types.ArrayType); ok {
-			c.unifyType(t.T, a.ElemType, subs)
+		if a, ok := arg.(types.ResultType); ok {
+			c.unifyType(t.T, a.T, subs)
 		}
 	}
 }

@@ -43,11 +43,6 @@ func (e *TypeEnv) Set(name string, t types.Type) {
 	e.store[name] = t
 }
 
-func isTypeParamRef(t types.Type) bool {
-	_, ok := t.(*types.TypeParamRef)
-	return ok
-}
-
 func (e *TypeEnv) Get(name string) (types.Type, bool, bool) {
 	fromOuter := false
 	t, ok := e.store[name]
