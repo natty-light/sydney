@@ -602,6 +602,24 @@ func (c *Checker) hoistBase(n ast.Node) {
 	}
 }
 
+func (c *Checker) hoistGenericFunction(name string, node *ast.FunctionDeclarationStmt, ft types.FunctionType) {
+	c.genericFunctions[name] = node
+	subs := make(map[string]types.Type)
+	for _, tp := range node.TypeParams {
+		subs[tp.Name] = types.Any
+	}
+	resolved := types.SubstituteTypeParams(ft, subs).(types.FunctionType)
+	c.env.Set(name, resolved)
+
+	if len(resolved.Params) > 0 {
+		if st, ok := toStruct(resolved.Params[0]); ok {
+			mangled := st.Name + "." + node.Name.Value
+			node.MangledName = mangled
+			c.env.Set(mangled, resolved)
+		}
+	}
+}
+
 func (c *Checker) hoistFunctions(n ast.Node) {
 	if pub, ok := n.(*ast.PubStatement); ok {
 		if fdecl, ok := pub.Stmt.(*ast.FunctionDeclarationStmt); ok {
@@ -617,21 +635,7 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 		name := node.Name.Value
 
 		if len(node.TypeParams) > 0 {
-			c.genericFunctions[node.Name.Value] = node
-			subs := make(map[string]types.Type)
-			for _, tp := range node.TypeParams {
-				subs[tp.Name] = types.Any
-			}
-			resolved := types.SubstituteTypeParams(fType, subs).(types.FunctionType)
-			c.env.Set(name, resolved)
-
-			if len(resolved.Params) > 0 {
-				if st, ok := toStruct(resolved.Params[0]); ok {
-					mangled := st.Name + "." + node.Name.Value
-					node.MangledName = mangled
-					c.env.Set(mangled, resolved)
-				}
-			}
+			c.hoistGenericFunction(name, node, fType)
 			return
 		}
 
