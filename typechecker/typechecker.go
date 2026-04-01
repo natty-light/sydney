@@ -572,9 +572,6 @@ func (c *Checker) hoistBase(n ast.Node) {
 			c.genericStructs[node.Name.Value] = node
 			return
 		}
-		if c.currentModule != "" {
-			node.Type.Module = c.currentModule
-		}
 		c.definedStructs[node.Name.Value] = node.Type
 		c.structNodes[node.Name.Value] = node
 
@@ -582,9 +579,6 @@ func (c *Checker) hoistBase(n ast.Node) {
 		node.Type.MethodIndices = make(map[string]int)
 		for i, mn := range node.Type.Methods {
 			node.Type.MethodIndices[mn] = i
-		}
-		if c.currentModule != "" {
-			node.Type.Module = c.currentModule
 		}
 		c.env.Set(node.Name.Value, node.Type)
 		c.assertInterfaceConsistent(node.Type)
@@ -608,24 +602,6 @@ func (c *Checker) hoistBase(n ast.Node) {
 	}
 }
 
-func (c *Checker) hoistGenericFunction(name string, node *ast.FunctionDeclarationStmt, resolvedType types.FunctionType) {
-	c.genericFunctions[name] = node
-	subs := make(map[string]types.Type)
-	for _, tp := range node.TypeParams {
-		subs[tp.Name] = types.Any
-	}
-	resolved := types.SubstituteTypeParams(resolvedType, subs).(types.FunctionType)
-	c.env.Set(name, resolved)
-
-	if len(resolved.Params) > 0 {
-		if st, ok := toStruct(resolved.Params[0]); ok {
-			mangled := mangleMethod(st.Name, name)
-			node.MangledName = mangled
-			c.env.Set(mangled, resolved)
-		}
-	}
-}
-
 func (c *Checker) hoistFunctions(n ast.Node) {
 	if pub, ok := n.(*ast.PubStatement); ok {
 		if fdecl, ok := pub.Stmt.(*ast.FunctionDeclarationStmt); ok {
@@ -636,27 +612,38 @@ func (c *Checker) hoistFunctions(n ast.Node) {
 	if node, ok := n.(*ast.FunctionDeclarationStmt); ok {
 		fType := node.Type.(types.FunctionType)
 		resolved := c.resolveFunctionType(fType)
-
-		name := node.Name.Value
-		if c.currentModule != "" {
-			node.Module = c.currentModule
-		}
 		node.Type = resolved
+		fType = resolved
+		name := node.Name.Value
 
 		if len(node.TypeParams) > 0 {
-			c.hoistGenericFunction(name, node, resolved)
+			c.genericFunctions[node.Name.Value] = node
+			subs := make(map[string]types.Type)
+			for _, tp := range node.TypeParams {
+				subs[tp.Name] = types.Any
+			}
+			resolved := types.SubstituteTypeParams(fType, subs).(types.FunctionType)
+			c.env.Set(name, resolved)
+
+			if len(resolved.Params) > 0 {
+				if st, ok := toStruct(resolved.Params[0]); ok {
+					mangled := st.Name + "." + node.Name.Value
+					node.MangledName = mangled
+					c.env.Set(mangled, resolved)
+				}
+			}
 			return
 		}
 
 		if len(fType.Params) > 0 {
-			receiverType := resolved.Params[0]
+			receiverType := fType.Params[0]
 			if st, ok := toStruct(receiverType); ok {
-				name = mangleMethod(st.Name, name)
+				name = fmt.Sprintf("%s.%s", st.Name, name)
 				node.MangledName = name
 			}
 
 			if sn, ok := c.isInterfaceMethod(receiverType, name); ok {
-				name = mangleMethod(sn, name)
+				name = fmt.Sprintf("%s.%s", sn, name)
 				node.MangledName = name
 			}
 		}
@@ -2191,7 +2178,7 @@ func (c *Checker) doResolveType(t types.Type) types.Type {
 		return types.ArrayType{ElemType: et}
 	case types.StructType:
 		if t.TypeArgs != nil {
-			return c.maybeResolveGenericStructType(t)
+			return c.resolveGenericStructType(t)
 		}
 		for i, typ := range t.Types {
 			t.Types[i] = c.resolveType(typ)
@@ -2277,7 +2264,7 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		subs[tp.Name] = expr.TypeArgs[i]
 	}
 
-	mangledName := monomorphizeMethodName(funcName, expr.TypeArgs)
+	mangledName := mangleName(funcName, expr.TypeArgs)
 
 	if !c.monomorphized[mangledName] {
 
@@ -2285,14 +2272,14 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 
 		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
-
 		// resolve parameterized struct types
-		ft := clonedFn.Type.(types.FunctionType)
-		for i, p := range ft.Params {
-			ft.Params[i] = c.maybeResolveGenericStructType(p)
+		if ft, ok := clonedFn.Type.(types.FunctionType); ok {
+			for i, p := range ft.Params {
+				ft.Params[i] = c.resolveGenericStructType(p)
+			}
+			ft.Return = c.resolveGenericStructType(ft.Return)
+			clonedFn.Type = ft
 		}
-		ft.Return = c.maybeResolveGenericStructType(ft.Return)
-		clonedFn.Type = ft
 
 		clonedFn.Name.Value = mangledName
 		clonedFn.TypeParams = nil // no longer generic
@@ -2312,13 +2299,13 @@ func (c *Checker) monomorphizeCall(expr *ast.CallExpr, template *ast.FunctionDec
 
 	concreteType := types.SubstituteTypeParams(templateType, subs)
 	// resolve parameterized struct types
-	ft := concreteType.(types.FunctionType)
-	for i, param := range ft.Params {
-		ft.Params[i] = c.maybeResolveGenericStructType(param)
+	if ft, ok := concreteType.(types.FunctionType); ok {
+		for i, param := range ft.Params {
+			ft.Params[i] = c.resolveGenericStructType(param)
+		}
+		ft.Return = c.resolveGenericStructType(ft.Return)
+		concreteType = ft
 	}
-	ft.Return = c.maybeResolveGenericStructType(ft.Return)
-	concreteType = ft
-
 	return c.validateFunctionCall(expr, concreteType)
 }
 
@@ -2346,7 +2333,7 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 		subs[tp.Name] = expr.TypeArgs[i]
 	}
 
-	mangled := monomorphizeMethodName(expr.Name, expr.TypeArgs)
+	mangled := mangleName(expr.Name, expr.TypeArgs)
 
 	if !c.monomorphized[mangled] {
 		// monomorphize type
@@ -2380,7 +2367,7 @@ func (c *Checker) monomorphizeStructLiteral(expr *ast.StructLiteral, template ty
 }
 
 func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.Type, subs map[string]types.Type) {
-	mangledStruct := monomorphizeMethodName(structName, typeArgs)
+	mangledStruct := mangleName(structName, typeArgs)
 	defer func() {
 		if st, ok := c.definedStructs[mangledStruct]; ok {
 			c.assertMonomorphized(st.Name, st.TypeParams)
@@ -2395,7 +2382,7 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 		if !ok || firstParam.Name != structName {
 			continue
 		}
-		mangledFn := monomorphizeMethodName(fname, typeArgs)
+		mangledFn := mangleName(fname, typeArgs)
 		if c.monomorphized[mangledFn] {
 			continue
 		}
@@ -2405,17 +2392,18 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 		clonedFn := cloned.Stmts[0].(*ast.FunctionDeclarationStmt)
 
 		clonedFn.Type = types.SubstituteTypeParams(clonedFn.Type, subs)
-		cft := clonedFn.Type.(types.FunctionType)
-		if st, ok := cft.Params[0].(types.StructType); ok && st.TypeParams != nil {
-			st.TypeArgs = typeArgs
-			st.TypeParams = nil
-			cft.Params[0] = st
+		if cft, ok := clonedFn.Type.(types.FunctionType); ok {
+			if st, ok := cft.Params[0].(types.StructType); ok && st.TypeParams != nil {
+				st.TypeArgs = typeArgs
+				st.TypeParams = nil
+				cft.Params[0] = st
+			}
+			for i, p := range cft.Params {
+				cft.Params[i] = c.resolveGenericStructType(p)
+			}
+			cft.Return = c.resolveGenericStructType(cft.Return)
+			clonedFn.Type = cft
 		}
-		for i, p := range cft.Params {
-			cft.Params[i] = c.maybeResolveGenericStructType(p)
-		}
-		cft.Return = c.maybeResolveGenericStructType(cft.Return)
-		clonedFn.Type = cft
 
 		clonedFn.Name.Value = mangledFn
 		clonedFn.TypeParams = nil
@@ -2434,7 +2422,7 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 		c.monomorphized[mangledFn] = true
 	}
 
-	mangled := monomorphizeMethodName(structName, typeArgs)
+	mangled := mangleName(structName, typeArgs)
 	if st, ok := c.definedStructs[mangled]; ok {
 		c.indexModuleInterfaces()
 		for _, it := range c.candidateInterfaces(mangled) {
@@ -2449,8 +2437,8 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 	}
 }
 
-func (c *Checker) maybeResolveGenericStructType(t types.Type) types.Type {
-	var result = t
+func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
+	var result types.Type = t
 	resolved := false
 	defer func() {
 		if resolved {
@@ -2476,7 +2464,7 @@ func (c *Checker) maybeResolveGenericStructType(t types.Type) types.Type {
 		}
 	}
 
-	mangled := monomorphizeMethodName(st.Name, st.TypeArgs)
+	mangled := mangleName(st.Name, st.TypeArgs)
 	if !c.monomorphized[mangled] {
 		subs := make(map[string]types.Type)
 		for i, tp := range template.Type.TypeParams {
@@ -2506,17 +2494,13 @@ func (c *Checker) maybeResolveGenericStructType(t types.Type) types.Type {
 	return result
 }
 
-func monomorphizeMethodName(base string, tt []types.Type) string {
+func mangleName(base string, tt []types.Type) string {
 	parts := []string{base}
 	for _, t := range tt {
 		parts = append(parts, t.Signature())
 	}
 
 	return strings.Join(parts, "__")
-}
-
-func mangleMethod(base, method string) string {
-	return base + "." + method
 }
 
 func (c *Checker) appendError(msg string, node ast.Node) {
