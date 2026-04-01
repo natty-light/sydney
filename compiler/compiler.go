@@ -118,16 +118,16 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 			if def, ok := stmt.(*ast.InterfaceDefinitionStmt); ok {
 				name := def.Name.Value
-				if def.Type.Module != "" {
-					name = c.mangleModule(def.Type.Module, name)
+				if c.currentModule != "" {
+					name = c.mangleModule(c.currentModule, name)
 				}
 				c.setInterface(name, def.Type)
 			}
 
 			if def, ok := stmt.(*ast.StructDefinitionStmt); ok {
 				name := def.Name.Value
-				if def.Type.Module != "" {
-					name = c.mangleModule(def.Type.Module, name)
+				if c.currentModule != "" {
+					name = c.mangleModule(c.currentModule, name)
 				}
 				c.setStruct(name, def.Type)
 			}
@@ -137,7 +137,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 				if fn.MangledName != "" {
 					name = fn.MangledName
 				}
-				if fn.Module != "" {
+				if c.currentModule != "" {
 					name = c.mangleModule(c.currentModule, name)
 				}
 				sym := c.symbolTable.DefineImmutable(name)
@@ -298,7 +298,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		conditionPos := len(c.currentInstructions())
-		loop := c.enterLoop(conditionPos, node.Post != nil)
+		c.enterLoop(conditionPos, node.Post != nil)
 
 		err := c.Compile(node.Condition)
 		if err != nil {
@@ -314,8 +314,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if node.Post != nil {
 			postPos := len(c.currentInstructions())
-			for _, pos := range loop.continuePositions {
-				c.changeOperand(pos, postPos)
+			loop := c.getLoop()
+			if loop != nil {
+				for _, pos := range loop.continuePositions {
+					c.changeOperand(pos, postPos)
+				}
 			}
 
 			err = c.Compile(node.Post)
@@ -328,8 +331,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		escapePos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, escapePos)
-		for _, pos := range loop.breakPositions {
-			c.changeOperand(pos, escapePos)
+		loop := c.getLoop()
+		if loop != nil {
+			for _, pos := range c.getLoop().breakPositions {
+				c.changeOperand(pos, escapePos)
+			}
 		}
 		c.leaveLoop()
 		c.popBlockScope()
@@ -1264,7 +1270,7 @@ func (c *Compiler) leaveBlockScope() {
 	c.symbolTable = c.symbolTable.Outer
 }
 
-func (c *Compiler) enterLoop(conditionPos int, hasPost bool) *LoopContext {
+func (c *Compiler) enterLoop(conditionPos int, hasPost bool) {
 	loop := &LoopContext{
 		conditionPos:      conditionPos,
 		hasPost:           hasPost,
@@ -1273,7 +1279,6 @@ func (c *Compiler) enterLoop(conditionPos int, hasPost bool) *LoopContext {
 	}
 	c.loopContexts = append(c.loopContexts, loop)
 	c.loopIndex++
-	return loop
 }
 
 func (c *Compiler) leaveLoop() {
@@ -1354,14 +1359,21 @@ func (c *Compiler) buildItabsFromTypes() {
 	for _, sn := range structNames {
 		st := c.structTypes[sn]
 		for _, ifaceRaw := range st.Interfaces {
-			iface := ifaceRaw.(types.InterfaceType)
-			in := iface.Name
-			if iface.Module != "" {
-				in = c.mangleModule(iface.Module, in)
-			}
-			it, ok := c.fetchInterfaceType(in)
+			iface, ok := ifaceRaw.(types.InterfaceType)
 			if !ok {
-				panic(fmt.Sprintf("could not find interface type %s building itab for struct %s", in, sn))
+				continue
+			}
+
+			in := iface.Name
+			it, ok := c.fetchInterfaceType(in)
+			if !ok && c.currentModule != "" {
+				it, ok = c.fetchInterfaceType(c.mangleModule(c.currentModule, in))
+			}
+			if !ok && iface.Module != "" {
+				it, ok = c.fetchInterfaceType(c.mangleModule(iface.Module, in))
+			}
+			if !ok {
+				continue
 			}
 
 			itab := &object.Itab{
@@ -1371,8 +1383,11 @@ func (c *Compiler) buildItabsFromTypes() {
 			}
 
 			for mn, idx := range it.MethodIndices {
-				mangled := mangleMethod(sn, mn)
+				mangled := mangle(sn, mn)
 				sym, _, ok := c.symbolTable.Resolve(mangled)
+				if !ok && c.currentModule != "" {
+					sym, _, ok = c.symbolTable.Resolve(c.mangleModule(c.currentModule, mangled))
+				}
 				if !ok {
 					panic(fmt.Sprintf("invariant violation: itab method %q for %s -> %s not found in symbol table\n%s",
 						mangled, sn, in, debug.Stack()))
@@ -1413,7 +1428,7 @@ func (c *Compiler) fetchInterfaceType(name string) (types.InterfaceType, bool) {
 	return it, ok
 }
 
-func mangleMethod(sn string, mn string) string {
+func mangle(sn string, mn string) string {
 	return fmt.Sprintf("%s.%s", sn, mn)
 }
 
@@ -1563,7 +1578,7 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	c.emitSet(idxSym)
 
 	conditionPos := len(c.currentInstructions())
-	loop := c.enterLoop(conditionPos, true)
+	c.enterLoop(conditionPos, true)
 	c.emitGet(lenSym)
 	c.emitGet(idxSym)
 	c.emit(code.OpGt)
@@ -1590,8 +1605,11 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	}
 
 	postPos := len(c.currentInstructions())
-	for _, pos := range loop.continuePositions {
-		c.changeOperand(pos, postPos)
+	loop := c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.continuePositions {
+			c.changeOperand(pos, postPos)
+		}
 	}
 	c.emitGet(idxSym)
 	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 1}))
@@ -1604,8 +1622,11 @@ func (c *Compiler) compileForInStmtArr(node *ast.ForInStmt) error {
 	// 9. Escape
 	escapePos := len(c.currentInstructions())
 	c.changeOperand(jumpNotTruthyPos, escapePos)
-	for _, pos := range loop.breakPositions {
-		c.changeOperand(pos, escapePos)
+	loop = c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.breakPositions {
+			c.changeOperand(pos, escapePos)
+		}
 	}
 	c.leaveLoop()
 	c.popBlockScope()
@@ -1654,7 +1675,7 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 
 	// condition: len > idx
 	conditionPos := len(c.currentInstructions())
-	loop := c.enterLoop(conditionPos, true)
+	c.enterLoop(conditionPos, true)
 	c.emitGet(lenSym)
 	c.emitGet(idxSym)
 	c.emit(code.OpGt)
@@ -1684,8 +1705,11 @@ func (c *Compiler) compileForInStmtMap(node *ast.ForInStmt) error {
 	}
 
 	postPos := len(c.currentInstructions())
-	for _, pos := range loop.continuePositions {
-		c.changeOperand(pos, postPos)
+	loop := c.getLoop()
+	if loop != nil {
+		for _, pos := range loop.continuePositions {
+			c.changeOperand(pos, postPos)
+		}
 	}
 	c.emitGet(idxSym)
 	c.emit(code.OpConstant, c.addConstant(&object.Integer{Value: 1}))
