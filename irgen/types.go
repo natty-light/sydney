@@ -1,7 +1,6 @@
 package irgen
 
 import (
-	"bytes"
 	"fmt"
 	"sydney/types"
 )
@@ -20,29 +19,8 @@ const (
 	IrInt8   BasicIrType = "i8"
 )
 
-type IrStruct struct {
-	Name  string
-	Types []IrType
-}
-
 type IrType interface {
 	String() string
-}
-
-func (s *IrStruct) String() string {
-	var out bytes.Buffer
-	out.WriteString("%struct.")
-	out.WriteString(s.Name)
-	out.WriteString(" = type { ")
-	for i, t := range s.Types {
-		if i > 0 {
-			out.WriteString(", ")
-		}
-		out.WriteString(t.String())
-	}
-	out.WriteString(" }")
-
-	return out.String()
 }
 
 func (b BasicIrType) String() string {
@@ -94,8 +72,6 @@ func SydneyTypeToIrType(t types.Type) IrType {
 	return IrUnit
 }
 
-const IrAnyTaggedUnion BasicIrType = "{ i8, i64 }"
-
 // Tag values for the any tagged union
 const (
 	AnyTagInt    = 0
@@ -119,22 +95,6 @@ func AnyTagForType(t IrType) int {
 		return AnyTagByte
 	}
 	return -1
-}
-
-func IrTypeForAnyTag(tag int) IrType {
-	switch tag {
-	case AnyTagInt:
-		return IrInt
-	case AnyTagFloat:
-		return IrFloat
-	case AnyTagString:
-		return IrPtr
-	case AnyTagBool:
-		return IrBool
-	case AnyTagByte:
-		return IrInt8
-	}
-	return IrPtr
 }
 
 func GetResultTaggedUnion(t IrType) IrType {

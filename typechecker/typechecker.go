@@ -264,9 +264,6 @@ func (c *Checker) exportFunctions(functions []*ast.FunctionDeclarationStmt, expo
 			if st, ok := ft.Params[0].(types.StructType); ok {
 				if _, _, exported := exportEnv.Get(st.Name); exported {
 					mn := st.Name + "." + name
-					if containsTypeParamRef(ft) {
-						panic(fmt.Sprintf("invariant violation: exported struct %s has TypeParamRefs\n%s\n", name, debug.Stack()))
-					}
 					exportEnv.Set(mn, typ)
 				}
 			}
@@ -290,7 +287,9 @@ func (c *Checker) checkPackages(packages []*loader.Package) []errors.PositionErr
 	c.packages = registry
 	for _, env := range registry {
 		for name, typ := range env.store {
-			c.env.Set(name, typ)
+			if strings.Contains(name, ".") {
+				c.env.Set(name, typ)
+			}
 		}
 	}
 	return c.errors
