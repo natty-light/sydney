@@ -16,33 +16,49 @@ define struct State {
   command string,
   buffer array<string>,
   filename string,
+  lines int,
 }
 
 const argv = os:args();
 
+func render_gutter(int gutter, int line) {
+    const line_as_str = conv:itoa(line);
+    const padding = gutter - len(line_as_str);
+    const padding_str = strings:repeat(" ", padding);
+    const gutter_str = line_as_str + padding_str;
+    stdout.write(gutter_str)
+}
+
 func render(State s) {
+  // clear display
   stdout.write("\x1b[2J");
   stdout.write("\x1b[H");
   mut should_write_line_no = true;
   mut line = 1;
 
+  // render gutter
   const gutter = len(conv:itoa(s.cy + 1)) + 2;
   for (item in s.buffer) {
     if (item == "\n") {
+      render_gutter(gutter, line);
       stdout.write("\r\n");
       should_write_line_no = true;
       line = line + 1;
     } else {
       if (should_write_line_no) {
-        const line_as_str = conv:itoa(line);
-        const padding = gutter - len(line_as_str);
-        stdout.write(line_as_str + strings:repeat(" ", padding));
+        render_gutter(gutter, line);
         should_write_line_no = false;
       }
       stdout.write(item);
     }
+    
   }
 
+  if (should_write_line_no) {
+    render_gutter(gutter, line)
+  }
+
+  // render command bar
   stdout.write("\x1b[999;1H");
   stdout.write("\x1b[7m ");
   stdout.write(s.mode);
@@ -51,6 +67,7 @@ func render(State s) {
   }
   stdout.write(" \x1b[0m");
 
+  // render cursor
   stdout.write("\x1b[");
   stdout.write(conv:itoa(s.cy + 1));
   stdout.write(";");
@@ -65,7 +82,7 @@ func handleArrowKeys(State s, string chs) {
     }
   }
 
-  if (chs == "[B") {
+  if (chs == "[B" && s.cy < s.lines) {
     s.cy = s.cy + 1;
   }
 
@@ -154,6 +171,7 @@ func handleBackspace(State s) {
     s.buffer = append(s.buffer, item);
   }
   if (deleted == "\n") {
+    s.lines = s.lines - 1;
     s.cy = s.cy - 1;
     mut nx = 0;
     mut line = 0;
@@ -225,6 +243,7 @@ func handleInput(State s) {
 
       if (s.mode == "insert") {
           if (ch == "\r") {
+            s.lines = s.lines + 1;
             return handleInsert(s, "\n");
           }
           if (ch == "\x7f") {
@@ -254,7 +273,16 @@ match is_raw {
   err(msg) -> { panic(msg); },
 }
 
-mut state = State { cx: 0, cy: 0, mode: "normal", running: true, command: "", buffer: [], filename: "" };
+mut state = State { 
+  cx: 0, 
+  cy: 0, 
+  mode: "normal", 
+  running: true, 
+  command: "", 
+  buffer: [], 
+  filename: "",
+  lines: 1
+};
 
 if (len(argv) > 1) {
   const filename = argv[1];
