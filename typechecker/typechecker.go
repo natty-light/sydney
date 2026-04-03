@@ -680,6 +680,12 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 	if e == nil {
 		return types.Null
 	}
+	result := c.typeOfInner(e, expectedType)
+	c.boxIfNecessary(e, result, expectedType)
+	return result
+}
+
+func (c *Checker) typeOfInner(e ast.Expr, expectedType types.Type) types.Type {
 
 	switch expr := e.(type) {
 	case *ast.IntegerLiteral:
@@ -1719,7 +1725,15 @@ func (c *Checker) checkIndexAssignment(node *ast.IndexAssignmentStmt) types.Type
 
 	indexOrKeyType := c.typeOf(node.Left.Index, nil)
 
-	valType := c.typeOf(node.Value, t)
+	var elemType types.Type
+	switch colType := t.(type) {
+	case types.ArrayType:
+		elemType = colType.ElemType
+	case types.MapType:
+		elemType = colType.ValueType
+	}
+
+	valType := c.typeOf(node.Value, elemType)
 	if valType == nil {
 		return types.Unit
 	}
