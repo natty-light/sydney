@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::ffi::CStr;
-use std::path::Component::ParentDir;
 use crate::gc::{sydney_gc_alloc, GC};
 
 #[no_mangle]
@@ -58,7 +57,7 @@ pub extern "C" fn sydney_map_get_destroy_int(map: *mut HashMap<i64, i64>) {
 pub extern "C" fn sydney_map_get_destroy_string(map: *mut HashMap<String, i64>) {
   unsafe {
     let gc = GC.as_mut().unwrap();
-    gc.maps.retain(|m| (*m as *const () as usize != (map as *const () as usize)));
+    gc.maps.retain(|m| *m as *const () as usize != (map as *const () as usize) );
     drop(Box::from_raw(map));
   }
 }

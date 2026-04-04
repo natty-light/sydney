@@ -35,7 +35,7 @@ extern "C" {
 
 const SSL_VERIFY_PEER: c_int = 0x01;
 const SSL_CTRL_SET_TLSEXT_HOSTNAME: c_int = 55;
-const TLSEXT_NAMETYPE_host_name: c_long = 0;
+const TLSEXT_NAMETYPE_HOST_NAME: c_long = 0;
 const OPENSSL_INIT_FLAGS: u64 = 0x00200000 | 0x02000000;
 
 // ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ pub extern "C" fn sydney_tls_connect(host: *const c_char, port: i64) -> i64 {
 
         // Set SNI hostname — required by most modern servers
         let host_cstr = CString::new(host_str).unwrap();
-        SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, host_cstr.as_ptr());
+        SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_HOST_NAME, host_cstr.as_ptr());
 
         // Perform the TLS handshake
         let ret = SSL_connect(ssl);

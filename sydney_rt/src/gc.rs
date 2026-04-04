@@ -118,7 +118,7 @@ pub extern "C" fn sydney_gc_collect() {
 
 
 
-        let before = gc.allocations.len();
+        let _before = gc.allocations.len();
         // sweep
         gc.allocations.retain(|_, alloc| {
             if alloc.marked {
@@ -131,7 +131,7 @@ pub extern "C" fn sydney_gc_collect() {
                 false
             }
         });
-        let after = gc.allocations.len();
+        let _after = gc.allocations.len();
         // eprintln!("GC: {} total, {} swept, {} kept", before, before-after, after);
 
     }

@@ -686,7 +686,6 @@ func (c *Checker) typeOf(e ast.Expr, expectedType types.Type) types.Type {
 }
 
 func (c *Checker) typeOfInner(e ast.Expr, expectedType types.Type) types.Type {
-
 	switch expr := e.(type) {
 	case *ast.IntegerLiteral:
 		if expectedType == types.Float {
@@ -849,7 +848,7 @@ func (c *Checker) typeOfInner(e ast.Expr, expectedType types.Type) types.Type {
 			aType = c.check(expr.Alternative)
 
 			if !discard && !c.typesMatch(cType, aType) {
-				c.appendError(fmt.Sprintf("consequence and alternative for if expression must result in same type"), expr)
+				c.appendError("consequence and alternative for if expression must result in same type", expr)
 				c.inDiscardPosition = discard
 				return types.Unit
 			}
@@ -864,7 +863,7 @@ func (c *Checker) typeOfInner(e ast.Expr, expectedType types.Type) types.Type {
 		e = expr // this is fucky -- side effects :(
 		return t
 	case *ast.IndexExpr:
-		resolved := c.checkIndexExpr(e, expr)
+		resolved := c.checkIndexExpr(expr)
 		expr.ResolvedType = resolved
 		e = expr
 		return resolved
@@ -1862,7 +1861,7 @@ func allPathsReturn(block *ast.BlockStmt) bool {
 	return false
 }
 
-func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
+func (c *Checker) checkIndexExpr(expr *ast.IndexExpr) types.Type {
 	lt := c.typeOf(expr.Left, nil)
 	idxT := c.typeOf(expr.Index, nil)
 	mt, mok := lt.(types.MapType)
@@ -1882,7 +1881,6 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 		}
 		expr.ResolvedType = at.ElemType
 		expr.ContainerType = at
-		e = expr
 		return at.ElemType
 	} else if mok {
 		if idxT != mt.KeyType {
@@ -1894,7 +1892,6 @@ func (c *Checker) checkIndexExpr(e ast.Node, expr *ast.IndexExpr) types.Type {
 		expr.ResolvedType = optType
 		expr.ContainerType = mt
 		expr.Index.SetResolvedType(idxT)
-		e = expr
 		return optType
 	}
 	c.appendError(fmt.Sprintf("index operation undefined for type: %s", lt.Signature()), expr)
@@ -1930,7 +1927,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 
 	result, ok := subType.(types.ResultType)
 	if !ok {
-		c.appendError(fmt.Sprintf("can only match on result or option type"), expr)
+		c.appendError("can only match on result or option type", expr)
 		return nil
 	}
 	expr.SubjectType = result.T
@@ -1944,7 +1941,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	c.env = okEnv
 	okBranch := c.check(expr.OkArm.Body)
 	if okBranch == nil {
-		c.appendError(fmt.Sprintf("cannot resolve type for ok branch"), expr)
+		c.appendError("cannot resolve type for ok branch", expr)
 		c.inDiscardPosition = discard
 		return nil
 	}
@@ -1962,7 +1959,7 @@ func (c *Checker) checkMatchExpr(expr *ast.MatchExpr) types.Type {
 	}
 	errBranch := c.check(expr.ErrArm.Body)
 	if errBranch == nil {
-		c.appendError(fmt.Sprintf("cannot resolve type for err branch"), expr)
+		c.appendError("cannot resolve type for err branch", expr)
 		c.inDiscardPosition = discard
 		return nil
 	}
@@ -2379,7 +2376,7 @@ func (c *Checker) monomorphizeStructMethods(structName string, typeArgs []types.
 }
 
 func (c *Checker) resolveGenericStructType(t types.Type) types.Type {
-	var result types.Type = t
+	result := t
 	resolved := false
 	defer func() {
 		if resolved {
