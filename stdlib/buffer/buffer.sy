@@ -1,0 +1,19 @@
+module "buffer"
+
+define struct Buffer {
+  data array<byte>,
+}
+
+func write_byte(Buffer b, byte c) {
+  b.data = append(b.data, c);
+}
+
+func write_string(Buffer b, string s) {
+  for (mut i = 0; i < len(s); i = i + 1) {
+    b.data = append(b.data, s[i]);
+  }
+}
+
+func string(Buffer b) -> string {
+  return string(b.data)
+}

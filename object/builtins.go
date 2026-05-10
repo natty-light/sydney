@@ -341,6 +341,20 @@ var Builtins = []struct {
 		},
 	},
 	{
+		"string",
+		&BuiltIn{
+			Fn: func(args ...Object) Object {
+				arr := args[0].(*Array)
+				buf := make([]byte, len(arr.Elements))
+				for i, elem := range arr.Elements {
+					buf[i] = elem.(*Byte).Value
+				}
+				return &String{Value: string(buf)}
+			},
+			T: types.FunctionType{Params: []types.Type{types.ArrayType{ElemType: types.Byte}}, Return: types.String},
+		},
+	},
+	{
 		"float",
 		&BuiltIn{
 			Fn: func(args ...Object) Object {
